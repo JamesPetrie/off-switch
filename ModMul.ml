@@ -30,6 +30,7 @@ module ModMul = struct
       ; x : 'a [@bits Config.width]  (* First multiplicand *)
       ; y : 'a [@bits Config.width]  (* Second multiplicand *)
       ; modulus : 'a [@bits Config.width]  (* Modulus r *)
+      ; num_bits : 'a [@bits 9]  (* Number of bits to process in y (0-256) *)
       }
     [@@deriving sexp_of, hardcaml]
   end
@@ -55,16 +56,19 @@ module ModMul = struct
     (* State machine *)
     let sm = State_machine.create (module State) spec ~enable:vdd in
 
-    (* Accumulator *)
-    let acc = Variable.reg spec ~width:acc_width in
+    (* Result accumulator *)
+    let result_acc = Variable.reg spec ~width:acc_width in
 
     (* Multiplier (y) and bit counter *)
     let multiplier = Variable.reg spec ~width in
     let bit_count = Variable.reg spec ~width:9 in
 
-    (* Stored inputs *)
-    let x_orig = Variable.reg spec ~width:acc_width in
+    (* Current value of x (gets doubled each iteration) *)
+    let x_current = Variable.reg spec ~width:acc_width in
+    
+    (* Stored modulus *)
     let modulus_orig = Variable.reg spec ~width:acc_width in
+    let num_bits_orig = Variable.reg spec ~width:9 in
 
     (* Output registers *)
     let result = Variable.reg spec ~width in
@@ -83,10 +87,16 @@ module ModMul = struct
               result <-- zero width;
               valid <-- vdd;
               sm.set_next Done;
+            ] @@ elif (i.num_bits ==:. 0) [
+              (* Zero bits means result is 0 *)
+              result <-- zero width;
+              valid <-- vdd;
+              sm.set_next Done;
             ] [
-              x_orig <-- uresize i.x acc_width;
+              x_current <-- uresize i.x acc_width;
               modulus_orig <-- uresize i.modulus acc_width;
               multiplier <-- i.y;
+              num_bits_orig <-- i.num_bits;
               sm.set_next Init;
             ];
           ];
@@ -94,7 +104,7 @@ module ModMul = struct
 
         State.Init, [
           valid <-- gnd;
-          acc <-- zero acc_width;
+          result_acc <-- zero acc_width;
           bit_count <-- of_int ~width:9 0;
           sm.set_next Loop;
         ];
@@ -102,40 +112,43 @@ module ModMul = struct
         State.Loop, [
           valid <-- gnd;
           
-          if_ (bit_count.value ==: of_int ~width:9 width) [
-            (* All bits processed *)
-            result <-- sel_bottom acc.value width;
+          if_ (bit_count.value ==: num_bits_orig.value) [
+            (* Requested number of bits processed *)
+            result <-- sel_bottom result_acc.value width;
             valid <-- vdd;
             sm.set_next Done;
           ] [
-            (* Step 1: Double the accumulator *)
-            let doubled = sll acc.value 1 in
+            (* Check LSB of multiplier *)
+            let current_bit = lsb multiplier.value in
             
-            (* Step 2: If doubled >= modulus, subtract modulus *)
-            let after_double_reduce = 
-              mux2 (doubled >=: modulus_orig.value)
-                (doubled -: modulus_orig.value)
-                doubled
-            in
-            
-            (* Step 3: If current bit of multiplier is 1, add x *)
-            let current_bit = msb multiplier.value in
+            (* If bit is set, add current x to result *)
             let after_add = 
               mux2 current_bit
-                (after_double_reduce +: x_orig.value)
-                after_double_reduce
+                (result_acc.value +: x_current.value)
+                result_acc.value
             in
             
-            (* Step 4: If result >= modulus, subtract modulus *)
+            (* Reduce if >= modulus *)
             let after_add_reduce =
               mux2 (after_add >=: modulus_orig.value)
                 (after_add -: modulus_orig.value)
                 after_add
             in
             
+            (* Double x for next iteration *)
+            let x_doubled = sll x_current.value 1 in
+            
+            (* Reduce doubled x if >= modulus *)
+            let x_doubled_reduce =
+              mux2 (x_doubled >=: modulus_orig.value)
+                (x_doubled -: modulus_orig.value)
+                x_doubled
+            in
+            
             proc [
-              acc <-- after_add_reduce;
-              multiplier <-- sll multiplier.value 1;
+              result_acc <-- after_add_reduce;
+              x_current <-- x_doubled_reduce;
+              multiplier <-- srl multiplier.value 1;  (* Shift right *)
               bit_count <-- bit_count.value +:. 1;
             ];
           ];
@@ -158,7 +171,7 @@ end
 
 (* Test code *)
 let test () =
-  Stdio.printf "=== ModMul Hardware Test (256-bit with Zarith) ===\n\n";
+  Stdio.printf "=== ModMul Hardware Test (256-bit with Zarith and num_bits) ===\n\n";
 
   let scope = Scope.create ~flatten_design:true () in
   let module Sim = Cyclesim.With_interface(ModMul.I)(ModMul.O) in
@@ -173,6 +186,12 @@ let test () =
     Bits.of_hex ~width:Config.width padded
   in
 
+  (* Calculate number of significant bits in z *)
+  let z_num_bits z =
+    if Z.equal z Z.zero then 0
+    else Z.numbits z
+  in
+
   let test_case name x_z y_z mod_z =
     Stdio.printf "Test: %s\n" name;
     Stdio.printf "  x       = %s\n" (Z.to_string x_z);
@@ -185,6 +204,10 @@ let test () =
     let x_bits = z_to_bits x_z in
     let y_bits = z_to_bits y_z in
     let mod_bits = z_to_bits mod_z in
+    let num_bits = z_num_bits y_z in
+    
+    Stdio.printf "  y bits  = %d (optimization: %dx speedup)\n" 
+      num_bits (Config.width / (max 1 num_bits));
 
     (* Reset *)
     inputs.clear := Bits.vdd;
@@ -192,6 +215,7 @@ let test () =
     inputs.x := Bits.zero Config.width;
     inputs.y := Bits.zero Config.width;
     inputs.modulus := Bits.zero Config.width;
+    inputs.num_bits := Bits.zero 9;
     Cyclesim.cycle sim;
 
     inputs.clear := Bits.gnd;
@@ -201,6 +225,7 @@ let test () =
     inputs.x := x_bits;
     inputs.y := y_bits;
     inputs.modulus := mod_bits;
+    inputs.num_bits := Bits.of_int ~width:9 num_bits;
     inputs.start := Bits.vdd;
     Cyclesim.cycle sim;
 
@@ -240,7 +265,7 @@ let test () =
   in
 
   let results = [
-    (* Basic small tests *)
+    (* Basic small tests - should be very fast now *)
     test_case "3 * 5 mod 7"
       (Z.of_int 3) (Z.of_int 5) (Z.of_int 7);
     
@@ -249,6 +274,14 @@ let test () =
     
     test_case "123 * 456 mod 1009"
       (Z.of_int 123) (Z.of_int 456) (Z.of_int 1009);
+    
+    (* Edge case: y = 0 *)
+    test_case "Edge: x * 0 mod m"
+      (Z.of_int 12345) (Z.of_int 0) (Z.of_int 7919);
+    
+    (* Edge case: y = 1 *)
+    test_case "Edge: x * 1 mod m"
+      (Z.of_int 12345) (Z.of_int 1) (Z.of_int 7919);
     
     (* Larger tests *)
     test_case "Large: 123456 * 789012 mod 1000003"
