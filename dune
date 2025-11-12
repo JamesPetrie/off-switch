@@ -1,13 +1,19 @@
 
 
 
-
 (executable
- (name ModMul)
- (public_name modmul)
+ (name ModAdd)
+ (public_name modadd)
  (package ecdsa)
  (libraries base hardcaml stdio zarith)
  (preprocess (pps ppx_jane ppx_hardcaml)))
+
+; (executable
+;  (name ModMul)
+;  (public_name modmul)
+;  (package ecdsa)
+;  (libraries base hardcaml stdio zarith)
+;  (preprocess (pps ppx_jane ppx_hardcaml)))
 
 
 
