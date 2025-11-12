@@ -6,7 +6,6 @@ open Signal
 module Config = struct
   let width = 256
   let chunk_width = 32  (* Process 32 bits per cycle for 8 cycles *)
- (*  let num_chunks = 8    256 / 32 = 8 *)
   
   (* Hardcoded 256-bit prime modulus (secp256k1 prime as example) *)
   (* n = 2^256 - 2^32 - 2^9 - 2^8 - 2^7 - 2^6 - 2^4 - 1 *)
@@ -153,14 +152,13 @@ module ModAdd = struct
             (* Initialize: extend inputs to 257 bits *)
             operand_a <-- uresize i.a intermediate_width;
             
-            (* For subtraction: XOR b and set initial carry *)
+            (* For subtraction: invert 256 bits, then extend to 257 bits *)
             if_ i.subtract [
-              (* XOR with all 1s for 2's complement *)
-              let b_extended = uresize i.b intermediate_width in
-              let all_ones_extended = uresize (ones Config.width) intermediate_width in
-              let b_inverted = b_extended ^: all_ones_extended in
+              (* Invert only the 256-bit value, then zero-extend to 257 bits *)
+              let b_inverted_256 = ~:(i.b) in
+              let b_inverted_257 = uresize b_inverted_256 intermediate_width in
               proc [
-                operand_b <-- b_inverted;
+                operand_b <-- b_inverted_257;
                 carry <-- vdd;  (* Initial carry for 2's complement *)
               ];
             ] [
@@ -186,25 +184,38 @@ module ModAdd = struct
         State.Process_chunk_7, process_chunk_logic 7 Final_adjust;
         
         State.Final_adjust, [
-          (* Check if result is negative (for subtraction) *)
-          let is_negative = msb accumulator.value in
+          (* For subtraction in 257-bit 2's complement:
+             After computing a + (~b) + 1 where b's lower 256 bits are inverted:
+             - If bit 256 of accumulator is 0, result is negative (a < b), add modulus
+             - If bit 256 of accumulator is 1, result is positive (a >= b), use lower 256 bits
+             
+             For addition:
+             - Try subtracting modulus
+             - If result MSB is 1 (negative), keep original; else use reduced
+          *)
           
-          (* Compute both paths *)
-          let corrected = accumulator.value +: modulus_257 in
-          let after_sub = accumulator.value -: modulus_257 in
-          let sub_is_negative = msb after_sub in
+          (* For subtraction: check bit 256 of the accumulator *)
+          let acc_bit_256 = msb accumulator.value in
+          let sub_is_negative = ~:acc_bit_256 in
           
-          (* Select result based on operation type and sign *)
+          (* For subtraction: if negative, add modulus *)
+          let sub_corrected = accumulator.value +: modulus_257 in
+          
+          (* For addition: try subtracting modulus *)
+          let add_reduced = accumulator.value -: modulus_257 in
+          let add_is_negative = msb add_reduced in
+          
+          (* Select final result based on operation *)
           let final_result = 
             mux2 is_subtract.value
-              (* Subtraction path *)
-              (mux2 is_negative
-                (sel_bottom corrected Config.width)
+              (* Subtraction: if bit 256 is 0, we need correction *)
+              (mux2 sub_is_negative
+                (sel_bottom sub_corrected Config.width)
                 (sel_bottom accumulator.value Config.width))
-              (* Addition path *)
-              (mux2 sub_is_negative 
+              (* Addition: if reduction makes it negative, keep original; else use reduced *)
+              (mux2 add_is_negative 
                 (sel_bottom accumulator.value Config.width)
-                (sel_bottom after_sub Config.width))
+                (sel_bottom add_reduced Config.width))
           in
           
           proc [
@@ -356,6 +367,183 @@ let test () =
       (Z.of_string "80000000000000000000000000000000000000000000000000000000000000000000000000")
       (Z.of_string "30000000000000000000000000000000000000000000000000000000000000000000000000")
       true;
+    
+    (* Edge: subtract from zero *)
+    test_case "Zero minus value (wraps around)"
+      Z.zero (Z.of_int 42) true;
+    
+    (* Edge: identical values *)
+    test_case "Subtract identical values"
+      (Z.of_int 999999) (Z.of_int 999999) true;
+    
+    test_case "Add identical values"
+      (Z.of_int 999999) (Z.of_int 999999) false;
+    
+    (* Maximum values *)
+    test_case "Add two maximum values (modulus-1)"
+      Z.(Config.prime_modulus_z - one) 
+      Z.(Config.prime_modulus_z - one) 
+      false;
+    
+    test_case "Subtract from maximum"
+      Z.(Config.prime_modulus_z - one) 
+      (Z.of_int 1) 
+      true;
+    
+    test_case "Add 1 to maximum (wraps to 0)"
+      Z.(Config.prime_modulus_z - one) 
+      Z.one 
+      false;
+    
+    (* Powers of 2 *)
+    test_case "Add powers of 2: 2^128 + 2^127"
+      (Z.shift_left Z.one 128)
+      (Z.shift_left Z.one 127)
+      false;
+    
+    test_case "Subtract powers of 2: 2^200 - 2^100"
+      (Z.shift_left Z.one 200)
+      (Z.shift_left Z.one 100)
+      true;
+    
+    test_case "Subtract larger power from smaller: 2^100 - 2^200"
+      (Z.shift_left Z.one 100)
+      (Z.shift_left Z.one 200)
+      true;
+    
+    (* Near modulus boundaries *)
+    test_case "Add near modulus: (n-10) + 5"
+      Z.(Config.prime_modulus_z - of_int 10)
+      (Z.of_int 5)
+      false;
+    
+    test_case "Add near modulus: (n-10) + 20"
+      Z.(Config.prime_modulus_z - of_int 10)
+      (Z.of_int 20)
+      false;
+    
+    test_case "Subtract near modulus: (n-10) - 20"
+      Z.(Config.prime_modulus_z - of_int 10)
+      (Z.of_int 20)
+      true;
+    
+    (* Specific bit patterns *)
+    test_case "All ones in lower 128 bits"
+      Z.(shift_left one 128 - one)
+      (Z.of_int 1)
+      false;
+    
+    test_case "Alternating bit pattern: 0xAAAA...AAAA + 0x5555...5555"
+      (Z.of_string "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+      (Z.of_string "0x5555555555555555555555555555555555555555555555555555555555555555")
+      false;
+    
+    test_case "Subtract alternating patterns"
+      (Z.of_string "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+      (Z.of_string "0x5555555555555555555555555555555555555555555555555555555555555555")
+      true;
+    
+    (* Random-looking large numbers *)
+    test_case "Large random numbers: addition"
+      (Z.of_string "98765432109876543210987654321098765432109876543210987654321098765432")
+      (Z.of_string "12345678901234567890123456789012345678901234567890123456789012345678")
+      false;
+    
+    test_case "Large random numbers: subtraction"
+      (Z.of_string "98765432109876543210987654321098765432109876543210987654321098765432")
+      (Z.of_string "12345678901234567890123456789012345678901234567890123456789012345678")
+      true;
+    
+    (* Carry propagation tests *)
+    test_case "Maximum carry propagation in addition"
+      (Z.of_string "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")
+      Z.one
+      false;
+    
+    test_case "Borrow propagation in subtraction"
+      (Z.shift_left Z.one 255)
+      Z.one
+      true;
+    
+    (* Chunk boundary tests (32-bit chunks) *)
+    test_case "Values that cross 32-bit boundaries: 2^32"
+      (Z.shift_left Z.one 32)
+      Z.one
+      false;
+    
+    test_case "Multiple of 2^32"
+      (Z.shift_left Z.one 64)
+      (Z.shift_left Z.one 32)
+      false;
+    
+    test_case "Subtract across chunk boundary"
+      (Z.of_string "0x100000000")  (* 2^32 *)
+      (Z.of_string "0x1")
+      true;
+    
+    (* Prime number specific tests (using modulus properties) *)
+    test_case "Add modulus to value (should wrap)"
+      (Z.of_int 12345)
+      Config.prime_modulus_z
+      false;
+    
+    test_case "Subtract modulus from value (should return same)"
+      (Z.of_int 12345)
+      Config.prime_modulus_z
+      true;
+    
+    (* Small numbers with large results after modular arithmetic *)
+    test_case "Small subtraction with wrap: 10 - 100"
+      (Z.of_int 10)
+      (Z.of_int 100)
+      true;
+    
+    test_case "Very small subtraction: 1 - 2"
+      Z.one
+      (Z.of_int 2)
+      true;
+    
+    (* Middle range values *)
+    test_case "Mid-range addition"
+      (Z.shift_left Z.one 127)
+      (Z.shift_left Z.one 126)
+      false;
+    
+    test_case "Mid-range subtraction"
+      (Z.shift_left Z.one 127)
+      (Z.shift_left Z.one 126)
+      true;
+    
+    (* Sequential operations *)
+    test_case "Add 1+1"
+      Z.one Z.one false;
+    
+    test_case "Add 2^255 + 2^255"
+      (Z.shift_left Z.one 255)
+      (Z.shift_left Z.one 255)
+      false;
+    
+    (* Stress test with maximum operands *)
+    test_case "Maximum operands sum exactly to modulus"
+      (Z.of_string "57896044618658097711785492504343953926634992332820282019728792003954417335831")
+      (Z.of_string "57896044618658097711785492504343953926634992332820282019728792003954417335832")
+      false;
+    
+    (* Additional corner cases *)
+    test_case "Subtract 1 from 0 (wraps to n-1)"
+      Z.zero
+      Z.one
+      true;
+    
+    test_case "Add (n-1) + 1 (wraps to 0)"
+      Z.(Config.prime_modulus_z - one)
+      Z.one
+      false;
+    
+    test_case "Add (n-1) + 2 (wraps to 1)"
+      Z.(Config.prime_modulus_z - one)
+      (Z.of_int 2)
+      false;
   ] in
 
   let passed = List.count results ~f:Fn.id in
