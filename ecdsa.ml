@@ -67,6 +67,8 @@ module ArithOp = struct
   let inv = 3
 end
 
+
+
 module RegisterFile = struct
   module I = struct
     type 'a t =
@@ -84,17 +86,19 @@ module RegisterFile = struct
     [@@deriving sexp_of, hardcaml]
   end
 
-  module O = struct
-    type 'a t =
-      { read_data_a : 'a [@bits Config.width]
-      ; read_data_b : 'a [@bits Config.width]
-      ; reg_u1 : 'a [@bits Config.width]
-      ; reg_u2 : 'a [@bits Config.width]
-      ; reg_acc_x : 'a [@bits Config.width]
-      ; reg_r : 'a [@bits Config.width]
-      }
-    [@@deriving sexp_of, hardcaml]
-  end
+module O = struct
+  type 'a t =
+    { read_data_a : 'a [@bits Config.width]
+    ; read_data_b : 'a [@bits Config.width]
+    ; reg_u1 : 'a [@bits Config.width]
+    ; reg_u2 : 'a [@bits Config.width]
+    ; reg_acc_x : 'a [@bits Config.width]
+    ; reg_acc_y : 'a [@bits Config.width]
+    ; reg_r : 'a [@bits Config.width]
+    ; reg_add_y : 'a [@bits Config.width]
+    }
+  [@@deriving sexp_of, hardcaml]
+end
 
   let create scope (i : _ I.t) =
     let ( -- ) = Scope.naming scope in
@@ -116,14 +120,16 @@ module RegisterFile = struct
     let read_data_a = mux i.read_addr_a (Array.to_list registers) in
     let read_data_b = mux i.read_addr_b (Array.to_list registers) in
     
-    { O.
-      read_data_a = read_data_a -- "read_data_a"
-    ; read_data_b = read_data_b -- "read_data_b"
-    ; reg_u1 = registers.(Reg.u1) -- "reg_u1"
-    ; reg_u2 = registers.(Reg.u2) -- "reg_u2"
-    ; reg_acc_x = registers.(Reg.acc_x) -- "reg_acc_x"
-    ; reg_r = registers.(Reg.r) -- "reg_r"
-    }
+{ O.
+  read_data_a = read_data_a -- "read_data_a"
+; read_data_b = read_data_b -- "read_data_b"
+; reg_u1 = registers.(Reg.u1) -- "reg_u1"
+; reg_u2 = registers.(Reg.u2) -- "reg_u2"
+; reg_acc_x = registers.(Reg.acc_x) -- "reg_acc_x"
+; reg_acc_y = registers.(Reg.acc_y) -- "reg_acc_y"
+; reg_r = registers.(Reg.r) -- "reg_r"
+; reg_add_y = registers.(Reg.add_y) -- "reg_add_y"
+}
 end
 
 module ArithUnit = struct
@@ -320,10 +326,11 @@ module ArithUnit = struct
           ];
         ];
         
-        State.Write, [
-          reg_write_enable <-- vdd;
-          sm.set_next Done;
-        ];
+State.Write, [
+  reg_write_enable <-- vdd;
+  done_flag <-- vdd;
+  sm.set_next Idle;
+];
         
         State.Done, [
           done_flag <-- vdd;
@@ -1068,22 +1075,26 @@ module EcdsaVerify = struct
     [@@deriving sexp_of, hardcaml]
   end
 
-  module O = struct
-    type 'a t =
-      { valid_signature : 'a
-      ; done_ : 'a
-      ; busy : 'a
-      ; dbg_ctrl_state : 'a [@bits 7]
-      ; dbg_arith_state : 'a [@bits 3]
-      ; dbg_bit_idx : 'a [@bits 9]
-      ; dbg_arith_start : 'a
-      ; dbg_arith_done : 'a
-      ; dbg_arith_op : 'a [@bits 2]
-      ; dbg_load_enable : 'a
-      ; dbg_load_addr : 'a [@bits Config.reg_addr_width]
-      }
-    [@@deriving sexp_of, hardcaml]
-  end
+module O = struct
+  type 'a t =
+    { valid_signature : 'a
+    ; done_ : 'a
+    ; busy : 'a
+    ; dbg_ctrl_state : 'a [@bits 7]
+    ; dbg_arith_state : 'a [@bits 3]
+    ; dbg_bit_idx : 'a [@bits 9]
+    ; dbg_arith_start : 'a
+    ; dbg_arith_done : 'a
+    ; dbg_arith_op : 'a [@bits 2]
+    ; dbg_load_enable : 'a
+    ; dbg_load_addr : 'a [@bits Config.reg_addr_width]
+    ; dbg_acc_x : 'a [@bits Config.width]
+    ; dbg_acc_y : 'a [@bits Config.width]
+    ; dbg_r : 'a [@bits Config.width]
+    ; dbg_add_y : 'a [@bits Config.width]
+    }
+  [@@deriving sexp_of, hardcaml]
+end
 
   let create scope (i : _ I.t) =
     let ( -- ) = Scope.naming scope in
@@ -1093,9 +1104,11 @@ module EcdsaVerify = struct
     let reg_u1_wire = wire Config.width in
     let reg_u2_wire = wire Config.width in
     let reg_acc_x_wire = wire Config.width in
+    let reg_acc_y_wire = wire Config.width in
     let reg_r_wire = wire Config.width in
     let reg_read_data_a_wire = wire Config.width in
     let reg_read_data_b_wire = wire Config.width in
+    let reg_add_y_wire = wire Config.width in
     
     let ctrl = EcdsaController.create (Scope.sub_scope scope "ctrl")
       { EcdsaController.I.
@@ -1153,21 +1166,27 @@ module EcdsaVerify = struct
     reg_u1_wire <== regfile.reg_u1;
     reg_u2_wire <== regfile.reg_u2;
     reg_acc_x_wire <== regfile.reg_acc_x;
+    reg_acc_y_wire <== regfile.reg_acc_y;
     reg_r_wire <== regfile.reg_r;
     reg_read_data_a_wire <== regfile.read_data_a;
     reg_read_data_b_wire <== regfile.read_data_b;
+    reg_add_y_wire <== regfile.reg_add_y;
     
-    { O.
-      valid_signature = ctrl.valid_signature -- "valid_signature"
-    ; done_ = ctrl.done_ -- "done"
-    ; busy = ctrl.busy -- "busy"
-    ; dbg_ctrl_state = ctrl.dbg_state -- "dbg_ctrl_state"
-    ; dbg_arith_state = arith.dbg_state -- "dbg_arith_state"
-    ; dbg_bit_idx = ctrl.dbg_bit_idx -- "dbg_bit_idx"
-    ; dbg_arith_start = ctrl.arith_start -- "dbg_arith_start"
-    ; dbg_arith_done = arith.done_ -- "dbg_arith_done"
-    ; dbg_arith_op = ctrl.arith_op -- "dbg_arith_op"
-    ; dbg_load_enable = ctrl.load_enable -- "dbg_load_enable"
-    ; dbg_load_addr = ctrl.load_addr -- "dbg_load_addr"
-    }
+{ O.
+  valid_signature = ctrl.valid_signature -- "valid_signature"
+; done_ = ctrl.done_ -- "done"
+; busy = ctrl.busy -- "busy"
+; dbg_ctrl_state = ctrl.dbg_state -- "dbg_ctrl_state"
+; dbg_arith_state = arith.dbg_state -- "dbg_arith_state"
+; dbg_bit_idx = ctrl.dbg_bit_idx -- "dbg_bit_idx"
+; dbg_arith_start = ctrl.arith_start -- "dbg_arith_start"
+; dbg_arith_done = arith.done_ -- "dbg_arith_done"
+; dbg_arith_op = ctrl.arith_op -- "dbg_arith_op"
+; dbg_load_enable = ctrl.load_enable -- "dbg_load_enable"
+; dbg_load_addr = ctrl.load_addr -- "dbg_load_addr"
+; dbg_acc_x = regfile.reg_acc_x -- "dbg_acc_x"
+; dbg_acc_y = regfile.reg_acc_y -- "dbg_acc_y"
+; dbg_r = regfile.reg_r -- "dbg_r"
+; dbg_add_y = regfile.reg_add_y -- "dbg_add_y"
+}
 end
