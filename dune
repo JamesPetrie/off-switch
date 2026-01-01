@@ -46,6 +46,6 @@
 (executable
  (name test_arith)
  (modules test_arith)
- (libraries base hardcaml arith stdio)
+ (libraries base hardcaml arith stdio zarith)
  (preprocess (pps ppx_hardcaml ppx_jane)))
 
