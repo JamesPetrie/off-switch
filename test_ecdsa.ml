@@ -2,7 +2,7 @@ open Base
 open Hardcaml
 
 let () =
-  Stdio.printf "=== ECDSA Connectivity Test ===\n\n";
+  Stdio.printf "=== ECDSA Full Verification Test ===\n\n";
   
   let scope = Scope.create ~flatten_design:true () in
   let module Sim = Cyclesim.With_interface(Ecdsa.EcdsaVerify.I)(Ecdsa.EcdsaVerify.O) in
@@ -19,15 +19,129 @@ let () =
     Bits.of_hex ~width padded
   in
   
-  let test_e = Z.of_int 12345 in
-  let test_r = Z.of_int 67890 in
-  let test_s = Z.of_int 11111 in
-  let test_q_x = Z.of_int 22222 in
-  let test_q_y = Z.of_int 33333 in
-  let test_qpg_x = Z.of_int 44444 in
-  let test_qpg_y = Z.of_int 55555 in
+  let prime_p = Ecdsa.Config.prime_p_z in
+  let order_n = Ecdsa.Config.order_n_z in
+  let g_x = Ecdsa.Config.g_x_z in
+  let g_y = Ecdsa.Config.g_y_z in
   
-  Stdio.printf "1. Resetting system...\n";
+  let mod_sub a b p = Z.(erem (a - b) p) in
+  let mod_mul a b p = Z.((a * b) mod p) in
+  let mod_inv a p = Z.(invert a p) in
+  
+  let point_add (px, py) (qx, qy) =
+    if Z.equal px qx then
+      if Z.equal py qy then None
+      else Some (Z.zero, Z.zero)
+    else
+      let lambda = mod_mul (mod_sub qy py prime_p) (mod_inv (mod_sub qx px prime_p) prime_p) prime_p in
+      let xr = mod_sub (mod_sub (mod_mul lambda lambda prime_p) px prime_p) qx prime_p in
+      let yr = mod_sub (mod_mul lambda (mod_sub px xr prime_p) prime_p) py prime_p in
+      Some (xr, yr)
+  in
+  
+  let point_double (px, py) =
+    if Z.equal py Z.zero then (Z.zero, Z.zero)
+    else
+      let lambda = mod_mul 
+        (mod_mul (Z.of_int 3) (mod_mul px px prime_p) prime_p)
+        (mod_inv (mod_mul (Z.of_int 2) py prime_p) prime_p)
+        prime_p
+      in
+      let xr = mod_sub (mod_mul lambda lambda prime_p) (mod_mul (Z.of_int 2) px prime_p) prime_p in
+      let yr = mod_sub (mod_mul lambda (mod_sub px xr prime_p) prime_p) py prime_p in
+      (xr, yr)
+  in
+  
+  let scalar_mult k (px, py) =
+    let rec loop acc bit_idx =
+      if bit_idx < 0 then acc
+      else
+        let acc' = match acc with
+          | None -> None
+          | Some p -> Some (point_double p)
+        in
+        let bit_set = Z.testbit k bit_idx in
+        let acc'' = 
+          if bit_set then
+            match acc' with
+            | None -> Some (px, py)
+            | Some a -> point_add a (px, py)
+          else acc'
+        in
+        loop acc'' (bit_idx - 1)
+    in
+    loop None 255
+  in
+  
+  Stdio.printf "=== Generating Valid ECDSA Signature ===\n\n";
+  
+  let private_key = Z.of_int 12345 in
+  let k = Z.of_int 67890 in
+  let message_hash = Z.of_int 11111 in
+  
+  Stdio.printf "Private key d = %s\n" (Z.to_string private_key);
+  Stdio.printf "Nonce k = %s\n" (Z.to_string k);
+  Stdio.printf "Message hash e = %s\n\n" (Z.to_string message_hash);
+  
+  let q_point = scalar_mult private_key (g_x, g_y) in
+  let (q_x, q_y) = match q_point with 
+    | Some p -> p 
+    | None -> failwith "Invalid public key"
+  in
+  Stdio.printf "Public key Q:\n";
+  Stdio.printf "  Q.x = %s\n" (Z.to_string q_x);
+  Stdio.printf "  Q.y = %s\n\n" (Z.to_string q_y);
+  
+  let r_point = scalar_mult k (g_x, g_y) in
+  let (r_x, _r_y) = match r_point with 
+    | Some p -> p 
+    | None -> failwith "Invalid R point"
+  in
+  
+  let r = Z.(erem r_x order_n) in
+  Stdio.printf "Signature component r = %s\n" (Z.to_string r);
+  
+  let k_inv = mod_inv k order_n in
+  let s = mod_mul k_inv Z.(erem (message_hash + mod_mul r private_key order_n) order_n) order_n in
+  Stdio.printf "Signature component s = %s\n\n" (Z.to_string s);
+  
+  let qpg = point_add (q_x, q_y) (g_x, g_y) in
+  let (qpg_x, qpg_y) = match qpg with 
+    | Some p -> p 
+    | None -> failwith "Invalid Q+G"
+  in
+  Stdio.printf "Precomputed Q + G:\n";
+  Stdio.printf "  (Q+G).x = %s\n" (Z.to_string qpg_x);
+  Stdio.printf "  (Q+G).y = %s\n\n" (Z.to_string qpg_y);
+  
+  Stdio.printf "=== Software Verification ===\n\n";
+  let w = mod_inv s order_n in
+  let u1 = mod_mul message_hash w order_n in
+  let u2 = mod_mul r w order_n in
+  Stdio.printf "w = s^(-1) = %s\n" (Z.to_string w);
+  Stdio.printf "u1 = e*w = %s\n" (Z.to_string u1);
+  Stdio.printf "u2 = r*w = %s\n\n" (Z.to_string u2);
+  
+  let u1_g = scalar_mult u1 (g_x, g_y) in
+  let u2_q = scalar_mult u2 (q_x, q_y) in
+  let result_point = match (u1_g, u2_q) with
+    | (Some p1, Some p2) -> point_add p1 p2
+    | (Some p, None) | (None, Some p) -> Some p
+    | (None, None) -> None
+  in
+  let (result_x, _result_y) = match result_point with
+    | Some p -> p
+    | None -> (Z.zero, Z.zero)
+  in
+  let result_x_mod_n = Z.(erem result_x order_n) in
+  Stdio.printf "Result point x = %s\n" (Z.to_string result_x);
+  Stdio.printf "Result point x mod n = %s\n" (Z.to_string result_x_mod_n);
+  Stdio.printf "Expected r = %s\n" (Z.to_string r);
+  Stdio.printf "Software verification: %s\n\n" 
+    (if Z.equal result_x_mod_n r then "VALID ✓" else "INVALID ✗");
+  
+  Stdio.printf "=== Hardware Verification ===\n\n";
+  
   inputs.clear := Bits.vdd;
   inputs.start := Bits.gnd;
   inputs.e := Bits.zero width;
@@ -42,135 +156,97 @@ let () =
   Cyclesim.cycle sim;
   
   let ctrl_state () = Bits.to_int !(outputs.dbg_ctrl_state) in
-  let arith_state () = Bits.to_int !(outputs.dbg_arith_state) in
-  let is_busy () = Bits.to_bool !(outputs.busy) in
-  let load_enable () = Bits.to_bool !(outputs.dbg_load_enable) in
-  let load_addr () = Bits.to_int !(outputs.dbg_load_addr) in
-  let arith_start () = Bits.to_bool !(outputs.dbg_arith_start) in
-  let arith_done () = Bits.to_bool !(outputs.dbg_arith_done) in
-  let arith_op () = Bits.to_int !(outputs.dbg_arith_op) in
   let bit_idx () = Bits.to_int !(outputs.dbg_bit_idx) in
+  let is_done () = Bits.to_bool !(outputs.done_) in
+  let valid_sig () = Bits.to_bool !(outputs.valid_signature) in
   
-  let op_name op = match op with
-    | 0 -> "ADD"
-    | 1 -> "SUB"
-    | 2 -> "MUL"
-    | 3 -> "INV"
-    | _ -> "???"
-  in
-  
-  let ctrl_state_name st = match st with
-    | 0 -> "Idle"
-    | 1 -> "Load_inputs"
-    | 2 -> "Init_constants"
-    | 3 -> "Compute_w"
-    | 4 -> "Wait_w"
-    | 5 -> "Compute_u1"
-    | 6 -> "Wait_u1"
-    | 7 -> "Compute_u2"
-    | 8 -> "Wait_u2"
-    | 9 -> "Loop_init"
-    | _ -> Printf.sprintf "State_%d" st
-  in
-  
-  Stdio.printf "   Initial state: %s, arith=%d, busy=%b\n" 
-    (ctrl_state_name (ctrl_state ())) (arith_state ()) (is_busy ());
-  
-  Stdio.printf "\n2. Starting ECDSA verification...\n";
-  inputs.e := z_to_bits test_e;
-  inputs.r := z_to_bits test_r;
-  inputs.s := z_to_bits test_s;
-  inputs.q_x := z_to_bits test_q_x;
-  inputs.q_y := z_to_bits test_q_y;
-  inputs.qplusg_x := z_to_bits test_qpg_x;
-  inputs.qplusg_y := z_to_bits test_qpg_y;
+  inputs.e := z_to_bits message_hash;
+  inputs.r := z_to_bits r;
+  inputs.s := z_to_bits s;
+  inputs.q_x := z_to_bits q_x;
+  inputs.q_y := z_to_bits q_y;
+  inputs.qplusg_x := z_to_bits qpg_x;
+  inputs.qplusg_y := z_to_bits qpg_y;
   inputs.start := Bits.vdd;
   Cyclesim.cycle sim;
   inputs.start := Bits.gnd;
   
-  Stdio.printf "   After start: %s, busy=%b\n" (ctrl_state_name (ctrl_state ())) (is_busy ());
+  Stdio.printf "Starting hardware verification...\n";
   
-  (* Track all events in order *)
-  Stdio.printf "\n3. Running and tracking all events...\n";
-  
-  let input_count = ref 0 in
-  let const_count = ref 0 in
-  let in_const_phase = ref false in
-  let arith_ops = ref [] in
-  let waiting_for_done = ref false in
-  let current_op = ref (-1) in
-  let current_op_state = ref "" in
-  
-  let max_cycles = 5000 in
+  let max_cycles = 10000000 in
   let cycle_count = ref 0 in
+  let last_bit_idx = ref 256 in
+  let last_report = ref 0 in
   
-  while !cycle_count < max_cycles && is_busy () do
-    let st = ctrl_state () in
-    let st_name = ctrl_state_name st in
+  while !cycle_count < max_cycles && not (is_done ()) do
+    let bi = bit_idx () in
     
-    (* Track constant phase *)
-    if st = 2 then in_const_phase := true;
-    
-    (* Track loads *)
-    if load_enable () then begin
-      let addr = load_addr () in
-      if !in_const_phase then Int.incr const_count
-      else Int.incr input_count;
-      Stdio.printf "   [cycle %d] [%s] Load addr=%d\n" !cycle_count st_name addr
-    end;
-    
-    (* Track arith start *)
-    if arith_start () && not !waiting_for_done then begin
-      current_op := arith_op ();
-      current_op_state := st_name;
-      waiting_for_done := true;
-      Stdio.printf "   [cycle %d] [%s] Arith START: %s\n" !cycle_count st_name (op_name !current_op)
-    end;
-    
-    (* Track arith done *)
-    if arith_done () && !waiting_for_done then begin
-      arith_ops := (!current_op_state, !current_op) :: !arith_ops;
-      waiting_for_done := false;
-      Stdio.printf "   [cycle %d] [%s] Arith DONE\n" !cycle_count st_name
+    if !cycle_count - !last_report >= 100000 || 
+       (!last_bit_idx - bi >= 10 && bi <> !last_bit_idx) then begin
+      Stdio.printf "  [cycle %d] bit_idx=%d, state=%d\n" 
+        !cycle_count bi (ctrl_state ());
+      last_report := !cycle_count;
+      last_bit_idx := bi
     end;
     
     Cyclesim.cycle sim;
     Int.incr cycle_count
   done;
   
-  Stdio.printf "\n   Completed in %d cycles\n" !cycle_count;
-  Stdio.printf "   Final state: %s, bit_idx=%d\n" (ctrl_state_name (ctrl_state ())) (bit_idx ());
+  Stdio.printf "\n=== Results ===\n";
+  Stdio.printf "Completed in %d cycles\n" !cycle_count;
+  Stdio.printf "Final state: %d\n" (ctrl_state ());
+  Stdio.printf "Done: %b\n" (is_done ());
+  Stdio.printf "Valid signature: %b\n\n" (valid_sig ());
   
-  (* Analyze results *)
-  Stdio.printf "\n=== Summary ===\n";
-  Stdio.printf "- Input registers loaded: %d (expect 7)\n" !input_count;
-  Stdio.printf "- Constant registers loaded: %d (expect 6)\n" !const_count;
+  if is_done () then begin
+    if valid_sig () then
+      Stdio.printf "✓ Hardware correctly verified the signature!\n"
+    else
+      Stdio.printf "✗ Hardware rejected the signature (expected valid)\n"
+  end else
+    Stdio.printf "✗ Timeout - verification did not complete\n";
   
-  let arith_ops_list = List.rev !arith_ops in
-  Stdio.printf "- Arithmetic operations observed: %d\n" (List.length arith_ops_list);
+  Stdio.printf "\n=== Testing Invalid Signature ===\n\n";
   
-  List.iteri arith_ops_list ~f:(fun i (state, op) ->
-    Stdio.printf "    %d. [%s] %s\n" (i + 1) state (op_name op)
-  );
+  inputs.clear := Bits.vdd;
+  Cyclesim.cycle sim;
+  inputs.clear := Bits.gnd;
+  Cyclesim.cycle sim;
   
-  (* Check first 3 operations *)
-  let check_op idx expected_op =
-    match List.nth arith_ops_list idx with
-    | Some (_, op) -> op = expected_op
-    | None -> false
-  in
+  let wrong_hash = Z.of_int 99999 in
+  inputs.e := z_to_bits wrong_hash;
+  inputs.r := z_to_bits r;
+  inputs.s := z_to_bits s;
+  inputs.q_x := z_to_bits q_x;
+  inputs.q_y := z_to_bits q_y;
+  inputs.qplusg_x := z_to_bits qpg_x;
+  inputs.qplusg_y := z_to_bits qpg_y;
+  inputs.start := Bits.vdd;
+  Cyclesim.cycle sim;
+  inputs.start := Bits.gnd;
   
-  let op1_ok = check_op 0 3 in  (* INV *)
-  let op2_ok = check_op 1 2 in  (* MUL *)
-  let op3_ok = check_op 2 2 in  (* MUL *)
+  Stdio.printf "Testing with wrong message hash e = %s\n" (Z.to_string wrong_hash);
   
-  Stdio.printf "\n=== Verification ===\n";
-  Stdio.printf "- Input loading: %s\n" (if !input_count = 7 then "PASS ✓" else "FAIL ✗");
-  Stdio.printf "- Constant loading: %s\n" (if !const_count = 6 then "PASS ✓" else "FAIL ✗");
-  Stdio.printf "- Op 1 is INV (w = s^-1): %s\n" (if op1_ok then "PASS ✓" else "FAIL ✗");
-  Stdio.printf "- Op 2 is MUL (u1 = e*w): %s\n" (if op2_ok then "PASS ✓" else "FAIL ✗");
-  Stdio.printf "- Op 3 is MUL (u2 = r*w): %s\n" (if op3_ok then "PASS ✓" else "FAIL ✗");
+  cycle_count := 0;
+  last_report := 0;
   
-  let all_passed = !input_count = 7 && !const_count = 6 && op1_ok && op2_ok && op3_ok in
-  Stdio.printf "\n%s\n" 
-    (if all_passed then "All connectivity tests PASSED ✓" else "Some tests FAILED ✗")
+  while !cycle_count < max_cycles && not (is_done ()) do
+    if !cycle_count - !last_report >= 100000 then begin
+      Stdio.printf "  [cycle %d] bit_idx=%d\n" !cycle_count (bit_idx ());
+      last_report := !cycle_count
+    end;
+    Cyclesim.cycle sim;
+    Int.incr cycle_count
+  done;
+  
+  Stdio.printf "\nCompleted in %d cycles\n" !cycle_count;
+  Stdio.printf "Valid signature: %b\n\n" (valid_sig ());
+  
+  if is_done () then begin
+    if not (valid_sig ()) then
+      Stdio.printf "✓ Hardware correctly rejected invalid signature!\n"
+    else
+      Stdio.printf "✗ Hardware accepted invalid signature (expected reject)\n"
+  end else
+    Stdio.printf "✗ Timeout - verification did not complete\n"
