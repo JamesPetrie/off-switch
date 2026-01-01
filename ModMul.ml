@@ -128,7 +128,9 @@ module ModMul = struct
                 result_acc.value
             in
             
-            (* Reduce if >= modulus *)
+            (* Reduce if >= modulus   
+              todo: improve efficiency by subtracting 
+            first and check underflow as mux condition*)
             let after_add_reduce =
               mux2 (after_add >=: modulus_orig.value)
                 (after_add -: modulus_orig.value)
@@ -138,7 +140,10 @@ module ModMul = struct
             (* Double x for next iteration *)
             let x_doubled = sll x_current.value 1 in
             
-            (* Reduce doubled x if >= modulus *)
+            (* Reduce doubled x if >= modulus 
+              todo: improve efficiency by subtracting 
+            first and check underflow as mux condition*)
+
             let x_doubled_reduce =
               mux2 (x_doubled >=: modulus_orig.value)
                 (x_doubled -: modulus_orig.value)
