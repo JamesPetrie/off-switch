@@ -60,3 +60,10 @@
  (modules test_ecdsa)
  (libraries base hardcaml stdio zarith ecdsa)
  (preprocess (pps ppx_jane ppx_hardcaml)))
+
+
+ (executable
+ (name test_point_ops)
+ (modules test_point_ops)
+ (libraries base hardcaml stdio zarith ecdsa)
+ (preprocess (pps ppx_jane ppx_hardcaml)))

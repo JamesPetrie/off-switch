@@ -360,10 +360,31 @@ module EcdsaController = struct
       | Compute_u2
       | Wait_u2
       | Loop_init
-      | Loop_double_start
-      | Loop_double_wait
       | Loop_check_bits
-      | Loop_select_point
+      (* Select and load point to add *)
+      | Load_add_g_x
+      | Load_add_g_x_wait
+      | Load_add_g_y
+      | Load_add_g_y_wait
+      | Load_add_q_x
+      | Load_add_q_x_wait
+      | Load_add_q_y
+      | Load_add_q_y_wait
+      | Load_add_qpg_x
+      | Load_add_qpg_x_wait
+      | Load_add_qpg_y
+      | Load_add_qpg_y_wait
+      (* Copy point to accumulator when acc is infinity *)
+      | Copy_to_acc_x
+      | Copy_to_acc_x_wait
+      | Copy_to_acc_y
+      | Copy_to_acc_y_wait
+      (* Point addition: save original P first *)
+      | Padd_save_px
+      | Padd_save_px_wait
+      | Padd_save_py
+      | Padd_save_py_wait
+      (* Point addition: compute *)
       | Padd_num
       | Padd_num_wait
       | Padd_denom
@@ -384,6 +405,12 @@ module EcdsaController = struct
       | Padd_ldiff_wait
       | Padd_yr
       | Padd_yr_wait
+      (* Point doubling: save original P first *)
+      | Pdbl_save_px
+      | Pdbl_save_px_wait
+      | Pdbl_save_py
+      | Pdbl_save_py_wait
+      (* Point doubling: compute *)
       | Pdbl_xsq
       | Pdbl_xsq_wait
       | Pdbl_3xsq
@@ -406,6 +433,12 @@ module EcdsaController = struct
       | Pdbl_ldiff_wait
       | Pdbl_yr
       | Pdbl_yr_wait
+      (* Point doubling: copy result to accumulator *)
+      | Pdbl_copy_x
+      | Pdbl_copy_x_wait
+      | Pdbl_copy_y
+      | Pdbl_copy_y_wait
+      (* Loop control *)
       | Loop_next
       | Final_check
       | Done
@@ -423,7 +456,6 @@ module EcdsaController = struct
       ; u2_value : 'a [@bits Config.width]
       ; acc_x_value : 'a [@bits Config.width]
       ; r_value : 'a [@bits Config.width]
-      (* Input values to load *)
       ; input_e : 'a [@bits Config.width]
       ; input_r : 'a [@bits Config.width]
       ; input_s : 'a [@bits Config.width]
@@ -449,8 +481,7 @@ module EcdsaController = struct
       ; load_enable : 'a
       ; load_addr : 'a [@bits Config.reg_addr_width]
       ; load_data : 'a [@bits Config.width]
-      (* Debug *)
-      ; dbg_state : 'a [@bits 6]
+      ; dbg_state : 'a [@bits 7]
       ; dbg_bit_idx : 'a [@bits 9]
       }
     [@@deriving sexp_of, hardcaml]
@@ -481,6 +512,7 @@ module EcdsaController = struct
     let valid_sig = Variable.reg spec ~width:1 in
     let done_reg = Variable.reg spec ~width:1 in
     
+    (* Helper to start an arithmetic operation *)
     let start_arith op prime_sel addr_a addr_b addr_out =
       [ arith_start <-- vdd
       ; arith_op <-- of_int ~width:2 op
@@ -491,6 +523,12 @@ module EcdsaController = struct
       ]
     in
     
+    (* Helper to copy register: dst = src + 0 *)
+    let copy_reg src dst =
+      start_arith ArithOp.add false src Reg.zero dst
+    in
+    
+    (* Helper to load a constant into a register *)
     let load_const addr data =
       [ load_enable <-- vdd
       ; load_addr <-- of_int ~width:Config.reg_addr_width addr
@@ -508,7 +546,7 @@ module EcdsaController = struct
     
     (* Encode state as bits for debug *)
     let state_encoding = List.mapi State.all ~f:(fun idx _ -> 
-      of_int ~width:6 idx
+      of_int ~width:7 idx
     ) in
     let state_bits = mux sm.current state_encoding in
     
@@ -562,6 +600,7 @@ module EcdsaController = struct
           ];
         ];
         
+        (* w = s^(-1) mod n *)
         State.Compute_w,
           start_arith ArithOp.inv true Reg.s Reg.zero Reg.w @
           [ sm.set_next Wait_w ];
@@ -570,6 +609,7 @@ module EcdsaController = struct
           when_ i.arith_done [ sm.set_next Compute_u1 ];
         ];
         
+        (* u1 = e * w mod n *)
         State.Compute_u1,
           start_arith ArithOp.mul true Reg.e Reg.w Reg.u1 @
           [ sm.set_next Wait_u1 ];
@@ -578,6 +618,7 @@ module EcdsaController = struct
           when_ i.arith_done [ sm.set_next Compute_u2 ];
         ];
         
+        (* u2 = r * w mod n *)
         State.Compute_u2,
           start_arith ArithOp.mul true Reg.r Reg.w Reg.u2 @
           [ sm.set_next Wait_u2 ];
@@ -586,67 +627,157 @@ module EcdsaController = struct
           when_ i.arith_done [ sm.set_next Loop_init ];
         ];
         
+        (* Initialize scalar multiplication loop *)
         State.Loop_init, [
           bit_idx <-- of_int ~width:9 255;
           acc_is_infinity <-- vdd;
           sm.set_next Loop_check_bits;
         ];
         
-        State.Loop_double_start, [
-          sm.set_next Pdbl_xsq;
-        ];
-        
-        State.Loop_double_wait, [
-          when_ i.arith_done [
-            sm.set_next Loop_check_bits;
-          ];
-        ];
-        
+        (* Check bits of u1 and u2 to determine which point to add *)
         State.Loop_check_bits, [
           let bits = u2_bit @: u1_bit in
           if_ (bits ==:. 0b00) [
+            (* No point to add, go to next iteration *)
             sm.set_next Loop_next;
           ] @@ elif (bits ==:. 0b01) [
-            (* Add G: copy G to add_x, add_y *)
-            load_enable <-- vdd;
-            load_addr <-- of_int ~width:Config.reg_addr_width Reg.add_x;
-            load_data <-- Config.g_x ();
-            sm.set_next Loop_select_point;
+            (* Add G *)
+            sm.set_next Load_add_g_x;
           ] @@ elif (bits ==:. 0b10) [
-            (* Add Q: will copy from q_x, q_y *)
-            sm.set_next Loop_select_point;
+            (* Add Q *)
+            sm.set_next Load_add_q_x;
           ] [
-            (* Add Q+G: will copy from qpg_x, qpg_y *)
-            sm.set_next Loop_select_point;
+            (* Add Q+G *)
+            sm.set_next Load_add_qpg_x;
           ];
         ];
         
-        State.Loop_select_point, [
-          if_ acc_is_infinity.value [
+        (* ===== Load G into add_x, add_y ===== *)
+        State.Load_add_g_x,
+          copy_reg Reg.g_x Reg.add_x @
+          [ sm.set_next Load_add_g_x_wait ];
+        
+        State.Load_add_g_x_wait, [
+          when_ i.arith_done [ sm.set_next Load_add_g_y ];
+        ];
+        
+        State.Load_add_g_y,
+          copy_reg Reg.g_y Reg.add_y @
+          [ sm.set_next Load_add_g_y_wait ];
+        
+        State.Load_add_g_y_wait, [
+          when_ i.arith_done [
+            if_ acc_is_infinity.value [
+              sm.set_next Copy_to_acc_x;
+            ] [
+              sm.set_next Padd_save_px;
+            ];
+          ];
+        ];
+        
+        (* ===== Load Q into add_x, add_y ===== *)
+        State.Load_add_q_x,
+          copy_reg Reg.q_x Reg.add_x @
+          [ sm.set_next Load_add_q_x_wait ];
+        
+        State.Load_add_q_x_wait, [
+          when_ i.arith_done [ sm.set_next Load_add_q_y ];
+        ];
+        
+        State.Load_add_q_y,
+          copy_reg Reg.q_y Reg.add_y @
+          [ sm.set_next Load_add_q_y_wait ];
+        
+        State.Load_add_q_y_wait, [
+          when_ i.arith_done [
+            if_ acc_is_infinity.value [
+              sm.set_next Copy_to_acc_x;
+            ] [
+              sm.set_next Padd_save_px;
+            ];
+          ];
+        ];
+        
+        (* ===== Load Q+G into add_x, add_y ===== *)
+        State.Load_add_qpg_x,
+          copy_reg Reg.qpg_x Reg.add_x @
+          [ sm.set_next Load_add_qpg_x_wait ];
+        
+        State.Load_add_qpg_x_wait, [
+          when_ i.arith_done [ sm.set_next Load_add_qpg_y ];
+        ];
+        
+        State.Load_add_qpg_y,
+          copy_reg Reg.qpg_y Reg.add_y @
+          [ sm.set_next Load_add_qpg_y_wait ];
+        
+        State.Load_add_qpg_y_wait, [
+          when_ i.arith_done [
+            if_ acc_is_infinity.value [
+              sm.set_next Copy_to_acc_x;
+            ] [
+              sm.set_next Padd_save_px;
+            ];
+          ];
+        ];
+        
+        (* ===== Copy add point to accumulator (when acc is infinity) ===== *)
+        State.Copy_to_acc_x,
+          copy_reg Reg.add_x Reg.acc_x @
+          [ sm.set_next Copy_to_acc_x_wait ];
+        
+        State.Copy_to_acc_x_wait, [
+          when_ i.arith_done [ sm.set_next Copy_to_acc_y ];
+        ];
+        
+        State.Copy_to_acc_y,
+          copy_reg Reg.add_y Reg.acc_y @
+          [ sm.set_next Copy_to_acc_y_wait ];
+        
+        State.Copy_to_acc_y_wait, [
+          when_ i.arith_done [
             acc_is_infinity <-- gnd;
             sm.set_next Loop_next;
-          ] [
-            sm.set_next Padd_num;
           ];
         ];
         
-        (* Point Addition states *)
+        (* ===== Point Addition: Save original accumulator to p_x, p_y ===== *)
+        State.Padd_save_px,
+          copy_reg Reg.acc_x Reg.p_x @
+          [ sm.set_next Padd_save_px_wait ];
+        
+        State.Padd_save_px_wait, [
+          when_ i.arith_done [ sm.set_next Padd_save_py ];
+        ];
+        
+        State.Padd_save_py,
+          copy_reg Reg.acc_y Reg.p_y @
+          [ sm.set_next Padd_save_py_wait ];
+        
+        State.Padd_save_py_wait, [
+          when_ i.arith_done [ sm.set_next Padd_num ];
+        ];
+        
+        (* ===== Point Addition: λ = (yQ - yP) / (xQ - xP) ===== *)
+        (* tmp1 = add_y - p_y *)
         State.Padd_num,
-          start_arith ArithOp.sub false Reg.add_y Reg.acc_y Reg.tmp1 @
+          start_arith ArithOp.sub false Reg.add_y Reg.p_y Reg.tmp1 @
           [ sm.set_next Padd_num_wait ];
         
         State.Padd_num_wait, [
           when_ i.arith_done [ sm.set_next Padd_denom ];
         ];
         
+        (* tmp2 = add_x - p_x *)
         State.Padd_denom,
-          start_arith ArithOp.sub false Reg.add_x Reg.acc_x Reg.tmp2 @
+          start_arith ArithOp.sub false Reg.add_x Reg.p_x Reg.tmp2 @
           [ sm.set_next Padd_denom_wait ];
         
         State.Padd_denom_wait, [
           when_ i.arith_done [ sm.set_next Padd_inv ];
         ];
         
+        (* tmp3 = tmp2^(-1) *)
         State.Padd_inv,
           start_arith ArithOp.inv false Reg.tmp2 Reg.zero Reg.tmp3 @
           [ sm.set_next Padd_inv_wait ];
@@ -655,6 +786,7 @@ module EcdsaController = struct
           when_ i.arith_done [ sm.set_next Padd_lambda ];
         ];
         
+        (* lambda = tmp1 * tmp3 *)
         State.Padd_lambda,
           start_arith ArithOp.mul false Reg.tmp1 Reg.tmp3 Reg.lambda @
           [ sm.set_next Padd_lambda_wait ];
@@ -663,6 +795,8 @@ module EcdsaController = struct
           when_ i.arith_done [ sm.set_next Padd_lsq ];
         ];
         
+        (* ===== Point Addition: xR = λ² - xP - xQ ===== *)
+        (* lambda_sq = lambda * lambda *)
         State.Padd_lsq,
           start_arith ArithOp.mul false Reg.lambda Reg.lambda Reg.lambda_sq @
           [ sm.set_next Padd_lsq_wait ];
@@ -671,14 +805,16 @@ module EcdsaController = struct
           when_ i.arith_done [ sm.set_next Padd_xr1 ];
         ];
         
+        (* tmp4 = lambda_sq - p_x *)
         State.Padd_xr1,
-          start_arith ArithOp.sub false Reg.lambda_sq Reg.acc_x Reg.tmp4 @
+          start_arith ArithOp.sub false Reg.lambda_sq Reg.p_x Reg.tmp4 @
           [ sm.set_next Padd_xr1_wait ];
         
         State.Padd_xr1_wait, [
           when_ i.arith_done [ sm.set_next Padd_xr ];
         ];
         
+        (* acc_x = tmp4 - add_x *)
         State.Padd_xr,
           start_arith ArithOp.sub false Reg.tmp4 Reg.add_x Reg.acc_x @
           [ sm.set_next Padd_xr_wait ];
@@ -687,6 +823,8 @@ module EcdsaController = struct
           when_ i.arith_done [ sm.set_next Padd_diff ];
         ];
         
+        (* ===== Point Addition: yR = λ(xP - xR) - yP ===== *)
+        (* tmp5 = p_x - acc_x *)
         State.Padd_diff,
           start_arith ArithOp.sub false Reg.p_x Reg.acc_x Reg.tmp5 @
           [ sm.set_next Padd_diff_wait ];
@@ -695,6 +833,7 @@ module EcdsaController = struct
           when_ i.arith_done [ sm.set_next Padd_ldiff ];
         ];
         
+        (* tmp4 = lambda * tmp5 *)
         State.Padd_ldiff,
           start_arith ArithOp.mul false Reg.lambda Reg.tmp5 Reg.tmp4 @
           [ sm.set_next Padd_ldiff_wait ];
@@ -703,6 +842,7 @@ module EcdsaController = struct
           when_ i.arith_done [ sm.set_next Padd_yr ];
         ];
         
+        (* acc_y = tmp4 - p_y *)
         State.Padd_yr,
           start_arith ArithOp.sub false Reg.tmp4 Reg.p_y Reg.acc_y @
           [ sm.set_next Padd_yr_wait ];
@@ -711,15 +851,36 @@ module EcdsaController = struct
           when_ i.arith_done [ sm.set_next Loop_next ];
         ];
         
-        (* Point Doubling states *)
+        (* ===== Point Doubling: Save original accumulator ===== *)
+        State.Pdbl_save_px,
+          copy_reg Reg.acc_x Reg.p_x @
+          [ sm.set_next Pdbl_save_px_wait ];
+        
+        State.Pdbl_save_px_wait, [
+          when_ i.arith_done [ sm.set_next Pdbl_save_py ];
+        ];
+        
+        State.Pdbl_save_py,
+          copy_reg Reg.acc_y Reg.p_y @
+          [ sm.set_next Pdbl_save_py_wait ];
+        
+        State.Pdbl_save_py_wait, [
+          when_ i.arith_done [ sm.set_next Pdbl_xsq ];
+        ];
+        
+        (* ===== Point Doubling: λ = (3xP² + a) / (2yP) ===== *)
+        (* For secp256k1, a = 0, so λ = 3xP² / 2yP *)
+        
+        (* tmp1 = p_x * p_x *)
         State.Pdbl_xsq,
-          start_arith ArithOp.mul false Reg.acc_x Reg.acc_x Reg.tmp1 @
+          start_arith ArithOp.mul false Reg.p_x Reg.p_x Reg.tmp1 @
           [ sm.set_next Pdbl_xsq_wait ];
         
         State.Pdbl_xsq_wait, [
           when_ i.arith_done [ sm.set_next Pdbl_3xsq ];
         ];
         
+        (* tmp2 = tmp1 * 3 *)
         State.Pdbl_3xsq,
           start_arith ArithOp.mul false Reg.tmp1 Reg.three Reg.tmp2 @
           [ sm.set_next Pdbl_3xsq_wait ];
@@ -728,14 +889,16 @@ module EcdsaController = struct
           when_ i.arith_done [ sm.set_next Pdbl_2y ];
         ];
         
+        (* tmp3 = p_y * 2 *)
         State.Pdbl_2y,
-          start_arith ArithOp.mul false Reg.acc_y Reg.two Reg.tmp3 @
+          start_arith ArithOp.mul false Reg.p_y Reg.two Reg.tmp3 @
           [ sm.set_next Pdbl_2y_wait ];
         
         State.Pdbl_2y_wait, [
           when_ i.arith_done [ sm.set_next Pdbl_inv ];
         ];
         
+        (* tmp4 = tmp3^(-1) *)
         State.Pdbl_inv,
           start_arith ArithOp.inv false Reg.tmp3 Reg.zero Reg.tmp4 @
           [ sm.set_next Pdbl_inv_wait ];
@@ -744,6 +907,7 @@ module EcdsaController = struct
           when_ i.arith_done [ sm.set_next Pdbl_lambda ];
         ];
         
+        (* lambda = tmp2 * tmp4 *)
         State.Pdbl_lambda,
           start_arith ArithOp.mul false Reg.tmp2 Reg.tmp4 Reg.lambda @
           [ sm.set_next Pdbl_lambda_wait ];
@@ -752,6 +916,8 @@ module EcdsaController = struct
           when_ i.arith_done [ sm.set_next Pdbl_lsq ];
         ];
         
+        (* ===== Point Doubling: xR = λ² - 2xP ===== *)
+        (* lambda_sq = lambda * lambda *)
         State.Pdbl_lsq,
           start_arith ArithOp.mul false Reg.lambda Reg.lambda Reg.lambda_sq @
           [ sm.set_next Pdbl_lsq_wait ];
@@ -760,49 +926,72 @@ module EcdsaController = struct
           when_ i.arith_done [ sm.set_next Pdbl_2x ];
         ];
         
+        (* tmp5 = p_x * 2 *)
         State.Pdbl_2x,
-          start_arith ArithOp.mul false Reg.acc_x Reg.two Reg.tmp5 @
+          start_arith ArithOp.mul false Reg.p_x Reg.two Reg.tmp5 @
           [ sm.set_next Pdbl_2x_wait ];
         
         State.Pdbl_2x_wait, [
           when_ i.arith_done [ sm.set_next Pdbl_xr ];
         ];
         
+        (* tmp1 = lambda_sq - tmp5 (this is xR, store in tmp1 temporarily) *)
         State.Pdbl_xr,
-          start_arith ArithOp.sub false Reg.lambda_sq Reg.tmp5 Reg.p_x @
+          start_arith ArithOp.sub false Reg.lambda_sq Reg.tmp5 Reg.tmp1 @
           [ sm.set_next Pdbl_xr_wait ];
         
         State.Pdbl_xr_wait, [
           when_ i.arith_done [ sm.set_next Pdbl_diff ];
         ];
         
+        (* ===== Point Doubling: yR = λ(xP - xR) - yP ===== *)
+        (* tmp2 = p_x - tmp1 *)
         State.Pdbl_diff,
-          start_arith ArithOp.sub false Reg.acc_x Reg.p_x Reg.tmp1 @
+          start_arith ArithOp.sub false Reg.p_x Reg.tmp1 Reg.tmp2 @
           [ sm.set_next Pdbl_diff_wait ];
         
         State.Pdbl_diff_wait, [
           when_ i.arith_done [ sm.set_next Pdbl_ldiff ];
         ];
         
+        (* tmp3 = lambda * tmp2 *)
         State.Pdbl_ldiff,
-          start_arith ArithOp.mul false Reg.lambda Reg.tmp1 Reg.tmp2 @
+          start_arith ArithOp.mul false Reg.lambda Reg.tmp2 Reg.tmp3 @
           [ sm.set_next Pdbl_ldiff_wait ];
         
         State.Pdbl_ldiff_wait, [
           when_ i.arith_done [ sm.set_next Pdbl_yr ];
         ];
         
+        (* tmp4 = tmp3 - p_y (this is yR, store in tmp4 temporarily) *)
         State.Pdbl_yr,
-          start_arith ArithOp.sub false Reg.tmp2 Reg.acc_y Reg.p_y @
+          start_arith ArithOp.sub false Reg.tmp3 Reg.p_y Reg.tmp4 @
           [ sm.set_next Pdbl_yr_wait ];
         
         State.Pdbl_yr_wait, [
-          when_ i.arith_done [
-            (* Copy result back to accumulator - simplified, needs proper implementation *)
-            sm.set_next Loop_check_bits;
-          ];
+          when_ i.arith_done [ sm.set_next Pdbl_copy_x ];
         ];
         
+        (* ===== Point Doubling: Copy result to accumulator ===== *)
+        (* acc_x = tmp1 *)
+        State.Pdbl_copy_x,
+          copy_reg Reg.tmp1 Reg.acc_x @
+          [ sm.set_next Pdbl_copy_x_wait ];
+        
+        State.Pdbl_copy_x_wait, [
+          when_ i.arith_done [ sm.set_next Pdbl_copy_y ];
+        ];
+        
+        (* acc_y = tmp4 *)
+        State.Pdbl_copy_y,
+          copy_reg Reg.tmp4 Reg.acc_y @
+          [ sm.set_next Pdbl_copy_y_wait ];
+        
+        State.Pdbl_copy_y_wait, [
+          when_ i.arith_done [ sm.set_next Loop_check_bits ];
+        ];
+        
+        (* ===== Loop control ===== *)
         State.Loop_next, [
           if_ (bit_idx.value ==:. 0) [
             sm.set_next Final_check;
@@ -811,11 +1000,12 @@ module EcdsaController = struct
             if_ acc_is_infinity.value [
               sm.set_next Loop_check_bits;
             ] [
-              sm.set_next Loop_double_start;
+              sm.set_next Pdbl_save_px;
             ];
           ];
         ];
         
+        (* ===== Final verification ===== *)
         State.Final_check, [
           if_ acc_is_infinity.value [
             valid_sig <-- gnd;
@@ -859,6 +1049,7 @@ module EcdsaController = struct
     }
 end
 
+
 (* Top-level module with proper wiring *)
 module EcdsaVerify = struct
   module I = struct
@@ -882,7 +1073,7 @@ module EcdsaVerify = struct
       { valid_signature : 'a
       ; done_ : 'a
       ; busy : 'a
-      ; dbg_ctrl_state : 'a [@bits 6]
+      ; dbg_ctrl_state : 'a [@bits 7]
       ; dbg_arith_state : 'a [@bits 3]
       ; dbg_bit_idx : 'a [@bits 9]
       ; dbg_arith_start : 'a
@@ -897,7 +1088,6 @@ module EcdsaVerify = struct
   let create scope (i : _ I.t) =
     let ( -- ) = Scope.naming scope in
     
-    (* Use wires for signals that have circular dependencies *)
     let arith_done_wire = wire 1 in
     let arith_inv_exists_wire = wire 1 in
     let reg_u1_wire = wire Config.width in
@@ -907,7 +1097,6 @@ module EcdsaVerify = struct
     let reg_read_data_a_wire = wire Config.width in
     let reg_read_data_b_wire = wire Config.width in
     
-    (* Instantiate controller *)
     let ctrl = EcdsaController.create (Scope.sub_scope scope "ctrl")
       { EcdsaController.I.
         clock = i.clock
@@ -929,7 +1118,6 @@ module EcdsaVerify = struct
       }
     in
     
-    (* Instantiate arithmetic unit *)
     let arith = ArithUnit.create (Scope.sub_scope scope "arith")
       { ArithUnit.I.
         clock = i.clock
@@ -945,7 +1133,6 @@ module EcdsaVerify = struct
       }
     in
     
-    (* Instantiate register file *)
     let regfile = RegisterFile.create (Scope.sub_scope scope "regfile")
       { RegisterFile.I.
         clock = i.clock
@@ -961,7 +1148,6 @@ module EcdsaVerify = struct
       }
     in
     
-    (* Connect the wires *)
     arith_done_wire <== arith.done_;
     arith_inv_exists_wire <== arith.inv_exists;
     reg_u1_wire <== regfile.reg_u1;
