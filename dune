@@ -36,12 +36,17 @@
  (libraries base hardcaml stdio zarith mod_mul)
  (preprocess (pps ppx_jane ppx_hardcaml)))
 
-; (executable
-;  (name ModInv)
-;  (public_name modinv)
-;  (package ecdsa)
-;  (libraries base hardcaml stdio zarith)
-;  (preprocess (pps ppx_jane ppx_hardcaml)))
+(library
+ (name mod_inv)
+ (modules mod_inv)
+ (libraries base hardcaml zarith)
+ (preprocess (pps ppx_jane ppx_hardcaml)))
+
+(executable
+ (name test_mod_inv)
+ (modules test_mod_inv)
+ (libraries base hardcaml stdio zarith mod_inv)
+ (preprocess (pps ppx_jane ppx_hardcaml)))
 
 
 
