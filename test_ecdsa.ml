@@ -256,7 +256,7 @@ let () =
     | _ -> "?"
   in
 
-  for _ = 1 to 50 do
+  for _ = 1 to 80 do
     let st = ctrl_state () in
     let ast = arith_state () in
     Stdio.printf "[cycle %d] ctrl=%s arith=%s done=%b add_x=%s add_y=%s\n"
