@@ -1,0 +1,4 @@
+(library
+ (name ecdsa)
+ (libraries hardcaml zarith)
+ (preprocess (pps ppx_hardcaml)))

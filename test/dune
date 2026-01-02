@@ -1,0 +1,4 @@
+(executables
+ (names test_point_double)
+ (libraries ecdsa hardcaml zarith)
+ (preprocess (pps ppx_hardcaml)))
