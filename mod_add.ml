@@ -209,19 +209,18 @@ module ModAdd = struct
           in
           
           proc [
-            result <-- final_result;
-            valid <-- vdd;
-            sm.set_next Done;
-          ];
+    result <-- final_result;
+    valid <-- vdd;
+    sm.set_next Idle;  (* Go directly to Idle, valid is only high for 1 cycle *)
+  ];
+
         ];
         
         State.Done, [
-          valid <-- vdd;
-          when_ i.start [
-            valid <-- gnd;
-            sm.set_next Idle;
-          ];
-        ];
+  (* Only keep valid high for one cycle, then drop it *)
+  valid <-- gnd;
+  sm.set_next Idle;
+];
       ];
     ];
 

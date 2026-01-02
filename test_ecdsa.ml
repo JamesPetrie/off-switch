@@ -2,7 +2,7 @@ open Base
 open Hardcaml
 
 let () =
-  Stdio.printf "=== ECDSA Full Verification Test ===\n\n";
+  Stdio.printf "=== ECDSA Register Loading Debug Test ===\n\n";
   
   let scope = Scope.create ~flatten_design:true () in
   let module Sim = Cyclesim.With_interface(Ecdsa.EcdsaVerify.I)(Ecdsa.EcdsaVerify.O) in
@@ -118,47 +118,52 @@ let () =
   Stdio.printf "  (Q+G).x = %s\n" (Z.to_string qpg_x);
   Stdio.printf "  (Q+G).y = %s\n\n" (Z.to_string qpg_y);
   
-  Stdio.printf "=== Software Verification ===\n\n";
-  let w = mod_inv s order_n in
-  let u1 = mod_mul message_hash w order_n in
-  let u2 = mod_mul r w order_n in
-  Stdio.printf "w = s^(-1) = %s\n" (Z.to_string w);
-  Stdio.printf "u1 = e*w = %s\n" (Z.to_string u1);
-  Stdio.printf "u2 = r*w = %s\n\n" (Z.to_string u2);
+  Stdio.printf "=== Expected Register Values ===\n";
+  Stdio.printf "G.x = %s\n" (Z.to_string g_x);
+  Stdio.printf "G.y = %s\n\n" (Z.to_string g_y);
   
-  (* Show first few bits *)
-  Stdio.printf "First bits of u1 (from bit 255): ";
-  for i = 255 downto 250 do
-    Stdio.printf "%d" (if Z.testbit u1 i then 1 else 0)
-  done;
-  Stdio.printf "...\n";
+  (* Helper functions to read outputs *)
+  let ctrl_state () = Bits.to_int !(outputs.dbg_ctrl_state) in
+  let qpg_x_reg () = bits_to_z !(outputs.dbg_qpg_x) in
+  let qpg_y_reg () = bits_to_z !(outputs.dbg_qpg_y) in
+  let q_x_reg () = bits_to_z !(outputs.dbg_q_x) in
+  let q_y_reg () = bits_to_z !(outputs.dbg_q_y) in
+  let g_x_reg () = bits_to_z !(outputs.dbg_g_x) in
+  let g_y_reg () = bits_to_z !(outputs.dbg_g_y) in
+  let add_x_reg () = bits_to_z !(outputs.dbg_add_x) in
+  let add_y_reg () = bits_to_z !(outputs.dbg_add_y) in
+  let acc_x_reg () = bits_to_z !(outputs.dbg_acc_x) in
+  let acc_y_reg () = bits_to_z !(outputs.dbg_acc_y) in
+  let load_enable () = Bits.to_bool !(outputs.dbg_load_enable) in
+  let load_addr () = Bits.to_int !(outputs.dbg_load_addr) in
+  let arith_done () = Bits.to_bool !(outputs.dbg_arith_done) in
+  let _operand_a () = bits_to_z !(outputs.dbg_arith_operand_a) in
+  let _operand_b () = bits_to_z !(outputs.dbg_arith_operand_b) in
   
-  Stdio.printf "First bits of u2 (from bit 255): ";
-  for i = 255 downto 250 do
-    Stdio.printf "%d" (if Z.testbit u2 i then 1 else 0)
-  done;
-  Stdio.printf "...\n\n";
-  
-  let u1_g = scalar_mult u1 (g_x, g_y) in
-  let u2_q = scalar_mult u2 (q_x, q_y) in
-  let result_point = match (u1_g, u2_q) with
-    | (Some p1, Some p2) -> point_add p1 p2
-    | (Some p, None) | (None, Some p) -> Some p
-    | (None, None) -> None
+  let state_name st = match st with
+    | 0 -> "Idle"
+    | 1 -> "Load_inputs"
+    | 2 -> "Init_constants"
+    | 3 -> "Validate_r_nonzero"
+    | 4 -> "Validate_r_less_than_n"
+    | 5 -> "Validate_s_nonzero"
+    | 6 -> "Validate_s_less_than_n"
+    | 7 -> "Validation_failed"
+    | 8 -> "Compute_w"
+    | 57 -> "Load_add_qpg_x"
+    | 58 -> "Load_add_qpg_x_wait"
+    | 59 -> "Load_add_qpg_y"
+    | 60 -> "Load_add_qpg_y_wait"
+    | 61 -> "Copy_to_acc_x"
+    | 62 -> "Copy_to_acc_x_wait"
+    | 63 -> "Copy_to_acc_y"
+    | 64 -> "Copy_to_acc_y_wait"
+    | n -> Printf.sprintf "State_%d" n
   in
-  let (result_x, result_y) = match result_point with
-    | Some p -> p
-    | None -> (Z.zero, Z.zero)
-  in
-  let result_x_mod_n = Z.(erem result_x order_n) in
-  Stdio.printf "Expected result point:\n";
-  Stdio.printf "  x = %s\n" (Z.to_string result_x);
-  Stdio.printf "  y = %s\n" (Z.to_string result_y);
-  Stdio.printf "Software verification: %s\n\n" 
-    (if Z.equal result_x_mod_n r then "VALID ✓" else "INVALID ✗");
   
-  Stdio.printf "=== Hardware Verification ===\n\n";
+  Stdio.printf "=== Starting Simulation ===\n\n";
   
+  (* Reset *)
   inputs.clear := Bits.vdd;
   inputs.start := Bits.gnd;
   inputs.e := Bits.zero width;
@@ -172,14 +177,7 @@ let () =
   inputs.clear := Bits.gnd;
   Cyclesim.cycle sim;
   
-  let ctrl_state () = Bits.to_int !(outputs.dbg_ctrl_state) in
-  let bit_idx () = Bits.to_int !(outputs.dbg_bit_idx) in
-  let is_done () = Bits.to_bool !(outputs.done_) in
-  let valid_sig () = Bits.to_bool !(outputs.valid_signature) in
-  let acc_x () = bits_to_z !(outputs.dbg_acc_x) in
-  let acc_y () = bits_to_z !(outputs.dbg_acc_y) in
-  let add_y () = bits_to_z !(outputs.dbg_add_y) in
-  
+  (* Set inputs and start *)
   inputs.e := z_to_bits message_hash;
   inputs.r := z_to_bits r;
   inputs.s := z_to_bits s;
@@ -191,116 +189,119 @@ let () =
   Cyclesim.cycle sim;
   inputs.start := Bits.gnd;
   
-  Stdio.printf "Starting hardware verification...\n\n";
-  
-  (* State name lookup *)
-  let state_name st = match st with
-    | 0 -> "Idle"
-    | 1 -> "Load_inputs"
-    | 2 -> "Init_constants"
-    | 3 -> "Compute_w"
-    | 4 -> "Wait_w"
-    | 5 -> "Compute_u1"
-    | 6 -> "Wait_u1"
-    | 7 -> "Compute_u2"
-    | 8 -> "Wait_u2"
-    | 9 -> "Loop_init"
-    | 10 -> "Loop_check_bits"
-    | 11 -> "Load_add_g_x"
-    | 12 -> "Load_add_g_x_wait"
-    | 13 -> "Load_add_g_y"
-    | 14 -> "Load_add_g_y_wait"
-    | 23 -> "Copy_to_acc_x"
-    | 24 -> "Copy_to_acc_x_wait"
-    | 25 -> "Copy_to_acc_y"
-    | 26 -> "Copy_to_acc_y_wait"
-    | 81 -> "Loop_next"
-    | 82 -> "Final_check"
-    | 83 -> "Done"
-    | n -> Printf.sprintf "State_%d" n
-  in
-  
-  let max_cycles = 10000000 in
+  (* Run until we reach Validate_r_nonzero (state 3), which is right after Init_constants *)
   let cycle_count = ref 0 in
-  let last_state = ref (-1) in
-  let last_bit_idx = ref (-1) in
-  let last_acc_x = ref Z.zero in
-  let shown_first_acc = ref false in
-  
- while !cycle_count < max_cycles && not (is_done ()) do
+  while ctrl_state () < 3 && !cycle_count < 100 do
     let st = ctrl_state () in
-    let bi = bit_idx () in
-    let ax = acc_x () in
-    
-    (* Track state 22 -> 23 transition (after loading qpg_y, before copying to acc) *)
-    if !last_state = 22 && st = 23 then begin
-      Stdio.printf "\n*** After Load_add_qpg_y_wait (state 22), entering Copy_to_acc_x (state 23) ***\n";
-      Stdio.printf "    add_y = %s\n" (Z.to_string (add_y ()));
-      Stdio.printf "    Expected qpg_y = %s\n\n" (Z.to_string qpg_y)
-    end;
-
-     (* Update last_state for next iteration *)
-    last_state := st;
-    
-    (* Show detailed trace for first 500 cycles *)
-    if !cycle_count < 500 then begin
-      if st <> !last_state || bi <> !last_bit_idx then begin
-        Stdio.printf "  [cycle %d] %s, bit_idx=%d\n" !cycle_count (state_name st) bi;
-        last_state := st;
-        last_bit_idx := bi
-      end
-    end else if !cycle_count = 500 then begin
-      Stdio.printf "\n=== Continuing... ===\n"
-    end;
-    
-   
-    
-    (* Show when acc_x changes (first time it becomes non-zero) *)
-    if not !shown_first_acc && not (Z.equal ax Z.zero) then begin
-      Stdio.printf "\n*** acc_x first became non-zero at cycle %d, state=%s, bit_idx=%d ***\n"
-        !cycle_count (state_name st) bi;
-      Stdio.printf "    acc_x = %s\n" (Z.to_string ax);
-      Stdio.printf "    acc_y = %s\n" (Z.to_string (acc_y ()));
-      Stdio.printf "    add_y = %s\n\n" (Z.to_string (add_y ()));
-      shown_first_acc := true;
-      last_acc_x := ax
-    end;
-    
-    (* Show when acc_x becomes zero again *)
-    if !shown_first_acc && Z.equal ax Z.zero && not (Z.equal !last_acc_x Z.zero) then begin
-      Stdio.printf "\n*** acc_x became ZERO at cycle %d, state=%s, bit_idx=%d ***\n\n"
-        !cycle_count (state_name st) bi
-    end;
-    last_acc_x := ax;
-    
-    (* Progress every 50000 cycles *)
-    if !cycle_count > 500 && !cycle_count % 50000 = 0 then begin
-      Stdio.printf "  [cycle %d] %s, bit_idx=%d, acc_x=%s...\n" 
-        !cycle_count (state_name st) bi
-        (if Z.equal ax Z.zero then "0" else "non-zero")
-    end;
-    
+    if load_enable () then
+      Stdio.printf "  [cycle %d] %s: load_enable=true, load_addr=%d\n" 
+        !cycle_count (state_name st) (load_addr ());
     Cyclesim.cycle sim;
     Int.incr cycle_count
   done;
   
-  Stdio.printf "\n=== Results ===\n";
-  Stdio.printf "Completed in %d cycles\n" !cycle_count;
-  Stdio.printf "Final state: %s\n" (state_name (ctrl_state ()));
-  Stdio.printf "Final bit_idx: %d\n" (bit_idx ());
-  Stdio.printf "Done: %b\n" (is_done ());
-  Stdio.printf "Valid signature: %b\n\n" (valid_sig ());
+  Stdio.printf "\n=== Register Values After Loading (at Validate_r_nonzero) ===\n\n";
   
-  Stdio.printf "=== Final Register Values ===\n";
-  Stdio.printf "Hardware acc_x = %s\n" (Z.to_string (acc_x ()));
-  Stdio.printf "Hardware acc_y = %s\n" (Z.to_string (acc_y ()));
-  Stdio.printf "\nExpected acc_x = %s\n" (Z.to_string result_x);
-  Stdio.printf "Expected acc_y = %s\n\n" (Z.to_string result_y);
+  Stdio.printf "Q.x register:\n";
+  Stdio.printf "  Hardware: %s\n" (Z.to_string (q_x_reg ()));
+  Stdio.printf "  Expected: %s\n" (Z.to_string q_x);
+  Stdio.printf "  Match: %b\n\n" (Z.equal (q_x_reg ()) q_x);
   
-  if is_done () then begin
-    if valid_sig () then
-      Stdio.printf "✓ Hardware correctly verified the signature!\n"
+  Stdio.printf "Q.y register:\n";
+  Stdio.printf "  Hardware: %s\n" (Z.to_string (q_y_reg ()));
+  Stdio.printf "  Expected: %s\n" (Z.to_string q_y);
+  Stdio.printf "  Match: %b\n\n" (Z.equal (q_y_reg ()) q_y);
+  
+  Stdio.printf "Q+G.x register:\n";
+  Stdio.printf "  Hardware: %s\n" (Z.to_string (qpg_x_reg ()));
+  Stdio.printf "  Expected: %s\n" (Z.to_string qpg_x);
+  Stdio.printf "  Match: %b\n\n" (Z.equal (qpg_x_reg ()) qpg_x);
+  
+  Stdio.printf "Q+G.y register:\n";
+  Stdio.printf "  Hardware: %s\n" (Z.to_string (qpg_y_reg ()));
+  Stdio.printf "  Expected: %s\n" (Z.to_string qpg_y);
+  Stdio.printf "  Match: %b\n\n" (Z.equal (qpg_y_reg ()) qpg_y);
+  
+  Stdio.printf "G.x register:\n";
+  Stdio.printf "  Hardware: %s\n" (Z.to_string (g_x_reg ()));
+  Stdio.printf "  Expected: %s\n" (Z.to_string g_x);
+  Stdio.printf "  Match: %b\n\n" (Z.equal (g_x_reg ()) g_x);
+  
+  Stdio.printf "G.y register:\n";
+  Stdio.printf "  Hardware: %s\n" (Z.to_string (g_y_reg ()));
+  Stdio.printf "  Expected: %s\n" (Z.to_string g_y);
+  Stdio.printf "  Match: %b\n\n" (Z.equal (g_y_reg ()) g_y);
+  
+  (* Now run until we get to Load_add_qpg_x (state 57) *)
+  Stdio.printf "=== Running to Load_add_qpg operations ===\n\n";
+  
+  while ctrl_state () < 57 && !cycle_count < 2000 do
+    Cyclesim.cycle sim;
+    Int.incr cycle_count
+  done;
+  
+  Stdio.printf "Reached state %s at cycle %d\n\n" (state_name (ctrl_state ())) !cycle_count;
+  
+(* Trace through the Load_add_qpg_x and Load_add_qpg_y operations in detail *)
+  Stdio.printf "=== Cycle-by-cycle trace ===\n\n";
+  
+  let arith_state () = Bits.to_int !(outputs.dbg_arith_state) in
+  let arith_state_name st = match st with
+    | 0 -> "Idle"
+    | 1 -> "Load" 
+    | 2 -> "Capture"
+    | 3 -> "Compute"
+    | 4 -> "Write"
+    | 5 -> "Ready"
+    | _ -> "?"
+  in
+
+  for _ = 1 to 50 do
+    let st = ctrl_state () in
+    let ast = arith_state () in
+    Stdio.printf "[cycle %d] ctrl=%s arith=%s done=%b add_x=%s add_y=%s\n"
+      !cycle_count
+      (state_name st)
+      (arith_state_name ast)
+      (arith_done ())
+      (if Z.equal (add_x_reg ()) qpg_x then "qpg_x" else if Z.equal (add_x_reg ()) Z.zero then "0" else "other")
+      (if Z.equal (add_y_reg ()) qpg_y then "qpg_y" 
+       else if Z.equal (add_y_reg ()) qpg_x then "qpg_x!" 
+       else if Z.equal (add_y_reg ()) Z.zero then "0"
+       else "other");
+    Cyclesim.cycle sim;
+    Int.incr cycle_count
+  done;
+
+  
+  Stdio.printf "\n=== Final Values After Copy Operations ===\n\n";
+  Stdio.printf "add_x = %s\n" (Z.to_string (add_x_reg ()));
+  Stdio.printf "add_y = %s\n" (Z.to_string (add_y_reg ()));
+  Stdio.printf "acc_x = %s\n" (Z.to_string (acc_x_reg ()));
+  Stdio.printf "acc_y = %s\n\n" (Z.to_string (acc_y_reg ()));
+  
+  Stdio.printf "Expected:\n";
+  Stdio.printf "add_x = %s\n" (Z.to_string qpg_x);
+  Stdio.printf "add_y = %s\n" (Z.to_string qpg_y);
+  Stdio.printf "acc_x = %s\n" (Z.to_string qpg_x);
+  Stdio.printf "acc_y = %s\n\n" (Z.to_string qpg_y);
+  
+  (* Summary *)
+  Stdio.printf "=== Summary ===\n";
+  if Z.equal (acc_x_reg ()) qpg_x && Z.equal (acc_y_reg ()) qpg_y then
+    Stdio.printf "SUCCESS: acc correctly contains Q+G\n"
+  else begin
+    Stdio.printf "FAILURE: acc does not contain Q+G\n";
+    if Z.equal (acc_x_reg ()) qpg_x then
+      Stdio.printf "  acc_x is correct\n"
     else
-      Stdio.printf "✗ Hardware rejected the signature (expected valid)\n"
-  end else
-    Stdio.printf "✗ Timeout - verification did not complete\n"
+      Stdio.printf "  acc_x is WRONG\n";
+    if Z.equal (acc_y_reg ()) qpg_y then
+      Stdio.printf "  acc_y is correct\n"
+    else if Z.equal (acc_y_reg ()) qpg_x then
+      Stdio.printf "  acc_y contains qpg_x (WRONG - contains x instead of y!)\n"
+    else if Z.equal (acc_y_reg ()) (acc_x_reg ()) then
+      Stdio.printf "  acc_y equals acc_x (WRONG - y got same value as x!)\n"
+    else
+      Stdio.printf "  acc_y is WRONG (unknown value)\n"
+  end
