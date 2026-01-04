@@ -23,13 +23,15 @@ module RegisterFile = struct
     type 'a t =
       { read_data_a : 'a [@bits Config.width]
       ; read_data_b : 'a [@bits Config.width]
-      (* Expose specific registers for controller *)
       ; reg_r : 'a [@bits Config.width]
       ; reg_s : 'a [@bits Config.width]
       ; reg_u1 : 'a [@bits Config.width]
       ; reg_u2 : 'a [@bits Config.width]
       ; reg_acc_x : 'a [@bits Config.width]
       ; reg_acc_y : 'a [@bits Config.width]
+      ; reg_tmp1 : 'a [@bits Config.width]
+      ; reg_tmp5 : 'a [@bits Config.width]
+      ; reg_lambda_sq : 'a [@bits Config.width]
       }
     [@@deriving sexp_of, hardcaml]
   end
@@ -60,6 +62,9 @@ module RegisterFile = struct
     ; reg_u2 = registers.(Config.Reg.u2) -- "reg_u2"
     ; reg_acc_x = registers.(Config.Reg.acc_x) -- "reg_acc_x"
     ; reg_acc_y = registers.(Config.Reg.acc_y) -- "reg_acc_y"
+    ; reg_tmp1 = registers.(Config.Reg.tmp1) -- "reg_tmp1"
+    ; reg_tmp5 = registers.(Config.Reg.tmp5) -- "reg_tmp5"
+    ; reg_lambda_sq = registers.(Config.Reg.lambda_sq) -- "reg_lambda_sq"
     }
 end
 
@@ -81,7 +86,7 @@ module ArithUnit = struct
       ; clear : 'a
       ; start : 'a
       ; op : 'a [@bits 2]
-      ; prime_sel : 'a  (* 0 = prime_p, 1 = order_n *)
+      ; prime_sel : 'a
       ; addr_a : 'a [@bits Config.reg_addr_width]
       ; addr_b : 'a [@bits Config.reg_addr_width]
       ; addr_out : 'a [@bits Config.reg_addr_width]
@@ -280,19 +285,14 @@ end
 module Controller = struct
   module State = struct
     type t =
-      (* Initial states *)
       | Idle
       | Load_inputs
       | Init_constants
-      
-      (* Validation states *)
       | Validate_r_nonzero
       | Validate_r_less_than_n
       | Validate_s_nonzero
       | Validate_s_less_than_n
       | Validation_failed
-      
-      (* u1, u2 computation *)
       | Compute_w
       | Wait_w
       | Check_w_exists
@@ -300,18 +300,16 @@ module Controller = struct
       | Wait_u1
       | Compute_u2
       | Wait_u2
-      
-      (* Main loop *)
       | Loop_init
       | Loop_double_start
-      
-      (* Point doubling states *)
       | Pdbl_save_px
       | Pdbl_save_px_wait
       | Pdbl_save_py
       | Pdbl_save_py_wait
       | Pdbl_xsq
       | Pdbl_xsq_wait
+      | Pdbl_2xsq
+      | Pdbl_2xsq_wait
       | Pdbl_3xsq
       | Pdbl_3xsq_wait
       | Pdbl_2y
@@ -337,8 +335,6 @@ module Controller = struct
       | Pdbl_copy_x_wait
       | Pdbl_copy_y
       | Pdbl_copy_y_wait
-      
-      (* Bit checking and point loading *)
       | Loop_check_bits
       | Load_add_g_x
       | Load_add_g_x_wait
@@ -356,8 +352,6 @@ module Controller = struct
       | Copy_to_acc_x_wait
       | Copy_to_acc_y
       | Copy_to_acc_y_wait
-      
-      (* Point addition states *)
       | Padd_save_px
       | Padd_save_px_wait
       | Padd_save_py
@@ -383,13 +377,9 @@ module Controller = struct
       | Padd_ldiff_wait
       | Padd_yr
       | Padd_yr_wait
-      
-      (* Loop end and final *)
       | Loop_next
       | Final_check
       | Done
-      
-      (* Test mode end states *)
       | Test_done
     [@@deriving sexp_of, compare, enumerate]
   end
@@ -399,16 +389,14 @@ module Controller = struct
       { clock : 'a
       ; clear : 'a
       ; start : 'a
-      ; test_mode : 'a [@bits 2]  (* 0=normal, 1=point_double, 2=point_add, 3=scalar_mult *)
+      ; test_mode : 'a [@bits 2]
       ; arith_done : 'a
       ; arith_inv_exists : 'a
-      (* Register values needed for control decisions *)
       ; u1_value : 'a [@bits Config.width]
       ; u2_value : 'a [@bits Config.width]
       ; acc_x_value : 'a [@bits Config.width]
       ; r_value : 'a [@bits Config.width]
       ; s_value : 'a [@bits Config.width]
-      (* External inputs for loading *)
       ; input_e : 'a [@bits Config.width]
       ; input_r : 'a [@bits Config.width]
       ; input_s : 'a [@bits Config.width]
@@ -436,7 +424,6 @@ module Controller = struct
       ; load_enable : 'a
       ; load_addr : 'a [@bits Config.reg_addr_width]
       ; load_data : 'a [@bits Config.width]
-      (* Debug outputs *)
       ; dbg_state : 'a [@bits 7]
       ; dbg_bit_idx : 'a [@bits 9]
       ; dbg_acc_is_infinity : 'a
@@ -473,7 +460,6 @@ module Controller = struct
     let valid_sig = Variable.reg spec ~width:1 in
     let done_reg = Variable.reg spec ~width:1 in
     
-    (* Helper: start an arithmetic operation *)
     let start_arith op prime_sel addr_a addr_b addr_out =
       [ arith_start <-- vdd
       ; arith_op <-- of_int ~width:2 op
@@ -484,12 +470,14 @@ module Controller = struct
       ]
     in
     
-    (* Helper: copy register (add with zero) *)
     let copy_reg src dst =
       start_arith Config.ArithOp.add false src Config.Reg.zero dst
     in
     
-    (* Helper: load a constant into a register *)
+    let double_reg src dst =
+      start_arith Config.ArithOp.add false src src dst
+    in
+    
     let load_const addr data =
       [ load_enable <-- vdd
       ; load_addr <-- of_int ~width:Config.reg_addr_width addr
@@ -497,7 +485,6 @@ module Controller = struct
       ]
     in
     
-    (* Bit extraction from u1 and u2 *)
     let get_bit value idx =
       let bits = Array.init Config.width ~f:(fun j -> bit value j) in
       mux idx (Array.to_list bits)
@@ -507,14 +494,11 @@ module Controller = struct
     
     let order_n = Config.order_n () in
     
-    (* State encoding for debug *)
     let state_encoding = List.mapi State.all ~f:(fun idx _ -> 
       of_int ~width:7 idx
     ) in
     let state_bits = mux sm.current state_encoding in
     
-    (* Check if we're in a test mode *)
-    let is_test_mode = test_mode_reg.value <>:. Config.TestMode.normal in
     let is_pdbl_test = test_mode_reg.value ==:. Config.TestMode.point_double in
     let is_padd_test = test_mode_reg.value ==:. Config.TestMode.point_add in
     
@@ -522,7 +506,6 @@ module Controller = struct
       done_reg <-- gnd;
       
       sm.switch [
-        (* ===== IDLE AND TEST MODE DISPATCH ===== *)
         State.Idle, [
           valid_sig <-- gnd;
           error_invalid_r <-- gnd;
@@ -531,526 +514,218 @@ module Controller = struct
             load_step <-- zero 4;
             test_mode_reg <-- i.test_mode;
             switch i.test_mode [
-              (* Normal mode - full ECDSA flow *)
-              of_int ~width:2 Config.TestMode.normal, [ 
-                sm.set_next Load_inputs;
-              ];
-              (* Test mode 1 - point doubling only *)
+              of_int ~width:2 Config.TestMode.normal, [ sm.set_next Load_inputs ];
               of_int ~width:2 Config.TestMode.point_double, [
                 acc_is_infinity <-- gnd;
                 sm.set_next Pdbl_save_px;
               ];
-              (* Test mode 2 - point addition only *)
               of_int ~width:2 Config.TestMode.point_add, [
                 acc_is_infinity <-- gnd;
                 sm.set_next Padd_save_px;
               ];
-              (* Test mode 3 - scalar multiplication only *)
-              of_int ~width:2 Config.TestMode.scalar_mult, [
-                sm.set_next Loop_init;
-              ];
+              of_int ~width:2 Config.TestMode.scalar_mult, [ sm.set_next Loop_init ];
             ];
           ];
         ];
         
-        (* ===== INPUT LOADING ===== *)
         State.Load_inputs, [
           switch load_step.value [
-            of_int ~width:4 0, load_const Config.Reg.e i.input_e @
-              [ load_step <-- of_int ~width:4 1 ];
-            of_int ~width:4 1, load_const Config.Reg.r i.input_r @
-              [ load_step <-- of_int ~width:4 2 ];
-            of_int ~width:4 2, load_const Config.Reg.s i.input_s @
-              [ load_step <-- of_int ~width:4 3 ];
-            of_int ~width:4 3, load_const Config.Reg.q_x i.input_q_x @
-              [ load_step <-- of_int ~width:4 4 ];
-            of_int ~width:4 4, load_const Config.Reg.q_y i.input_q_y @
-              [ load_step <-- of_int ~width:4 5 ];
-            of_int ~width:4 5, load_const Config.Reg.qpg_x i.input_qpg_x @
-              [ load_step <-- of_int ~width:4 6 ];
-            of_int ~width:4 6, load_const Config.Reg.qpg_y i.input_qpg_y @
-              [ load_step <-- zero 4; sm.set_next Init_constants ];
+            of_int ~width:4 0, load_const Config.Reg.e i.input_e @ [ load_step <-- of_int ~width:4 1 ];
+            of_int ~width:4 1, load_const Config.Reg.r i.input_r @ [ load_step <-- of_int ~width:4 2 ];
+            of_int ~width:4 2, load_const Config.Reg.s i.input_s @ [ load_step <-- of_int ~width:4 3 ];
+            of_int ~width:4 3, load_const Config.Reg.q_x i.input_q_x @ [ load_step <-- of_int ~width:4 4 ];
+            of_int ~width:4 4, load_const Config.Reg.q_y i.input_q_y @ [ load_step <-- of_int ~width:4 5 ];
+            of_int ~width:4 5, load_const Config.Reg.qpg_x i.input_qpg_x @ [ load_step <-- of_int ~width:4 6 ];
+            of_int ~width:4 6, load_const Config.Reg.qpg_y i.input_qpg_y @ [ load_step <-- zero 4; sm.set_next Init_constants ];
           ];
         ];
         
         State.Init_constants, [
           switch load_step.value [
-            of_int ~width:4 0, load_const Config.Reg.g_x (Config.g_x ()) @
-              [ load_step <-- of_int ~width:4 1 ];
-            of_int ~width:4 1, load_const Config.Reg.g_y (Config.g_y ()) @
-              [ load_step <-- of_int ~width:4 2 ];
-            of_int ~width:4 2, load_const Config.Reg.zero (zero Config.width) @
-              [ load_step <-- of_int ~width:4 3 ];
-            of_int ~width:4 3, load_const Config.Reg.one (of_int ~width:Config.width 1) @
-              [ load_step <-- of_int ~width:4 4 ];
-            of_int ~width:4 4, load_const Config.Reg.two (of_int ~width:Config.width 2) @
-              [ load_step <-- of_int ~width:4 5 ];
-            of_int ~width:4 5, load_const Config.Reg.three (of_int ~width:Config.width 3) @
-              [ sm.set_next Validate_r_nonzero ];
+            of_int ~width:4 0, load_const Config.Reg.g_x (Config.g_x ()) @ [ load_step <-- of_int ~width:4 1 ];
+            of_int ~width:4 1, load_const Config.Reg.g_y (Config.g_y ()) @ [ load_step <-- of_int ~width:4 2 ];
+            of_int ~width:4 2, load_const Config.Reg.zero (zero Config.width) @ [ load_step <-- of_int ~width:4 3 ];
+            of_int ~width:4 3, load_const Config.Reg.one (of_int ~width:Config.width 1) @ [ sm.set_next Validate_r_nonzero ];
           ];
         ];
         
-        (* ===== VALIDATION ===== *)
         State.Validate_r_nonzero, [
           if_ (i.r_value ==: zero Config.width) [
-            error_invalid_r <-- vdd;
-            sm.set_next Validation_failed;
-          ] [
-            sm.set_next Validate_r_less_than_n;
-          ];
+            error_invalid_r <-- vdd; sm.set_next Validation_failed;
+          ] [ sm.set_next Validate_r_less_than_n ];
         ];
         
         State.Validate_r_less_than_n, [
           if_ (i.r_value >=: order_n) [
-            error_invalid_r <-- vdd;
-            sm.set_next Validation_failed;
-          ] [
-            sm.set_next Validate_s_nonzero;
-          ];
+            error_invalid_r <-- vdd; sm.set_next Validation_failed;
+          ] [ sm.set_next Validate_s_nonzero ];
         ];
         
         State.Validate_s_nonzero, [
           if_ (i.s_value ==: zero Config.width) [
-            error_invalid_s <-- vdd;
-            sm.set_next Validation_failed;
-          ] [
-            sm.set_next Validate_s_less_than_n;
-          ];
+            error_invalid_s <-- vdd; sm.set_next Validation_failed;
+          ] [ sm.set_next Validate_s_less_than_n ];
         ];
         
         State.Validate_s_less_than_n, [
           if_ (i.s_value >=: order_n) [
-            error_invalid_s <-- vdd;
-            sm.set_next Validation_failed;
-          ] [
-            sm.set_next Compute_w;
-          ];
+            error_invalid_s <-- vdd; sm.set_next Validation_failed;
+          ] [ sm.set_next Compute_w ];
         ];
         
-        State.Validation_failed, [
-          valid_sig <-- gnd;
-          done_reg <-- vdd;
-          sm.set_next Done;
-        ];
+        State.Validation_failed, [ valid_sig <-- gnd; done_reg <-- vdd; sm.set_next Done ];
         
-        (* ===== w, u1, u2 COMPUTATION ===== *)
-        State.Compute_w,
-          start_arith Config.ArithOp.inv true Config.Reg.s Config.Reg.zero Config.Reg.w @
-          [ sm.set_next Wait_w ];
-        
-        State.Wait_w, [
-          when_ i.arith_done [ sm.set_next Check_w_exists ];
-        ];
-        
+        State.Compute_w, start_arith Config.ArithOp.inv true Config.Reg.s Config.Reg.zero Config.Reg.w @ [ sm.set_next Wait_w ];
+        State.Wait_w, [ when_ i.arith_done [ sm.set_next Check_w_exists ] ];
         State.Check_w_exists, [
-          if_ (~:(i.arith_inv_exists)) [
-            error_invalid_s <-- vdd;
-            sm.set_next Validation_failed;
-          ] [
-            sm.set_next Compute_u1;
-          ];
+          if_ (~:(i.arith_inv_exists)) [ error_invalid_s <-- vdd; sm.set_next Validation_failed ]
+          [ sm.set_next Compute_u1 ];
         ];
         
-        State.Compute_u1,
-          start_arith Config.ArithOp.mul true Config.Reg.e Config.Reg.w Config.Reg.u1 @
-          [ sm.set_next Wait_u1 ];
+        State.Compute_u1, start_arith Config.ArithOp.mul true Config.Reg.e Config.Reg.w Config.Reg.u1 @ [ sm.set_next Wait_u1 ];
+        State.Wait_u1, [ when_ i.arith_done [ sm.set_next Compute_u2 ] ];
+        State.Compute_u2, start_arith Config.ArithOp.mul true Config.Reg.r Config.Reg.w Config.Reg.u2 @ [ sm.set_next Wait_u2 ];
+        State.Wait_u2, [ when_ i.arith_done [ sm.set_next Loop_init ] ];
         
-        State.Wait_u1, [
-          when_ i.arith_done [ sm.set_next Compute_u2 ];
-        ];
+        State.Loop_init, [ bit_idx <-- of_int ~width:9 255; acc_is_infinity <-- vdd; sm.set_next Loop_double_start ];
+        State.Loop_double_start, [ if_ acc_is_infinity.value [ sm.set_next Loop_check_bits ] [ sm.set_next Pdbl_save_px ] ];
         
-        State.Compute_u2,
-          start_arith Config.ArithOp.mul true Config.Reg.r Config.Reg.w Config.Reg.u2 @
-          [ sm.set_next Wait_u2 ];
+        (* Point doubling *)
+        State.Pdbl_save_px, copy_reg Config.Reg.acc_x Config.Reg.p_x @ [ sm.set_next Pdbl_save_px_wait ];
+        State.Pdbl_save_px_wait, [ when_ i.arith_done [ sm.set_next Pdbl_save_py ] ];
+        State.Pdbl_save_py, copy_reg Config.Reg.acc_y Config.Reg.p_y @ [ sm.set_next Pdbl_save_py_wait ];
+        State.Pdbl_save_py_wait, [ when_ i.arith_done [ sm.set_next Pdbl_xsq ] ];
         
-        State.Wait_u2, [
-          when_ i.arith_done [ sm.set_next Loop_init ];
-        ];
+        State.Pdbl_xsq, start_arith Config.ArithOp.mul false Config.Reg.p_x Config.Reg.p_x Config.Reg.tmp1 @ [ sm.set_next Pdbl_xsq_wait ];
+        State.Pdbl_xsq_wait, [ when_ i.arith_done [ sm.set_next Pdbl_2xsq ] ];
+        State.Pdbl_2xsq, double_reg Config.Reg.tmp1 Config.Reg.tmp2 @ [ sm.set_next Pdbl_2xsq_wait ];
+        State.Pdbl_2xsq_wait, [ when_ i.arith_done [ sm.set_next Pdbl_3xsq ] ];
+        State.Pdbl_3xsq, start_arith Config.ArithOp.add false Config.Reg.tmp2 Config.Reg.tmp1 Config.Reg.tmp2 @ [ sm.set_next Pdbl_3xsq_wait ];
+        State.Pdbl_3xsq_wait, [ when_ i.arith_done [ sm.set_next Pdbl_2y ] ];
+        State.Pdbl_2y, double_reg Config.Reg.p_y Config.Reg.tmp3 @ [ sm.set_next Pdbl_2y_wait ];
+        State.Pdbl_2y_wait, [ when_ i.arith_done [ sm.set_next Pdbl_inv ] ];
         
-        (* ===== MAIN LOOP ===== *)
-        State.Loop_init, [
-          bit_idx <-- of_int ~width:9 255;
-          acc_is_infinity <-- vdd;
-          sm.set_next Loop_double_start;
-        ];
-        
-        State.Loop_double_start, [
-          if_ acc_is_infinity.value [
-            sm.set_next Loop_check_bits;
-          ] [
-            sm.set_next Pdbl_save_px;
-          ];
-        ];
-        
-        (* ===== POINT DOUBLING ===== *)
-        State.Pdbl_save_px,
-          copy_reg Config.Reg.acc_x Config.Reg.p_x @
-          [ sm.set_next Pdbl_save_px_wait ];
-        
-        State.Pdbl_save_px_wait, [
-          when_ i.arith_done [ sm.set_next Pdbl_save_py ];
-        ];
-        
-        State.Pdbl_save_py,
-          copy_reg Config.Reg.acc_y Config.Reg.p_y @
-          [ sm.set_next Pdbl_save_py_wait ];
-        
-        State.Pdbl_save_py_wait, [
-          when_ i.arith_done [ sm.set_next Pdbl_xsq ];
-        ];
-        
-        State.Pdbl_xsq, (* tmp1 = x^2 *)
-          start_arith Config.ArithOp.mul false Config.Reg.p_x Config.Reg.p_x Config.Reg.tmp1 @
-          [ sm.set_next Pdbl_xsq_wait ];
-        
-        State.Pdbl_xsq_wait, [
-          when_ i.arith_done [ sm.set_next Pdbl_3xsq ];
-        ];
-        
-        State.Pdbl_3xsq, (* tmp2 = 3 * x^2 *)
-          start_arith Config.ArithOp.mul false Config.Reg.tmp1 Config.Reg.three Config.Reg.tmp2 @
-          [ sm.set_next Pdbl_3xsq_wait ];
-        
-        State.Pdbl_3xsq_wait, [
-          when_ i.arith_done [ sm.set_next Pdbl_2y ];
-        ];
-        
-        State.Pdbl_2y, (* tmp3 = 2 * y *)
-          start_arith Config.ArithOp.mul false Config.Reg.p_y Config.Reg.two Config.Reg.tmp3 @
-          [ sm.set_next Pdbl_2y_wait ];
-        
-        State.Pdbl_2y_wait, [
-          when_ i.arith_done [ sm.set_next Pdbl_inv ];
-        ];
-        
-        State.Pdbl_inv, (* tmp4 = 1 / (2*y) *)
-          start_arith Config.ArithOp.inv false Config.Reg.tmp3 Config.Reg.zero Config.Reg.tmp4 @
-          [ sm.set_next Pdbl_inv_wait ];
-        
-        State.Pdbl_inv_wait, [
-          when_ i.arith_done [ sm.set_next Pdbl_inv_check ];
-        ];
-        
+        State.Pdbl_inv, start_arith Config.ArithOp.inv false Config.Reg.tmp3 Config.Reg.zero Config.Reg.tmp4 @ [ sm.set_next Pdbl_inv_wait ];
+        State.Pdbl_inv_wait, [ when_ i.arith_done [ sm.set_next Pdbl_inv_check ] ];
         State.Pdbl_inv_check, [
           if_ (~:(i.arith_inv_exists)) [
             acc_is_infinity <-- vdd;
-            if_ is_pdbl_test [
-              sm.set_next Test_done;
-            ] [
-              sm.set_next Loop_check_bits;
-            ];
-          ] [
-            sm.set_next Pdbl_lambda;
-          ];
+            if_ is_pdbl_test [ sm.set_next Test_done ] [ sm.set_next Loop_check_bits ];
+          ] [ sm.set_next Pdbl_lambda ];
         ];
         
-        State.Pdbl_lambda, (* lambda = 3*x^2 / (2*y) *)
-          start_arith Config.ArithOp.mul false Config.Reg.tmp2 Config.Reg.tmp4 Config.Reg.lambda @
-          [ sm.set_next Pdbl_lambda_wait ];
+        State.Pdbl_lambda, start_arith Config.ArithOp.mul false Config.Reg.tmp2 Config.Reg.tmp4 Config.Reg.lambda @ [ sm.set_next Pdbl_lambda_wait ];
+        State.Pdbl_lambda_wait, [ when_ i.arith_done [ sm.set_next Pdbl_lsq ] ];
+        State.Pdbl_lsq, start_arith Config.ArithOp.mul false Config.Reg.lambda Config.Reg.lambda Config.Reg.lambda_sq @ [ sm.set_next Pdbl_lsq_wait ];
+        State.Pdbl_lsq_wait, [ when_ i.arith_done [ sm.set_next Pdbl_2x ] ];
+        State.Pdbl_2x, double_reg Config.Reg.p_x Config.Reg.tmp5 @ [ sm.set_next Pdbl_2x_wait ];
+        State.Pdbl_2x_wait, [ when_ i.arith_done [ sm.set_next Pdbl_xr ] ];
         
-        State.Pdbl_lambda_wait, [
-          when_ i.arith_done [ sm.set_next Pdbl_lsq ];
-        ];
+        State.Pdbl_xr, start_arith Config.ArithOp.sub false Config.Reg.lambda_sq Config.Reg.tmp5 Config.Reg.tmp1 @ [ sm.set_next Pdbl_xr_wait ];
+        State.Pdbl_xr_wait, [ when_ i.arith_done [ sm.set_next Pdbl_diff ] ];
+        State.Pdbl_diff, start_arith Config.ArithOp.sub false Config.Reg.p_x Config.Reg.tmp1 Config.Reg.tmp2 @ [ sm.set_next Pdbl_diff_wait ];
+        State.Pdbl_diff_wait, [ when_ i.arith_done [ sm.set_next Pdbl_ldiff ] ];
+        State.Pdbl_ldiff, start_arith Config.ArithOp.mul false Config.Reg.lambda Config.Reg.tmp2 Config.Reg.tmp3 @ [ sm.set_next Pdbl_ldiff_wait ];
+        State.Pdbl_ldiff_wait, [ when_ i.arith_done [ sm.set_next Pdbl_yr ] ];
+        State.Pdbl_yr, start_arith Config.ArithOp.sub false Config.Reg.tmp3 Config.Reg.p_y Config.Reg.tmp4 @ [ sm.set_next Pdbl_yr_wait ];
+        State.Pdbl_yr_wait, [ when_ i.arith_done [ sm.set_next Pdbl_copy_x ] ];
         
-        State.Pdbl_lsq, (* lambda_sq = lambda^2 *)
-          start_arith Config.ArithOp.mul false Config.Reg.lambda Config.Reg.lambda Config.Reg.lambda_sq @
-          [ sm.set_next Pdbl_lsq_wait ];
-        
-        State.Pdbl_lsq_wait, [
-          when_ i.arith_done [ sm.set_next Pdbl_2x ];
-        ];
-        
-        State.Pdbl_2x, (* tmp5 = 2 * x *)
-          start_arith Config.ArithOp.mul false Config.Reg.p_x Config.Reg.two Config.Reg.tmp5 @
-          [ sm.set_next Pdbl_2x_wait ];
-        
-        State.Pdbl_2x_wait, [
-          when_ i.arith_done [ sm.set_next Pdbl_xr ];
-        ];
-        
-        State.Pdbl_xr, (* tmp1 = lambda^2 - 2*x = x_r *)
-          start_arith Config.ArithOp.sub false Config.Reg.lambda_sq Config.Reg.tmp5 Config.Reg.tmp1 @
-          [ sm.set_next Pdbl_xr_wait ];
-        
-        State.Pdbl_xr_wait, [
-          when_ i.arith_done [ sm.set_next Pdbl_diff ];
-        ];
-        
-        State.Pdbl_diff, (* tmp2 = x - x_r *)
-          start_arith Config.ArithOp.sub false Config.Reg.p_x Config.Reg.tmp1 Config.Reg.tmp2 @
-          [ sm.set_next Pdbl_diff_wait ];
-        
-        State.Pdbl_diff_wait, [
-          when_ i.arith_done [ sm.set_next Pdbl_ldiff ];
-        ];
-        
-        State.Pdbl_ldiff, (* tmp3 = lambda * (x - x_r) *)
-          start_arith Config.ArithOp.mul false Config.Reg.lambda Config.Reg.tmp2 Config.Reg.tmp3 @
-          [ sm.set_next Pdbl_ldiff_wait ];
-        
-        State.Pdbl_ldiff_wait, [
-          when_ i.arith_done [ sm.set_next Pdbl_yr ];
-        ];
-        
-        State.Pdbl_yr, (* tmp4 = lambda*(x - x_r) - y = y_r *)
-          start_arith Config.ArithOp.sub false Config.Reg.tmp3 Config.Reg.p_y Config.Reg.tmp4 @
-          [ sm.set_next Pdbl_yr_wait ];
-        
-        State.Pdbl_yr_wait, [
-          when_ i.arith_done [ sm.set_next Pdbl_copy_x ];
-        ];
-        
-        State.Pdbl_copy_x, (* acc_x = x_r *)
-          copy_reg Config.Reg.tmp1 Config.Reg.acc_x @
-          [ sm.set_next Pdbl_copy_x_wait ];
-        
-        State.Pdbl_copy_x_wait, [
-          when_ i.arith_done [ sm.set_next Pdbl_copy_y ];
-        ];
-        
-        State.Pdbl_copy_y, (* acc_y = y_r *)
-          copy_reg Config.Reg.tmp4 Config.Reg.acc_y @
-          [ sm.set_next Pdbl_copy_y_wait ];
-        
+        State.Pdbl_copy_x, copy_reg Config.Reg.tmp1 Config.Reg.acc_x @ [ sm.set_next Pdbl_copy_x_wait ];
+        State.Pdbl_copy_x_wait, [ when_ i.arith_done [ sm.set_next Pdbl_copy_y ] ];
+        State.Pdbl_copy_y, copy_reg Config.Reg.tmp4 Config.Reg.acc_y @ [ sm.set_next Pdbl_copy_y_wait ];
         State.Pdbl_copy_y_wait, [
           when_ i.arith_done [
-            if_ is_pdbl_test [
-              sm.set_next Test_done;
-            ] [
-              sm.set_next Loop_check_bits;
-            ];
+            if_ is_pdbl_test [ sm.set_next Test_done ] [ sm.set_next Loop_check_bits ];
           ];
         ];
         
-        (* ===== BIT CHECKING AND POINT LOADING ===== *)
+        (* Bit checking and point loading *)
         State.Loop_check_bits, [
           let bits = u2_bit @: u1_bit in
-          if_ (bits ==:. 0b00) [
-            sm.set_next Loop_next;
-          ] @@ elif (bits ==:. 0b01) [
-            sm.set_next Load_add_g_x;
-          ] @@ elif (bits ==:. 0b10) [
-            sm.set_next Load_add_q_x;
-          ] [
-            sm.set_next Load_add_qpg_x;
-          ];
+          if_ (bits ==:. 0b00) [ sm.set_next Loop_next ]
+          @@ elif (bits ==:. 0b01) [ sm.set_next Load_add_g_x ]
+          @@ elif (bits ==:. 0b10) [ sm.set_next Load_add_q_x ]
+          [ sm.set_next Load_add_qpg_x ];
         ];
         
-        State.Load_add_g_x,
-          copy_reg Config.Reg.g_x Config.Reg.add_x @
-          [ sm.set_next Load_add_g_x_wait ];
-        
-        State.Load_add_g_x_wait, [
-          when_ i.arith_done [ sm.set_next Load_add_g_y ];
-        ];
-        
-        State.Load_add_g_y,
-          copy_reg Config.Reg.g_y Config.Reg.add_y @
-          [ sm.set_next Load_add_g_y_wait ];
-        
+        State.Load_add_g_x, copy_reg Config.Reg.g_x Config.Reg.add_x @ [ sm.set_next Load_add_g_x_wait ];
+        State.Load_add_g_x_wait, [ when_ i.arith_done [ sm.set_next Load_add_g_y ] ];
+        State.Load_add_g_y, copy_reg Config.Reg.g_y Config.Reg.add_y @ [ sm.set_next Load_add_g_y_wait ];
         State.Load_add_g_y_wait, [
           when_ i.arith_done [
-            if_ acc_is_infinity.value [
-              sm.set_next Copy_to_acc_x;
-            ] [
-              sm.set_next Padd_save_px;
-            ];
+            if_ acc_is_infinity.value [ sm.set_next Copy_to_acc_x ] [ sm.set_next Padd_save_px ];
           ];
         ];
         
-        State.Load_add_q_x,
-          copy_reg Config.Reg.q_x Config.Reg.add_x @
-          [ sm.set_next Load_add_q_x_wait ];
-        
-        State.Load_add_q_x_wait, [
-          when_ i.arith_done [ sm.set_next Load_add_q_y ];
-        ];
-        
-        State.Load_add_q_y,
-          copy_reg Config.Reg.q_y Config.Reg.add_y @
-          [ sm.set_next Load_add_q_y_wait ];
-        
+        State.Load_add_q_x, copy_reg Config.Reg.q_x Config.Reg.add_x @ [ sm.set_next Load_add_q_x_wait ];
+        State.Load_add_q_x_wait, [ when_ i.arith_done [ sm.set_next Load_add_q_y ] ];
+        State.Load_add_q_y, copy_reg Config.Reg.q_y Config.Reg.add_y @ [ sm.set_next Load_add_q_y_wait ];
         State.Load_add_q_y_wait, [
           when_ i.arith_done [
-            if_ acc_is_infinity.value [
-              sm.set_next Copy_to_acc_x;
-            ] [
-              sm.set_next Padd_save_px;
-            ];
+            if_ acc_is_infinity.value [ sm.set_next Copy_to_acc_x ] [ sm.set_next Padd_save_px ];
           ];
         ];
         
-        State.Load_add_qpg_x,
-          copy_reg Config.Reg.qpg_x Config.Reg.add_x @
-          [ sm.set_next Load_add_qpg_x_wait ];
-        
-        State.Load_add_qpg_x_wait, [
-          when_ i.arith_done [ sm.set_next Load_add_qpg_y ];
-        ];
-        
-        State.Load_add_qpg_y,
-          copy_reg Config.Reg.qpg_y Config.Reg.add_y @
-          [ sm.set_next Load_add_qpg_y_wait ];
-        
+        State.Load_add_qpg_x, copy_reg Config.Reg.qpg_x Config.Reg.add_x @ [ sm.set_next Load_add_qpg_x_wait ];
+        State.Load_add_qpg_x_wait, [ when_ i.arith_done [ sm.set_next Load_add_qpg_y ] ];
+        State.Load_add_qpg_y, copy_reg Config.Reg.qpg_y Config.Reg.add_y @ [ sm.set_next Load_add_qpg_y_wait ];
         State.Load_add_qpg_y_wait, [
           when_ i.arith_done [
-            if_ acc_is_infinity.value [
-              sm.set_next Copy_to_acc_x;
-            ] [
-              sm.set_next Padd_save_px;
-            ];
+            if_ acc_is_infinity.value [ sm.set_next Copy_to_acc_x ] [ sm.set_next Padd_save_px ];
           ];
         ];
         
-        State.Copy_to_acc_x,
-          copy_reg Config.Reg.add_x Config.Reg.acc_x @
-          [ sm.set_next Copy_to_acc_x_wait ];
+        State.Copy_to_acc_x, copy_reg Config.Reg.add_x Config.Reg.acc_x @ [ sm.set_next Copy_to_acc_x_wait ];
+        State.Copy_to_acc_x_wait, [ when_ i.arith_done [ sm.set_next Copy_to_acc_y ] ];
+        State.Copy_to_acc_y, copy_reg Config.Reg.add_y Config.Reg.acc_y @ [ sm.set_next Copy_to_acc_y_wait ];
+        State.Copy_to_acc_y_wait, [ when_ i.arith_done [ acc_is_infinity <-- gnd; sm.set_next Loop_next ] ];
         
-        State.Copy_to_acc_x_wait, [
-          when_ i.arith_done [ sm.set_next Copy_to_acc_y ];
-        ];
+        (* Point addition *)
+        State.Padd_save_px, copy_reg Config.Reg.acc_x Config.Reg.p_x @ [ sm.set_next Padd_save_px_wait ];
+        State.Padd_save_px_wait, [ when_ i.arith_done [ sm.set_next Padd_save_py ] ];
+        State.Padd_save_py, copy_reg Config.Reg.acc_y Config.Reg.p_y @ [ sm.set_next Padd_save_py_wait ];
+        State.Padd_save_py_wait, [ when_ i.arith_done [ sm.set_next Padd_num ] ];
         
-        State.Copy_to_acc_y,
-          copy_reg Config.Reg.add_y Config.Reg.acc_y @
-          [ sm.set_next Copy_to_acc_y_wait ];
-        
-        State.Copy_to_acc_y_wait, [
-          when_ i.arith_done [
-            acc_is_infinity <-- gnd;
-            sm.set_next Loop_next;
-          ];
-        ];
-        
-        (* ===== POINT ADDITION ===== *)
-        State.Padd_save_px,
-          copy_reg Config.Reg.acc_x Config.Reg.p_x @
-          [ sm.set_next Padd_save_px_wait ];
-        
-        State.Padd_save_px_wait, [
-          when_ i.arith_done [ sm.set_next Padd_save_py ];
-        ];
-        
-        State.Padd_save_py,
-          copy_reg Config.Reg.acc_y Config.Reg.p_y @
-          [ sm.set_next Padd_save_py_wait ];
-        
-        State.Padd_save_py_wait, [
-          when_ i.arith_done [ sm.set_next Padd_num ];
-        ];
-        
-        State.Padd_num, (* tmp1 = add_y - p_y *)
-          start_arith Config.ArithOp.sub false Config.Reg.add_y Config.Reg.p_y Config.Reg.tmp1 @
-          [ sm.set_next Padd_num_wait ];
-        
-        State.Padd_num_wait, [
-          when_ i.arith_done [ sm.set_next Padd_denom ];
-        ];
-        
-        State.Padd_denom, (* tmp2 = add_x - p_x *)
-          start_arith Config.ArithOp.sub false Config.Reg.add_x Config.Reg.p_x Config.Reg.tmp2 @
-          [ sm.set_next Padd_denom_wait ];
-        
-        State.Padd_denom_wait, [
-          when_ i.arith_done [ sm.set_next Padd_inv ];
-        ];
-        
-        State.Padd_inv, (* tmp3 = 1 / (add_x - p_x) *)
-          start_arith Config.ArithOp.inv false Config.Reg.tmp2 Config.Reg.zero Config.Reg.tmp3 @
-          [ sm.set_next Padd_inv_wait ];
-        
-        State.Padd_inv_wait, [
-          when_ i.arith_done [ sm.set_next Padd_inv_check ];
-        ];
-        
+        State.Padd_num, start_arith Config.ArithOp.sub false Config.Reg.add_y Config.Reg.p_y Config.Reg.tmp1 @ [ sm.set_next Padd_num_wait ];
+        State.Padd_num_wait, [ when_ i.arith_done [ sm.set_next Padd_denom ] ];
+        State.Padd_denom, start_arith Config.ArithOp.sub false Config.Reg.add_x Config.Reg.p_x Config.Reg.tmp2 @ [ sm.set_next Padd_denom_wait ];
+        State.Padd_denom_wait, [ when_ i.arith_done [ sm.set_next Padd_inv ] ];
+        State.Padd_inv, start_arith Config.ArithOp.inv false Config.Reg.tmp2 Config.Reg.zero Config.Reg.tmp3 @ [ sm.set_next Padd_inv_wait ];
+        State.Padd_inv_wait, [ when_ i.arith_done [ sm.set_next Padd_inv_check ] ];
         State.Padd_inv_check, [
           if_ (~:(i.arith_inv_exists)) [
             acc_is_infinity <-- vdd;
-            if_ is_padd_test [
-              sm.set_next Test_done;
-            ] [
-              sm.set_next Loop_next;
-            ];
-          ] [
-            sm.set_next Padd_lambda;
-          ];
+            if_ is_padd_test [ sm.set_next Test_done ] [ sm.set_next Loop_next ];
+          ] [ sm.set_next Padd_lambda ];
         ];
         
-        State.Padd_lambda, (* lambda = (y2 - y1) / (x2 - x1) *)
-          start_arith Config.ArithOp.mul false Config.Reg.tmp1 Config.Reg.tmp3 Config.Reg.lambda @
-          [ sm.set_next Padd_lambda_wait ];
-        
-        State.Padd_lambda_wait, [
-          when_ i.arith_done [ sm.set_next Padd_lsq ];
-        ];
-        
-        State.Padd_lsq, (* lambda_sq = lambda^2 *)
-          start_arith Config.ArithOp.mul false Config.Reg.lambda Config.Reg.lambda Config.Reg.lambda_sq @
-          [ sm.set_next Padd_lsq_wait ];
-        
-        State.Padd_lsq_wait, [
-          when_ i.arith_done [ sm.set_next Padd_xr1 ];
-        ];
-        
-        State.Padd_xr1, (* tmp4 = lambda^2 - p_x *)
-          start_arith Config.ArithOp.sub false Config.Reg.lambda_sq Config.Reg.p_x Config.Reg.tmp4 @
-          [ sm.set_next Padd_xr1_wait ];
-        
-        State.Padd_xr1_wait, [
-          when_ i.arith_done [ sm.set_next Padd_xr ];
-        ];
-        
-        State.Padd_xr, (* acc_x = lambda^2 - p_x - add_x = x_r *)
-          start_arith Config.ArithOp.sub false Config.Reg.tmp4 Config.Reg.add_x Config.Reg.acc_x @
-          [ sm.set_next Padd_xr_wait ];
-        
-        State.Padd_xr_wait, [
-          when_ i.arith_done [ sm.set_next Padd_diff ];
-        ];
-        
-        State.Padd_diff, (* tmp5 = p_x - acc_x *)
-          start_arith Config.ArithOp.sub false Config.Reg.p_x Config.Reg.acc_x Config.Reg.tmp5 @
-          [ sm.set_next Padd_diff_wait ];
-        
-        State.Padd_diff_wait, [
-          when_ i.arith_done [ sm.set_next Padd_ldiff ];
-        ];
-        
-        State.Padd_ldiff, (* tmp4 = lambda * (p_x - acc_x) *)
-          start_arith Config.ArithOp.mul false Config.Reg.lambda Config.Reg.tmp5 Config.Reg.tmp4 @
-          [ sm.set_next Padd_ldiff_wait ];
-        
-        State.Padd_ldiff_wait, [
-          when_ i.arith_done [ sm.set_next Padd_yr ];
-        ];
-        
-        State.Padd_yr, (* acc_y = lambda*(p_x - x_r) - p_y = y_r *)
-          start_arith Config.ArithOp.sub false Config.Reg.tmp4 Config.Reg.p_y Config.Reg.acc_y @
-          [ sm.set_next Padd_yr_wait ];
-        
+        State.Padd_lambda, start_arith Config.ArithOp.mul false Config.Reg.tmp1 Config.Reg.tmp3 Config.Reg.lambda @ [ sm.set_next Padd_lambda_wait ];
+        State.Padd_lambda_wait, [ when_ i.arith_done [ sm.set_next Padd_lsq ] ];
+        State.Padd_lsq, start_arith Config.ArithOp.mul false Config.Reg.lambda Config.Reg.lambda Config.Reg.lambda_sq @ [ sm.set_next Padd_lsq_wait ];
+        State.Padd_lsq_wait, [ when_ i.arith_done [ sm.set_next Padd_xr1 ] ];
+        State.Padd_xr1, start_arith Config.ArithOp.sub false Config.Reg.lambda_sq Config.Reg.p_x Config.Reg.tmp4 @ [ sm.set_next Padd_xr1_wait ];
+        State.Padd_xr1_wait, [ when_ i.arith_done [ sm.set_next Padd_xr ] ];
+        State.Padd_xr, start_arith Config.ArithOp.sub false Config.Reg.tmp4 Config.Reg.add_x Config.Reg.acc_x @ [ sm.set_next Padd_xr_wait ];
+        State.Padd_xr_wait, [ when_ i.arith_done [ sm.set_next Padd_diff ] ];
+        State.Padd_diff, start_arith Config.ArithOp.sub false Config.Reg.p_x Config.Reg.acc_x Config.Reg.tmp5 @ [ sm.set_next Padd_diff_wait ];
+        State.Padd_diff_wait, [ when_ i.arith_done [ sm.set_next Padd_ldiff ] ];
+        State.Padd_ldiff, start_arith Config.ArithOp.mul false Config.Reg.lambda Config.Reg.tmp5 Config.Reg.tmp4 @ [ sm.set_next Padd_ldiff_wait ];
+        State.Padd_ldiff_wait, [ when_ i.arith_done [ sm.set_next Padd_yr ] ];
+        State.Padd_yr, start_arith Config.ArithOp.sub false Config.Reg.tmp4 Config.Reg.p_y Config.Reg.acc_y @ [ sm.set_next Padd_yr_wait ];
         State.Padd_yr_wait, [
           when_ i.arith_done [
-            if_ is_padd_test [
-              sm.set_next Test_done;
-            ] [
-              sm.set_next Loop_next;
-            ];
+            if_ is_padd_test [ sm.set_next Test_done ] [ sm.set_next Loop_next ];
           ];
         ];
         
-        (* ===== LOOP CONTROL ===== *)
         State.Loop_next, [
-          if_ (bit_idx.value ==:. 0) [
-            sm.set_next Final_check;
-          ] [
-            bit_idx <-- bit_idx.value -:. 1;
-            sm.set_next Loop_double_start;
-          ];
+          if_ (bit_idx.value ==:. 0) [ sm.set_next Final_check ]
+          [ bit_idx <-- bit_idx.value -:. 1; sm.set_next Loop_double_start ];
         ];
         
         State.Final_check, [
-          if_ acc_is_infinity.value [
-            valid_sig <-- gnd;
-          ] [
+          if_ acc_is_infinity.value [ valid_sig <-- gnd ]
+          [
             let x_eq_r = i.acc_x_value ==: i.r_value in
             let x_minus_n = i.acc_x_value -: order_n in
             let x_mod_n_eq_r = (i.acc_x_value >=: order_n) &: (x_minus_n ==: i.r_value) in
@@ -1060,26 +735,18 @@ module Controller = struct
           sm.set_next Done;
         ];
         
-        (* ===== TEST MODE AND DONE STATES ===== *)
-        State.Test_done, [
-          done_reg <-- vdd;
-          sm.set_next Done;
-        ];
+        State.Test_done, [ done_reg <-- vdd; sm.set_next Done ];
         
         State.Done, [
           done_reg <-- vdd;
           when_ i.start [
-            done_reg <-- gnd;
-            valid_sig <-- gnd;
-            error_invalid_r <-- gnd;
-            error_invalid_s <-- gnd;
+            done_reg <-- gnd; valid_sig <-- gnd;
+            error_invalid_r <-- gnd; error_invalid_s <-- gnd;
             sm.set_next Idle;
           ];
         ];
       ];
     ];
-    
-    let _ = is_test_mode in  (* Suppress unused warning *)
     
     { O.busy = ~:(sm.is Idle) -- "busy"
     ; done_ = done_reg.value -- "done"
@@ -1101,7 +768,6 @@ module Controller = struct
     }
 end
 
-(* Top-level ECDSA verification module *)
 module EcdsaVerify = struct
   module I = struct
     type 'a t =
@@ -1116,7 +782,6 @@ module EcdsaVerify = struct
       ; q_y : 'a [@bits Config.width]
       ; qplusg_x : 'a [@bits Config.width]
       ; qplusg_y : 'a [@bits Config.width]
-      (* Direct register load interface for test modes *)
       ; load_enable : 'a
       ; load_addr : 'a [@bits Config.reg_addr_width]
       ; load_data : 'a [@bits Config.width]
@@ -1131,12 +796,14 @@ module EcdsaVerify = struct
       ; busy : 'a
       ; error_invalid_r : 'a
       ; error_invalid_s : 'a
-      (* Debug outputs *)
       ; dbg_state : 'a [@bits 7]
       ; dbg_bit_idx : 'a [@bits 9]
       ; dbg_acc_is_infinity : 'a
       ; dbg_acc_x : 'a [@bits Config.width]
       ; dbg_acc_y : 'a [@bits Config.width]
+      ; dbg_tmp1 : 'a [@bits Config.width]
+      ; dbg_tmp5 : 'a [@bits Config.width]
+      ; dbg_lambda_sq : 'a [@bits Config.width]
       }
     [@@deriving sexp_of, hardcaml]
   end
@@ -1144,7 +811,6 @@ module EcdsaVerify = struct
   let create scope (i : _ I.t) =
     let ( -- ) = Scope.naming scope in
     
-    (* Create wires for feedback connections *)
     let arith_done_w = wire 1 in
     let arith_inv_exists_w = wire 1 in
     let reg_u1_w = wire Config.width in
@@ -1153,10 +819,12 @@ module EcdsaVerify = struct
     let reg_acc_y_w = wire Config.width in
     let reg_r_w = wire Config.width in
     let reg_s_w = wire Config.width in
+    let reg_tmp1_w = wire Config.width in
+    let reg_tmp5_w = wire Config.width in
+    let reg_lambda_sq_w = wire Config.width in
     let reg_read_data_a_w = wire Config.width in
     let reg_read_data_b_w = wire Config.width in
     
-    (* Instantiate controller *)
     let ctrl = Controller.create (Scope.sub_scope scope "ctrl")
       { Controller.I.
         clock = i.clock
@@ -1180,12 +848,10 @@ module EcdsaVerify = struct
       }
     in
     
-    (* Combine controller's load signals with external test load interface *)
     let combined_load_enable = ctrl.load_enable |: i.load_enable in
     let combined_load_addr = mux2 ctrl.load_enable ctrl.load_addr i.load_addr in
     let combined_load_data = mux2 ctrl.load_enable ctrl.load_data i.load_data in
     
-    (* Instantiate arithmetic unit *)
     let arith = ArithUnit.create (Scope.sub_scope scope "arith")
       { ArithUnit.I.
         clock = i.clock
@@ -1201,7 +867,6 @@ module EcdsaVerify = struct
       }
     in
     
-    (* Instantiate register file *)
     let regfile = RegisterFile.create (Scope.sub_scope scope "regfile")
       { RegisterFile.I.
         clock = i.clock
@@ -1217,7 +882,6 @@ module EcdsaVerify = struct
       }
     in
     
-    (* Connect feedback wires *)
     arith_done_w <== arith.done_;
     arith_inv_exists_w <== arith.inv_exists;
     reg_u1_w <== regfile.reg_u1;
@@ -1226,6 +890,9 @@ module EcdsaVerify = struct
     reg_acc_y_w <== regfile.reg_acc_y;
     reg_r_w <== regfile.reg_r;
     reg_s_w <== regfile.reg_s;
+    reg_tmp1_w <== regfile.reg_tmp1;
+    reg_tmp5_w <== regfile.reg_tmp5;
+    reg_lambda_sq_w <== regfile.reg_lambda_sq;
     reg_read_data_a_w <== regfile.read_data_a;
     reg_read_data_b_w <== regfile.read_data_b;
     
@@ -1239,5 +906,8 @@ module EcdsaVerify = struct
     ; dbg_acc_is_infinity = ctrl.dbg_acc_is_infinity -- "dbg_acc_is_infinity"
     ; dbg_acc_x = reg_acc_x_w -- "dbg_acc_x"
     ; dbg_acc_y = reg_acc_y_w -- "dbg_acc_y"
+    ; dbg_tmp1 = reg_tmp1_w -- "dbg_tmp1"
+    ; dbg_tmp5 = reg_tmp5_w -- "dbg_tmp5"
+    ; dbg_lambda_sq = reg_lambda_sq_w -- "dbg_lambda_sq"
     }
 end
