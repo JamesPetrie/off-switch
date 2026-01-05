@@ -996,6 +996,221 @@ Stdio.printf "True back-to-back test: %s\n\n"
   (if true_btb_pass then "PASS ✓" else "FAIL ✗");
 record true_btb_pass;
 
+
+(* ============================================== *)
+(* POINT_MUL PATTERN TEST                         *)
+(* ============================================== *)
+
+Stdio.printf "=== Point_mul Pattern Test ===\n\n";
+
+Stdio.printf "Test: Simulating Point_mul's first two operations\n";
+Stdio.printf "  Op 0: t0 <- x1 * x2 (with x1=x2=0, point at infinity)\n";
+Stdio.printf "  Op 1: t1 <- y1 * y2 (with y1=y2=1, point at infinity)\n\n";
+
+(* Single reset at start *)
+inputs.clear := Bits.vdd;
+Cyclesim.cycle sim;
+inputs.clear := Bits.gnd;
+Cyclesim.cycle sim;
+
+(* Simulate Point_mul's register file state after Init:
+   x1 = 0 (infinity_x)
+   y1 = 1 (infinity_y)  
+   z1 = 0 (infinity_z)
+   When j=0 (doubling), x2=x1, y2=y1, z2=z1 *)
+
+let pm_registers = Array.init 17 ~f:(fun _ -> Z.zero) in
+pm_registers.(9) <- Z.zero;   (* x1 = 0 *)
+pm_registers.(10) <- Z.one;   (* y1 = 1 *)
+pm_registers.(11) <- Z.zero;  (* z1 = 0 *)
+pm_registers.(12) <- Z.zero;  (* x2 = x1 = 0 (because j=0) *)
+pm_registers.(13) <- Z.one;   (* y2 = y1 = 1 (because j=0) *)
+pm_registers.(14) <- Z.zero;  (* z2 = z1 = 0 (because j=0) *)
+
+let run_pm_op ~src1 ~src2 ~dst =
+  (* Provide register data *)
+  inputs.reg_read_data_a := z_to_bits pm_registers.(src1);
+  inputs.reg_read_data_b := z_to_bits pm_registers.(src2);
+  
+  (* Start multiplication *)
+  inputs.start := Bits.vdd;
+  inputs.op := Bits.of_int ~width:2 2;  (* mul *)
+  inputs.prime_sel := Bits.gnd;
+  inputs.addr_a := Bits.of_int ~width:5 src1;
+  inputs.addr_b := Bits.of_int ~width:5 src2;
+  inputs.addr_out := Bits.of_int ~width:5 dst;
+  Cyclesim.cycle sim;
+  inputs.start := Bits.gnd;
+  
+  (* Wait for completion, updating reg reads as requested *)
+  let max_cycles = 300 in
+  let rec wait n =
+    if n >= max_cycles then begin
+      Stdio.printf "    TIMEOUT after %d cycles!\n" max_cycles;
+      Stdio.printf "    busy=%d done=%d\n" 
+        (Bits.to_int !(outputs.busy))
+        (Bits.to_int !(outputs.done_));
+      None
+    end else begin
+      let read_addr_a = Bits.to_int !(outputs.reg_read_addr_a) in
+      let read_addr_b = Bits.to_int !(outputs.reg_read_addr_b) in
+      inputs.reg_read_data_a := z_to_bits pm_registers.(read_addr_a);
+      inputs.reg_read_data_b := z_to_bits pm_registers.(read_addr_b);
+      
+      if Bits.to_bool !(outputs.done_) then begin
+        let result = bits_to_z !(outputs.reg_write_data) in
+        if Bits.to_bool !(outputs.reg_write_enable) then begin
+          let write_addr = Bits.to_int !(outputs.reg_write_addr) in
+          pm_registers.(write_addr) <- result
+        end;
+        Stdio.printf "    Completed in %d cycles\n" n;
+        Some result
+      end else begin
+        Cyclesim.cycle sim;
+        wait (n + 1)
+      end
+    end
+  in
+  wait 0
+in
+
+(* Op 0: t0 <- x1 * x2 = 0 * 0 = 0 *)
+Stdio.printf "Op 0: t0 <- x1 * x2 (src1=9, src2=12, dst=0)\n";
+Stdio.printf "  x1 = %s, x2 = %s\n" (Z.to_string pm_registers.(9)) (Z.to_string pm_registers.(12));
+let op0_result = run_pm_op ~src1:9 ~src2:12 ~dst:0 in
+(match op0_result with
+| Some r -> 
+    let expected = Z.zero in
+    Stdio.printf "    result = %s, expected = %s %s\n\n" 
+      (Z.to_string r) (Z.to_string expected)
+      (if Z.equal r expected then "✓" else "✗")
+| None -> Stdio.printf "\n");
+
+(* Op 1: t1 <- y1 * y2 = 1 * 1 = 1 *)
+Stdio.printf "Op 1: t1 <- y1 * y2 (src1=10, src2=13, dst=1)\n";
+Stdio.printf "  y1 = %s, y2 = %s\n" (Z.to_string pm_registers.(10)) (Z.to_string pm_registers.(13));
+let op1_result = run_pm_op ~src1:10 ~src2:13 ~dst:1 in
+(match op1_result with
+| Some r -> 
+    let expected = Z.one in
+    Stdio.printf "    result = %s, expected = %s %s\n\n" 
+      (Z.to_string r) (Z.to_string expected)
+      (if Z.equal r expected then "✓" else "✗")
+| None -> Stdio.printf "\n");
+
+(* Op 2: t2 <- z1 * z2 = 0 * 0 = 0 *)
+Stdio.printf "Op 2: t2 <- z1 * z2 (src1=11, src2=14, dst=2)\n";
+Stdio.printf "  z1 = %s, z2 = %s\n" (Z.to_string pm_registers.(11)) (Z.to_string pm_registers.(14));
+let op2_result = run_pm_op ~src1:11 ~src2:14 ~dst:2 in
+(match op2_result with
+| Some r -> 
+    let expected = Z.zero in
+    Stdio.printf "    result = %s, expected = %s %s\n\n" 
+      (Z.to_string r) (Z.to_string expected)
+      (if Z.equal r expected then "✓" else "✗")
+| None -> Stdio.printf "\n");
+
+let pm_pattern_pass = 
+  match op0_result, op1_result, op2_result with
+  | Some r0, Some r1, Some r2 ->
+      Z.equal r0 Z.zero && Z.equal r1 Z.one && Z.equal r2 Z.zero
+  | _ -> false
+in
+Stdio.printf "Point_mul pattern test: %s\n\n" 
+  (if pm_pattern_pass then "PASS ✓" else "FAIL ✗");
+record pm_pattern_pass;
+
+(* ============================================== *)
+(* DETAILED MONTGOMERY DEBUG TEST                 *)
+(* ============================================== *)
+
+Stdio.printf "=== Detailed Montgomery Debug Test ===\n\n";
+
+Stdio.printf "Test: Investigating 0*0 followed by 1*1 hang\n\n";
+
+(* Single reset at start *)
+inputs.clear := Bits.vdd;
+Cyclesim.cycle sim;
+inputs.clear := Bits.gnd;
+Cyclesim.cycle sim;
+
+let run_mul_verbose ~a ~b ~label =
+  Stdio.printf "%s: %s * %s\n" label (Z.to_string a) (Z.to_string b);
+  
+  inputs.reg_read_data_a := z_to_bits a;
+  inputs.reg_read_data_b := z_to_bits b;
+  inputs.start := Bits.vdd;
+  inputs.op := Bits.of_int ~width:2 2;  (* mul *)
+  inputs.prime_sel := Bits.gnd;
+  inputs.addr_a := Bits.zero 5;
+  inputs.addr_b := Bits.zero 5;
+  inputs.addr_out := Bits.zero 5;
+  Cyclesim.cycle sim;
+  inputs.start := Bits.gnd;
+  
+  for cycle = 1 to 20 do
+    let busy = Bits.to_int !(outputs.busy) in
+    let done_ = Bits.to_int !(outputs.done_) in
+    Stdio.printf "  cycle %2d: busy=%d done=%d\n" cycle busy done_;
+    
+    if done_ = 1 then begin
+      let result = bits_to_z !(outputs.reg_write_data) in
+      Stdio.printf "  Result: %s\n\n" (Z.to_string result);
+      (* Cycle once more to clear done state *)
+      Cyclesim.cycle sim;
+      ()
+    end else
+      Cyclesim.cycle sim
+  done
+in
+
+(* Test 1: Start fresh with 1*1 - should work *)
+Stdio.printf "--- Test A: Fresh start with 1*1 ---\n";
+inputs.clear := Bits.vdd;
+Cyclesim.cycle sim;
+inputs.clear := Bits.gnd;
+Cyclesim.cycle sim;
+run_mul_verbose ~a:Z.one ~b:Z.one ~label:"Op";
+
+(* Test 2: Fresh start with 0*0 then 1*1 *)
+Stdio.printf "--- Test B: Fresh 0*0 then 1*1 ---\n";
+inputs.clear := Bits.vdd;
+Cyclesim.cycle sim;
+inputs.clear := Bits.gnd;
+Cyclesim.cycle sim;
+run_mul_verbose ~a:Z.zero ~b:Z.zero ~label:"Op1 (0*0)";
+run_mul_verbose ~a:Z.one ~b:Z.one ~label:"Op2 (1*1)";
+
+(* Test 3: Fresh start with 0*0 then 2*3 *)
+Stdio.printf "--- Test C: Fresh 0*0 then 2*3 ---\n";
+inputs.clear := Bits.vdd;
+Cyclesim.cycle sim;
+inputs.clear := Bits.gnd;
+Cyclesim.cycle sim;
+run_mul_verbose ~a:Z.zero ~b:Z.zero ~label:"Op1 (0*0)";
+run_mul_verbose ~a:(Z.of_int 2) ~b:(Z.of_int 3) ~label:"Op2 (2*3)";
+
+(* Test 4: Fresh start with 5*7 then 1*1 *)
+Stdio.printf "--- Test D: Fresh 5*7 then 1*1 ---\n";
+inputs.clear := Bits.vdd;
+Cyclesim.cycle sim;
+inputs.clear := Bits.gnd;
+Cyclesim.cycle sim;
+run_mul_verbose ~a:(Z.of_int 5) ~b:(Z.of_int 7) ~label:"Op1 (5*7)";
+run_mul_verbose ~a:Z.one ~b:Z.one ~label:"Op2 (1*1)";
+
+(* Test 5: Fresh start with 5*7 then 0*0 then 1*1 *)
+Stdio.printf "--- Test E: Fresh 5*7 then 0*0 then 1*1 ---\n";
+inputs.clear := Bits.vdd;
+Cyclesim.cycle sim;
+inputs.clear := Bits.gnd;
+Cyclesim.cycle sim;
+run_mul_verbose ~a:(Z.of_int 5) ~b:(Z.of_int 7) ~label:"Op1 (5*7)";
+run_mul_verbose ~a:Z.zero ~b:Z.zero ~label:"Op2 (0*0)";
+run_mul_verbose ~a:Z.one ~b:Z.one ~label:"Op3 (1*1)";
+
+Stdio.printf "=== End Montgomery Debug Test ===\n\n";
+
   (* ============================================== *)
   (* TEST SUMMARY                                  *)
   (* ============================================== *)

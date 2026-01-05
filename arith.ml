@@ -97,9 +97,6 @@ let create scope (i : _ I.t) =
   (* State machine *)
   let sm = State_machine.create (module State) spec ~enable:vdd in
 
-  (* Add a register to track if we just entered Compute *)
-let compute_first_cycle = Variable.reg spec ~width:1 in
-  
   (* Latched inputs *)
   let op_reg = Variable.reg spec ~width:2 in
   let prime_sel_reg = Variable.reg spec ~width:1 in
@@ -240,15 +237,12 @@ State.Capture, [
     of_int ~width:2 Op.inv, [ start_inv <-- vdd ];
   ];
   
-  compute_first_cycle <-- vdd;  (* Mark that we're entering Compute *)
   sm.set_next Compute;
 ];
 
 State.Compute, [
-  compute_first_cycle <-- gnd;  (* Clear after first cycle *)
-  
-  (* Only check op_valid after the first cycle *)
-  when_ ((~:(compute_first_cycle.value)) &: op_valid) [
+  (* Simply wait for operation to complete *)
+  when_ op_valid [
     result_reg <-- op_result;
     inv_exists_reg <-- mod_inv_out.exists;
     sm.set_next Write;

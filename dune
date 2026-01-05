@@ -61,6 +61,18 @@
  (libraries base hardcaml zarith arith)
  (preprocess (pps ppx_jane ppx_hardcaml)))
 
+ (library
+ (name point_mul)
+ (modules point_mul)
+ (libraries base hardcaml zarith arith)
+ (preprocess (pps ppx_jane ppx_hardcaml)))
+
+  (executable
+ (name test_point_mul)
+ (modules test_point_mul)
+ (libraries base hardcaml zarith arith point_mul)
+ (preprocess (pps ppx_jane ppx_hardcaml)))
+
  (executable
  (name test_point_add)
  (modules test_point_add)
@@ -86,5 +98,5 @@
   (executable
  (name debug)
   (modules debug)
- (libraries base hardcaml zarith arith point_add)
+ (libraries base hardcaml zarith arith point_add point_mul)
  (preprocess (pps ppx_jane ppx_hardcaml)))

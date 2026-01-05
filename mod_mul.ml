@@ -112,12 +112,12 @@ module ModMul = struct
         State.Loop, [
           valid <-- gnd;
           
-          if_ (bit_count.value ==: num_bits_orig.value) [
-            (* Requested number of bits processed *)
-            result <-- sel_bottom result_acc.value width;
-            valid <-- vdd;
-            sm.set_next Done;
-          ] [
+            if_ ((bit_count.value ==: num_bits_orig.value) |: (multiplier.value ==:. 0)) [
+    (* Exit when done OR when no more bits to process *)
+    result <-- sel_bottom result_acc.value width;
+    valid <-- vdd;
+    sm.set_next Done;
+  ] [
             (* Check LSB of multiplier *)
             let current_bit = lsb multiplier.value in
             
@@ -161,28 +161,7 @@ module ModMul = struct
 
         State.Done, [
   valid <-- vdd;
-  when_ i.start [
-    if_ ((i.x ==:. 0) |: (i.y ==:. 0)) [
-      result <-- zero width;
-      valid <-- vdd;
-      (* stay in Done *)
-    ] @@ elif (i.modulus <=:. 1) [
-      result <-- zero width;
-      valid <-- vdd;
-      (* stay in Done *)
-    ] @@ elif (i.num_bits ==:. 0) [
-      result <-- zero width;
-      valid <-- vdd;
-      (* stay in Done *)
-    ] [
-      x_current <-- uresize i.x acc_width;
-      modulus_orig <-- uresize i.modulus acc_width;
-      multiplier <-- i.y;
-      num_bits_orig <-- i.num_bits;
-      valid <-- gnd;
-      sm.set_next Init;
-    ];
-  ];
+  sm.set_next Idle;  (* Return to Idle after one cycle *)
 ];
       ];
     ];
