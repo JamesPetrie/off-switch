@@ -36,14 +36,19 @@ module ModInv = struct
     [@@deriving sexp_of, hardcaml]
   end
 
-  module O = struct
-    type 'a t =
-      { result : 'a [@bits Config.width]
-      ; valid : 'a
-      ; exists : 'a
-      }
-    [@@deriving sexp_of, hardcaml]
-  end
+module O = struct
+  type 'a t =
+    { result : 'a [@bits Config.width]
+    ; valid : 'a
+    ; exists : 'a
+    (* Debug outputs *)
+    ; dbg_x : 'a [@bits Config.width + 4]
+    ; dbg_y : 'a [@bits Config.width + 4]
+    ; dbg_u : 'a [@bits Config.width + 4]
+    ; dbg_v : 'a [@bits Config.width + 4]
+    }
+  [@@deriving sexp_of, hardcaml]
+end
 
   let create scope (i : _ I.t) =
     let open Always in
@@ -187,8 +192,12 @@ module ModInv = struct
       ];
     ];
 
-    { O.result = result.value -- "result"
-    ; valid = valid.value -- "valid"
-    ; exists = exists.value -- "exists"
-    }
+{ O.result = result.value -- "result"
+; valid = valid.value -- "valid"
+; exists = exists.value -- "exists"
+; dbg_x = x.value
+; dbg_y = y.value
+; dbg_u = u.value
+; dbg_v = v.value
+}
 end
