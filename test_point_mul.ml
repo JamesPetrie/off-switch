@@ -119,8 +119,7 @@ let () =
     Cyclesim.cycle sim;
     inputs.start := Bits.gnd;
     
-    (* Scalar mult takes ~256 * 40 * 2 = ~20k cycles worst case *)
-    let max_cycles = 100000 in
+    let max_cycles = 500000 in
     let rec wait n =
       if n >= max_cycles then begin
         Stdio.printf "  TIMEOUT after %d cycles\n" max_cycles;

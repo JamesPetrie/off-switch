@@ -65,32 +65,6 @@ module O = struct
   [@@deriving sexp_of, hardcaml]
 end
 
-(* Debug output module with extra signals *)
-module O_debug = struct
-  type 'a t =
-    { busy : 'a
-    ; done_ : 'a
-    ; x : 'a [@bits Config.width]
-    ; y : 'a [@bits Config.width]
-    ; z : 'a [@bits Config.width]
-    ; dbg_state : 'a [@bits 3]
-    ; dbg_bit_pos : 'a [@bits 8]
-    ; dbg_j : 'a
-    ; dbg_step : 'a [@bits 6]
-    ; dbg_op_started : 'a
-    ; dbg_current_bit : 'a
-    ; dbg_arith_done : 'a
-    ; dbg_arith_busy : 'a
-    ; dbg_src1 : 'a [@bits 5]
-    ; dbg_src2 : 'a [@bits 5]
-    ; dbg_dst : 'a [@bits 5]
-    ; dbg_op : 'a [@bits 2]
-    ; dbg_operand_a_lo : 'a [@bits 32]
-    ; dbg_operand_b_lo : 'a [@bits 32]
-    }
-  [@@deriving sexp_of, hardcaml]
-end
-
 module State = struct
   type t =
     | Idle
@@ -152,7 +126,7 @@ let bit_select_dynamic signal index_signal =
   let bits = List.init width ~f:(fun i -> bit signal i) in
   mux index_signal bits
 
-let create_impl scope (i : _ I.t) ~include_debug =
+let create scope (i : _ I.t) =
   let open Always in
   let width = Config.width in
   let addr_width = Config.reg_addr_width in
@@ -230,6 +204,9 @@ let create_impl scope (i : _ I.t) ~include_debug =
     }
   in
   
+  (* Check if P is point at infinity (z1 = 0) *)
+  let p_is_infinity = reg_file.(Config.z1).value ==:. 0 in
+  
   compile [
     done_flag <-- gnd;
     
@@ -260,9 +237,27 @@ let create_impl scope (i : _ I.t) ~include_debug =
       
       State.Run_step, [
         if_ (~:(op_started.value)) [
-          arith_start <-- vdd;
-          op_started <-- vdd;
+          (* Check if we can skip this operation *)
+          if_ (p_is_infinity &: (j.value ==:. 0)) [
+            (* P is infinity and we're doubling: ∞ + ∞ = ∞, skip *)
+            if_ current_bit [
+              (* Need to add G next *)
+              j <-- vdd;
+            ] [
+              (* Skip to next bit *)
+              if_ (bit_pos.value ==:. 0) [
+                sm.set_next Done;
+              ] [
+                bit_pos <-- bit_pos.value -:. 1;
+              ];
+            ];
+          ] [
+            (* Normal case: start the arithmetic operation *)
+            arith_start <-- vdd;
+            op_started <-- vdd;
+          ];
         ] [
+          (* Wait for operation to complete *)
           when_ arith_out.done_ [
             proc (Array.to_list (Array.mapi reg_file ~f:(fun idx reg ->
               when_ (current_dst ==:. idx) [
@@ -309,54 +304,10 @@ let create_impl scope (i : _ I.t) ~include_debug =
     ];
   ];
   
-  let base_outputs = 
-    { O.
-      busy = ~:(sm.is Idle)
-    ; done_ = done_flag.value
-    ; x = out_x.value
-    ; y = out_y.value
-    ; z = out_z.value
-    }
-  in
-  
-  if include_debug then
-    let state_bits = 
-      mux2 (sm.is Idle) (of_int ~width:3 0)
-        (mux2 (sm.is Init) (of_int ~width:3 1)
-          (mux2 (sm.is Wait_init) (of_int ~width:3 2)
-            (mux2 (sm.is Run_step) (of_int ~width:3 3)
-              (of_int ~width:3 4))))
-    in
-    `Debug { O_debug.
-      busy = base_outputs.busy
-    ; done_ = base_outputs.done_
-    ; x = base_outputs.x
-    ; y = base_outputs.y
-    ; z = base_outputs.z
-    ; dbg_state = state_bits
-    ; dbg_bit_pos = bit_pos.value
-    ; dbg_j = j.value
-    ; dbg_step = step.value
-    ; dbg_op_started = op_started.value
-    ; dbg_current_bit = current_bit
-    ; dbg_arith_done = arith_out.done_
-    ; dbg_arith_busy = arith_out.busy
-    ; dbg_src1 = current_src1
-    ; dbg_src2 = current_src2
-    ; dbg_dst = current_dst
-    ; dbg_op = current_op
-    ; dbg_operand_a_lo = sel_bottom arith_read_data_a 32
-    ; dbg_operand_b_lo = sel_bottom arith_read_data_b 32
-    }
-  else
-    `Normal base_outputs
-
-let create scope i =
-  match create_impl scope i ~include_debug:false with
-  | `Normal o -> o
-  | `Debug _ -> assert false
-
-let create_debug scope i =
-  match create_impl scope i ~include_debug:true with
-  | `Debug o -> o
-  | `Normal _ -> assert false
+  { O.
+    busy = ~:(sm.is Idle)
+  ; done_ = done_flag.value
+  ; x = out_x.value
+  ; y = out_y.value
+  ; z = out_z.value
+  }
