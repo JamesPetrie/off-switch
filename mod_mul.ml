@@ -160,12 +160,30 @@ module ModMul = struct
         ];
 
         State.Done, [
-          valid <-- vdd;
-          when_ i.start [
-            valid <-- gnd;
-            sm.set_next Idle;
-          ];
-        ];
+  valid <-- vdd;
+  when_ i.start [
+    if_ ((i.x ==:. 0) |: (i.y ==:. 0)) [
+      result <-- zero width;
+      valid <-- vdd;
+      (* stay in Done *)
+    ] @@ elif (i.modulus <=:. 1) [
+      result <-- zero width;
+      valid <-- vdd;
+      (* stay in Done *)
+    ] @@ elif (i.num_bits ==:. 0) [
+      result <-- zero width;
+      valid <-- vdd;
+      (* stay in Done *)
+    ] [
+      x_current <-- uresize i.x acc_width;
+      modulus_orig <-- uresize i.modulus acc_width;
+      multiplier <-- i.y;
+      num_bits_orig <-- i.num_bits;
+      valid <-- gnd;
+      sm.set_next Init;
+    ];
+  ];
+];
       ];
     ];
 
@@ -173,3 +191,4 @@ module ModMul = struct
     ; valid = valid.value -- "valid"
     }
 end
+

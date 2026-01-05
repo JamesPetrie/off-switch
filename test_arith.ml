@@ -550,7 +550,7 @@ let () =
     end else chain_pass := false
   end else chain_pass := false;
   record !chain_pass;
-  
+
   (* ============================================== *)
   (* EDGE CASE TESTS                               *)
   (* ============================================== *)
@@ -744,7 +744,258 @@ let () =
   
   Stdio.printf "  %s\n\n" (if !btb_pass then "PASS ✓" else "FAIL ✗");
   record !btb_pass;
+
+
+  (* Add this test to test_arith.ml, before the test summary section *)
+
+(* ============================================== *)
+(* BACK-TO-BACK MULTIPLICATION TEST              *)
+(* ============================================== *)
+
+Stdio.printf "=== Back-to-Back Multiplication Test ===\n\n";
+
+(* Test: Two consecutive multiplications with different operands *)
+registers.(0) <- Z.of_string "55066263022277343669578718895168534326250603453777594175500187360389116729240";
+registers.(1) <- Z.of_string "55066263022277343669578718895168534326250603453777594175500187360389116729240";
+registers.(2) <- Z.of_string "32670510020758816978083085130507043184471273380659243275938904335757337482424";
+registers.(3) <- Z.of_string "32670510020758816978083085130507043184471273380659243275938904335757337482424";
+reset ();
+
+Stdio.printf "Test: Back-to-back multiplications with different operands\n";
+Stdio.printf "  r[0] = r[1] = G_x (secp256k1 generator x)\n";
+Stdio.printf "  r[2] = r[3] = G_y (secp256k1 generator y)\n\n";
+
+(* First multiplication: r[10] = r[0] * r[1] = G_x * G_x *)
+Stdio.printf "Step 1: r[10] = r[0] * r[1] (G_x * G_x)\n";
+let mul1_pass = 
+  if run_op ~op:2 ~prime_sel:false ~addr_a:0 ~addr_b:1 ~addr_out:10 then begin
+    let expected1 = Z.((registers.(0) * registers.(1)) mod prime_p) in
+    Stdio.printf "  result   = %s...\n" (String.prefix (Z.to_string registers.(10)) 40);
+    Stdio.printf "  expected = %s...\n" (String.prefix (Z.to_string expected1) 40);
+    let pass = Z.equal registers.(10) expected1 in
+    Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+    pass
+  end else false
+in
+
+(* Second multiplication: r[11] = r[2] * r[3] = G_y * G_y *)
+Stdio.printf "Step 2: r[11] = r[2] * r[3] (G_y * G_y)\n";
+let mul2_pass =
+  if run_op ~op:2 ~prime_sel:false ~addr_a:2 ~addr_b:3 ~addr_out:11 then begin
+    let expected2 = Z.((registers.(2) * registers.(3)) mod prime_p) in
+    Stdio.printf "  result   = %s...\n" (String.prefix (Z.to_string registers.(11)) 40);
+    Stdio.printf "  expected = %s...\n" (String.prefix (Z.to_string expected2) 40);
+    let pass = Z.equal registers.(11) expected2 in
+    Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+    pass
+  end else false
+in
+
+(* Verify the two results are different *)
+Stdio.printf "Step 3: Verify results are different\n";
+let different = not (Z.equal registers.(10) registers.(11)) in
+Stdio.printf "  r[10] != r[11]: %b\n" different;
+Stdio.printf "  %s\n\n" (if different then "PASS ✓" else "FAIL ✗ (results should differ!)");
+
+let btb_mul_pass = mul1_pass && mul2_pass && different in
+Stdio.printf "Back-to-back multiplication test: %s\n\n" 
+  (if btb_mul_pass then "PASS ✓" else "FAIL ✗");
+record btb_mul_pass;
+
+(* ============================================== *)
+(* TRIPLE MULTIPLICATION TEST                    *)
+(* ============================================== *)
+
+Stdio.printf "=== Triple Consecutive Multiplication Test ===\n\n";
+
+registers.(0) <- Z.of_int 12345;
+registers.(1) <- Z.of_int 67890;
+registers.(2) <- Z.of_int 11111;
+registers.(3) <- Z.of_int 22222;
+registers.(4) <- Z.of_int 33333;
+registers.(5) <- Z.of_int 44444;
+reset ();
+
+Stdio.printf "Test: Three consecutive multiplications\n";
+
+(* Mul 1 *)
+let triple_pass = ref true in
+Stdio.printf "  Mul 1: r[20] = r[0] * r[1] = 12345 * 67890\n";
+if run_op ~op:2 ~prime_sel:false ~addr_a:0 ~addr_b:1 ~addr_out:20 then begin
+  let exp1 = Z.((of_int 12345 * of_int 67890) mod prime_p) in
+  if not (Z.equal registers.(20) exp1) then triple_pass := false;
+  Stdio.printf "    result=%s expected=%s %s\n" 
+    (Z.to_string registers.(20)) (Z.to_string exp1)
+    (if Z.equal registers.(20) exp1 then "✓" else "✗")
+end else triple_pass := false;
+
+(* Mul 2 *)
+Stdio.printf "  Mul 2: r[21] = r[2] * r[3] = 11111 * 22222\n";
+if run_op ~op:2 ~prime_sel:false ~addr_a:2 ~addr_b:3 ~addr_out:21 then begin
+  let exp2 = Z.((of_int 11111 * of_int 22222) mod prime_p) in
+  if not (Z.equal registers.(21) exp2) then triple_pass := false;
+  Stdio.printf "    result=%s expected=%s %s\n" 
+    (Z.to_string registers.(21)) (Z.to_string exp2)
+    (if Z.equal registers.(21) exp2 then "✓" else "✗")
+end else triple_pass := false;
+
+(* Mul 3 *)
+Stdio.printf "  Mul 3: r[22] = r[4] * r[5] = 33333 * 44444\n";
+if run_op ~op:2 ~prime_sel:false ~addr_a:4 ~addr_b:5 ~addr_out:22 then begin
+  let exp3 = Z.((of_int 33333 * of_int 44444) mod prime_p) in
+  if not (Z.equal registers.(22) exp3) then triple_pass := false;
+  Stdio.printf "    result=%s expected=%s %s\n" 
+    (Z.to_string registers.(22)) (Z.to_string exp3)
+    (if Z.equal registers.(22) exp3 then "✓" else "✗")
+end else triple_pass := false;
+
+Stdio.printf "  Triple multiplication test: %s\n\n" 
+  (if !triple_pass then "PASS ✓" else "FAIL ✗");
+record !triple_pass;
+
+(* ============================================== *)
+(* MIXED OPERATION SEQUENCE TEST                 *)
+(* ============================================== *)
+
+Stdio.printf "=== Mixed Operation Sequence Test ===\n\n";
+
+registers.(0) <- Z.of_int 1000;
+registers.(1) <- Z.of_int 2000;
+registers.(2) <- Z.of_int 500;
+reset ();
+
+Stdio.printf "Test: mul -> add -> mul -> sub -> mul\n";
+
+let mixed_pass = ref true in
+
+(* Mul *)
+Stdio.printf "  Op 1 (mul): r[10] = r[0] * r[1]\n";
+if run_op ~op:2 ~prime_sel:false ~addr_a:0 ~addr_b:1 ~addr_out:10 then begin
+  let exp = Z.((of_int 1000 * of_int 2000) mod prime_p) in
+  if not (Z.equal registers.(10) exp) then mixed_pass := false;
+  Stdio.printf "    result=%s %s\n" (Z.to_string registers.(10))
+    (if Z.equal registers.(10) exp then "✓" else "✗")
+end else mixed_pass := false;
+
+(* Add *)
+Stdio.printf "  Op 2 (add): r[11] = r[10] + r[2]\n";
+if run_op ~op:0 ~prime_sel:false ~addr_a:10 ~addr_b:2 ~addr_out:11 then begin
+  let exp = Z.((registers.(10) + of_int 500) mod prime_p) in
+  if not (Z.equal registers.(11) exp) then mixed_pass := false;
+  Stdio.printf "    result=%s %s\n" (Z.to_string registers.(11))
+    (if Z.equal registers.(11) exp then "✓" else "✗")
+end else mixed_pass := false;
+
+(* Mul *)
+Stdio.printf "  Op 3 (mul): r[12] = r[11] * r[2]\n";
+if run_op ~op:2 ~prime_sel:false ~addr_a:11 ~addr_b:2 ~addr_out:12 then begin
+  let exp = Z.((registers.(11) * of_int 500) mod prime_p) in
+  if not (Z.equal registers.(12) exp) then mixed_pass := false;
+  Stdio.printf "    result=%s %s\n" (Z.to_string registers.(12))
+    (if Z.equal registers.(12) exp then "✓" else "✗")
+end else mixed_pass := false;
+
+(* Sub *)
+Stdio.printf "  Op 4 (sub): r[13] = r[12] - r[0]\n";
+if run_op ~op:1 ~prime_sel:false ~addr_a:12 ~addr_b:0 ~addr_out:13 then begin
+  let exp = Z.(erem (registers.(12) - of_int 1000) prime_p) in
+  if not (Z.equal registers.(13) exp) then mixed_pass := false;
+  Stdio.printf "    result=%s %s\n" (Z.to_string registers.(13))
+    (if Z.equal registers.(13) exp then "✓" else "✗")
+end else mixed_pass := false;
+
+(* Mul *)
+Stdio.printf "  Op 5 (mul): r[14] = r[13] * r[1]\n";
+if run_op ~op:2 ~prime_sel:false ~addr_a:13 ~addr_b:1 ~addr_out:14 then begin
+  let exp = Z.((registers.(13) * of_int 2000) mod prime_p) in
+  if not (Z.equal registers.(14) exp) then mixed_pass := false;
+  Stdio.printf "    result=%s %s\n" (Z.to_string registers.(14))
+    (if Z.equal registers.(14) exp then "✓" else "✗")
+end else mixed_pass := false;
+
+Stdio.printf "  Mixed operation test: %s\n\n" 
+  (if !mixed_pass then "PASS ✓" else "FAIL ✗");
+record !mixed_pass;
   
+(* ============================================== *)
+(* TRUE BACK-TO-BACK TEST (no reset between ops) *)
+(* ============================================== *)
+
+Stdio.printf "=== True Back-to-Back Test (no reset) ===\n\n";
+
+(* Do a single reset at the start *)
+inputs.clear := Bits.vdd;
+Cyclesim.cycle sim;
+inputs.clear := Bits.gnd;
+Cyclesim.cycle sim;
+
+(* Setup register data *)
+let val_a = Z.of_int 12345 in
+let val_b = Z.of_int 67890 in
+let val_c = Z.of_int 11111 in
+let val_d = Z.of_int 22222 in
+
+(* Helper to run op WITHOUT reset *)
+let run_op_no_reset ~op ~data_a ~data_b =
+  inputs.start := Bits.vdd;
+  inputs.op := Bits.of_int ~width:2 op;
+  inputs.prime_sel := Bits.gnd;
+  inputs.addr_a := Bits.zero 5;
+  inputs.addr_b := Bits.zero 5;
+  inputs.addr_out := Bits.zero 5;
+  inputs.reg_read_data_a := z_to_bits data_a;
+  inputs.reg_read_data_b := z_to_bits data_b;
+  Cyclesim.cycle sim;
+  inputs.start := Bits.gnd;
+  
+  let max_cycles = 3000 in
+  let rec wait n =
+    if n >= max_cycles then begin
+      Stdio.printf "  TIMEOUT after %d cycles\n" max_cycles;
+      None
+    end else if Bits.to_bool !(outputs.done_) then begin
+      let result = bits_to_z !(outputs.reg_write_data) in
+      Some result
+    end else begin
+      Cyclesim.cycle sim;
+      wait (n + 1)
+    end
+  in
+  wait 0
+in
+
+Stdio.printf "Op 1: 12345 * 67890\n";
+let result1 = run_op_no_reset ~op:2 ~data_a:val_a ~data_b:val_b in
+(match result1 with
+| Some r -> 
+    let expected = Z.((val_a * val_b) mod prime_p) in
+    let pass = Z.equal r expected in
+    Stdio.printf "  result=%s expected=%s %s\n" 
+      (Z.to_string r) (Z.to_string expected) (if pass then "✓" else "✗")
+| None -> ());
+
+Stdio.printf "Op 2 (immediate): 11111 * 22222\n";
+let result2 = run_op_no_reset ~op:2 ~data_a:val_c ~data_b:val_d in
+(match result2 with
+| Some r -> 
+    let expected = Z.((val_c * val_d) mod prime_p) in
+    let pass = Z.equal r expected in
+    Stdio.printf "  result=%s expected=%s %s\n" 
+      (Z.to_string r) (Z.to_string expected) (if pass then "✓" else "✗")
+| None -> ());
+
+let true_btb_pass = 
+  match result1, result2 with
+  | Some r1, Some r2 ->
+      let exp1 = Z.((val_a * val_b) mod prime_p) in
+      let exp2 = Z.((val_c * val_d) mod prime_p) in
+      Z.equal r1 exp1 && Z.equal r2 exp2
+  | _ -> false
+in
+Stdio.printf "True back-to-back test: %s\n\n" 
+  (if true_btb_pass then "PASS ✓" else "FAIL ✗");
+record true_btb_pass;
+
   (* ============================================== *)
   (* TEST SUMMARY                                  *)
   (* ============================================== *)

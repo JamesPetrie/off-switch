@@ -75,6 +75,7 @@ module State = struct
   type t =
     | Idle
     | Load_inputs
+    | Wait_load      (* NEW: wait for register writes to take effect *)
     | Run_step
     | Output
     | Done
@@ -208,18 +209,23 @@ let create scope (i : _ I.t) =
         ];
       ];
       
-      State.Load_inputs, [
-        reg_file.(Config.x1) <-- i.x1;
-        reg_file.(Config.y1) <-- i.y1;
-        reg_file.(Config.z1) <-- i.z1;
-        reg_file.(Config.x2) <-- i.x2;
-        reg_file.(Config.y2) <-- i.y2;
-        reg_file.(Config.z2) <-- i.z2;
-        reg_file.(Config.param_a) <-- i.param_a;
-        reg_file.(Config.param_b3) <-- i.param_b3;
-        op_started <-- gnd;
-        sm.set_next Run_step;
-      ];
+State.Load_inputs, [
+  reg_file.(Config.x1) <-- i.x1;
+  reg_file.(Config.y1) <-- i.y1;
+  reg_file.(Config.z1) <-- i.z1;
+  reg_file.(Config.x2) <-- i.x2;
+  reg_file.(Config.y2) <-- i.y2;
+  reg_file.(Config.z2) <-- i.z2;
+  reg_file.(Config.param_a) <-- i.param_a;
+  reg_file.(Config.param_b3) <-- i.param_b3;
+  op_started <-- gnd;
+  sm.set_next Wait_load;  (* Changed from Run_step *)
+];
+
+State.Wait_load, [
+  (* Wait one cycle for register writes to take effect *)
+  sm.set_next Run_step;
+];
       
 State.Run_step, [
   if_ (~:(op_started.value)) [
