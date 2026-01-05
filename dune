@@ -55,6 +55,19 @@
  (libraries base hardcaml zarith mod_add mod_mul mod_inv)
  (preprocess (pps ppx_jane ppx_hardcaml)))
 
+ (library
+ (name point_add)
+ (modules point_add)
+ (libraries base hardcaml zarith arith)
+ (preprocess (pps ppx_jane ppx_hardcaml)))
+
+ (executable
+ (name test_point_add)
+ (modules test_point_add)
+ (libraries base hardcaml zarith arith point_add)
+ (preprocess (pps ppx_jane ppx_hardcaml)))
+
+
 (executable
  (name test_ecdsa)
  (modules test_ecdsa)
@@ -66,4 +79,12 @@
  (name test_point_ops)
  (modules test_point_ops)
  (libraries base hardcaml stdio zarith ecdsa)
+ (preprocess (pps ppx_jane ppx_hardcaml)))
+
+
+
+  (executable
+ (name debug)
+  (modules debug)
+ (libraries base hardcaml zarith arith point_add)
  (preprocess (pps ppx_jane ppx_hardcaml)))
