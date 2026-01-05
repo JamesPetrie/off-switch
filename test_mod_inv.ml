@@ -161,6 +161,11 @@ let test () =
       (Z.of_string "999999999999999999")
       (Z.of_string "115792089237316195423570985008687907853269984665640564039457584007913129639747")
       true None;
+
+    test_case "Inverse mod secp256k1 curve order n"
+      (Z.of_string "999999999999999999")
+      (Z.of_string "115792089237316195423570985008687907853269984665640564039457584007908834671437")
+      true None;
       
     test_case "Edge: (m-1)^(-1) mod m"
       (Z.of_int 12)
