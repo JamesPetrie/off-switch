@@ -1,6 +1,29 @@
 open Hardcaml
 open Signal
 
+
+(* Arith - Modular arithmetic unit for secp256k1 field operations
+   
+   Performs add, sub, mul, inv modulo either field prime p or curve order n.
+   Operands are read from and results written to an external 32×256-bit register file.
+   
+   Operations (op input):
+     0 = add: r[addr_out] <- r[addr_a] + r[addr_b] mod m
+     1 = sub: r[addr_out] <- r[addr_a] - r[addr_b] mod m
+     2 = mul: r[addr_out] <- r[addr_a] * r[addr_b] mod m
+     3 = inv: r[addr_out] <- r[addr_a]^(-1) mod m  (addr_b ignored)
+   
+   Modulus selection (prime_sel): 0 = prime_p, 1 = prime_n
+   
+   Protocol:
+     1. Set addr_a, addr_b, addr_out, op, prime_sel; pulse start
+     2. Provide reg_read_data_a/b in response to reg_read_addr_a/b
+     3. Wait for done_ pulse; result written via reg_write_* signals
+     4. For inv, check inv_exists to confirm inverse was found
+   
+   State machine: Idle -> Load -> Capture -> Compute -> Write -> Done -> Idle
+*)
+
 module Config = struct
   let width = 256
   let num_registers = 32

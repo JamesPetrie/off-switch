@@ -552,6 +552,148 @@ let () =
   record !chain_pass;
   
   (* ============================================== *)
+  (* EDGE CASE TESTS                               *)
+  (* ============================================== *)
+  
+  Stdio.printf "=== Edge Case Tests ===\n\n";
+  
+  (* Test: Inverse of zero should not exist *)
+  registers.(0) <- Z.zero;
+  reset ();
+  Stdio.printf "Test: 0^(-1) mod p (should not exist)\n";
+  Stdio.printf "  x = %s\n" (Z.to_string registers.(0));
+  if run_op ~op:3 ~prime_sel:false ~addr_a:0 ~addr_b:0 ~addr_out:15 then begin
+    let inv_exists = Bits.to_bool !(outputs.inv_exists) in
+    Stdio.printf "  Inverse exists: %b\n" inv_exists;
+    let pass = not inv_exists in
+    Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+    record pass
+  end else record false;
+  
+  (* Test: x - x = 0 *)
+  registers.(0) <- Z.of_string "98765432109876543210";
+  reset ();
+  Stdio.printf "Test: x - x mod p = 0\n";
+  Stdio.printf "  x = %s\n" (Z.to_string registers.(0));
+  if run_op ~op:1 ~prime_sel:false ~addr_a:0 ~addr_b:0 ~addr_out:15 then begin
+    let expected = Z.zero in
+    Stdio.printf "  result   = %s\n" (Z.to_string registers.(15));
+    Stdio.printf "  expected = %s\n" (Z.to_string expected);
+    let pass = Z.equal registers.(15) expected in
+    Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+    record pass
+  end else record false;
+  
+  (* Test: (p-1) + 1 mod p = 0 *)
+  registers.(0) <- Z.(prime_p - one);
+  registers.(1) <- Z.one;
+  reset ();
+  Stdio.printf "Test: (p-1) + 1 mod p = 0\n";
+  Stdio.printf "  a = p-1\n";
+  Stdio.printf "  b = 1\n";
+  if run_op ~op:0 ~prime_sel:false ~addr_a:0 ~addr_b:1 ~addr_out:15 then begin
+    let expected = Z.zero in
+    Stdio.printf "  result   = %s\n" (Z.to_string registers.(15));
+    Stdio.printf "  expected = %s\n" (Z.to_string expected);
+    let pass = Z.equal registers.(15) expected in
+    Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+    record pass
+  end else record false;
+  
+  (* Test: 0 - 1 mod p = p-1 *)
+  registers.(0) <- Z.zero;
+  registers.(1) <- Z.one;
+  reset ();
+  Stdio.printf "Test: 0 - 1 mod p = p-1\n";
+  Stdio.printf "  a = 0\n";
+  Stdio.printf "  b = 1\n";
+  if run_op ~op:1 ~prime_sel:false ~addr_a:0 ~addr_b:1 ~addr_out:15 then begin
+    let expected = Z.(prime_p - one) in
+    Stdio.printf "  result   = %s\n" (Z.to_string registers.(15));
+    Stdio.printf "  expected = %s\n" (Z.to_string expected);
+    let pass = Z.equal registers.(15) expected in
+    Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+    record pass
+  end else record false;
+  
+  (* Test: (p-1) * (p-1) mod p = 1  since (-1)*(-1) = 1 *)
+  registers.(0) <- Z.(prime_p - one);
+  reset ();
+  Stdio.printf "Test: (p-1) * (p-1) mod p = 1\n";
+  Stdio.printf "  x = p-1 (which is -1 mod p)\n";
+  if run_op ~op:2 ~prime_sel:false ~addr_a:0 ~addr_b:0 ~addr_out:15 then begin
+    let expected = Z.one in
+    Stdio.printf "  result   = %s\n" (Z.to_string registers.(15));
+    Stdio.printf "  expected = %s\n" (Z.to_string expected);
+    let pass = Z.equal registers.(15) expected in
+    Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+    record pass
+  end else record false;
+  
+  (* Test: Squaring via same register (addr_a = addr_b) *)
+  registers.(0) <- Z.of_int 12345;
+  reset ();
+  Stdio.printf "Test: Squaring x^2 mod p (addr_a = addr_b)\n";
+  Stdio.printf "  x = %s\n" (Z.to_string registers.(0));
+  if run_op ~op:2 ~prime_sel:false ~addr_a:0 ~addr_b:0 ~addr_out:15 then begin
+    let expected = Z.((registers.(0) * registers.(0)) mod prime_p) in
+    Stdio.printf "  result   = %s\n" (Z.to_string registers.(15));
+    Stdio.printf "  expected = %s\n" (Z.to_string expected);
+    let pass = Z.equal registers.(15) expected in
+    Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+    record pass
+  end else record false;
+  
+  (* Test: In-place operation (addr_a = addr_out) *)
+  registers.(5) <- Z.of_int 100;
+  registers.(6) <- Z.of_int 50;
+  let orig_val = registers.(5) in
+  reset ();
+  Stdio.printf "Test: In-place add r[5] <- r[5] + r[6]\n";
+  Stdio.printf "  r[5] = %s\n" (Z.to_string registers.(5));
+  Stdio.printf "  r[6] = %s\n" (Z.to_string registers.(6));
+  if run_op ~op:0 ~prime_sel:false ~addr_a:5 ~addr_b:6 ~addr_out:5 then begin
+    let expected = Z.((orig_val + registers.(6)) mod prime_p) in
+    Stdio.printf "  result r[5] = %s\n" (Z.to_string registers.(5));
+    Stdio.printf "  expected    = %s\n" (Z.to_string expected);
+    let pass = Z.equal registers.(5) expected in
+    Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+    record pass
+  end else record false;
+  
+  (* Test: Large values mod n *)
+  registers.(0) <- Z.of_string "115792089237316195423570985008687907852837564279074904382605163141518161494000";
+  registers.(1) <- Z.of_string "500";
+  reset ();
+  Stdio.printf "Test: Large value near n, addition mod n\n";
+  Stdio.printf "  a = n - 337\n";
+  Stdio.printf "  b = 500\n";
+  if run_op ~op:0 ~prime_sel:true ~addr_a:0 ~addr_b:1 ~addr_out:15 then begin
+    let expected = Z.((registers.(0) + registers.(1)) mod prime_n) in
+    Stdio.printf "  result   = %s\n" (Z.to_string registers.(15));
+    Stdio.printf "  expected = %s\n" (Z.to_string expected);
+    let pass = Z.equal registers.(15) expected in
+    Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+    record pass
+  end else record false;
+  
+  (* Test: Large multiplication mod n *)
+  registers.(0) <- Z.of_string "57896044618658097711785492504343953926418782139537452191302581570759080747168";
+  registers.(1) <- Z.of_string "2";
+  reset ();
+  Stdio.printf "Test: Large multiplication mod n (value near n/2 * 2)\n";
+  Stdio.printf "  a ≈ n/2\n";
+  Stdio.printf "  b = 2\n";
+  if run_op ~op:2 ~prime_sel:true ~addr_a:0 ~addr_b:1 ~addr_out:15 then begin
+    let expected = Z.((registers.(0) * registers.(1)) mod prime_n) in
+    Stdio.printf "  result   = %s\n" (Z.to_string registers.(15));
+    Stdio.printf "  expected = %s\n" (Z.to_string expected);
+    let pass = Z.equal registers.(15) expected in
+    Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+    record pass
+  end else record false;
+
+  (* ============================================== *)
   (* BACK-TO-BACK OPERATIONS TEST                  *)
   (* ============================================== *)
   
