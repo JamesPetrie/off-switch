@@ -68,9 +68,9 @@ end
 module State = struct
   type t =
     | Idle
-    | Init
-    | Wait_init
-    | Run_step
+    | Loop
+    | Load
+    | Run_add
     | Done
   [@@deriving sexp_of, compare, enumerate]
 end
@@ -142,9 +142,15 @@ let create scope (i : _ I.t) =
   
   let scalar_reg = Variable.reg spec ~width in
   let bit_pos = Variable.reg spec ~width:8 in
-  let j = Variable.reg spec ~width:1 in
+  let doubling = Variable.reg spec ~width:1 in
+  let last_step = Variable.reg spec ~width:1 in
   let step = Variable.reg spec ~width:6 in
-  let op_started = Variable.reg spec ~width:1 in
+  let load_idx = Variable.reg spec ~width:1 in  (* 0 = P, 1 = G *)
+  
+  (* Latched second operand registers *)
+  let x2_latched = Variable.reg spec ~width in
+  let y2_latched = Variable.reg spec ~width in
+  let z2_latched = Variable.reg spec ~width in
   
   let out_x = Variable.reg spec ~width in
   let out_y = Variable.reg spec ~width in
@@ -152,6 +158,9 @@ let create scope (i : _ I.t) =
   let done_flag = Variable.reg spec ~width:1 in
   
   let current_bit = bit_select_dynamic scalar_reg.value bit_pos.value in
+  
+  (* Check if P is point at infinity (z1 = 0) *)
+  let p_is_infinity = reg_file.(Config.z1).value ==:. 0 in
   
   let default_instr = of_int ~width:addr_width 0 in
   let decode field =
@@ -172,18 +181,15 @@ let create scope (i : _ I.t) =
   let current_src2 = decode (fun instr -> instr.src2) in
   let current_op = decode_op in
   
-  let x2_val = mux2 j.value const_gx reg_file.(Config.x1).value in
-  let y2_val = mux2 j.value const_gy reg_file.(Config.y1).value in
-  let z2_val = mux2 j.value const_gz reg_file.(Config.z1).value in
-  
   let arith_start = Variable.wire ~default:gnd in
   
+  (* Use latched values for x2/y2/z2 *)
   let reg_read idx =
     let base_values = Array.to_list (Array.map reg_file ~f:(fun r -> r.value)) in
     let base = mux idx base_values in
-    mux2 (idx ==:. Config.x2) x2_val
-      (mux2 (idx ==:. Config.y2) y2_val
-        (mux2 (idx ==:. Config.z2) z2_val base))
+    mux2 (idx ==:. Config.x2) x2_latched.value
+      (mux2 (idx ==:. Config.y2) y2_latched.value
+        (mux2 (idx ==:. Config.z2) z2_latched.value base))
   in
   
   let arith_read_data_a = reg_read current_src1 in
@@ -204,9 +210,6 @@ let create scope (i : _ I.t) =
     }
   in
   
-  (* Check if P is point at infinity (z1 = 0) *)
-  let p_is_infinity = reg_file.(Config.z1).value ==:. 0 in
-  
   compile [
     done_flag <-- gnd;
     
@@ -215,84 +218,83 @@ let create scope (i : _ I.t) =
         when_ i.start [
           scalar_reg <-- i.scalar;
           bit_pos <--. 255;
-          j <-- gnd;
+          doubling <-- vdd;
+          last_step <-- gnd;
           step <-- zero 6;
-          op_started <-- gnd;
-          sm.set_next Init;
+          reg_file.(Config.x1) <-- of_z ~width Config.infinity_x;
+          reg_file.(Config.y1) <-- of_z ~width Config.infinity_y;
+          reg_file.(Config.z1) <-- of_z ~width Config.infinity_z;
+          reg_file.(Config.param_a) <-- i.param_a;
+          reg_file.(Config.param_b3) <-- i.param_b3;
+          sm.set_next Loop;
         ];
       ];
       
-      State.Init, [
-        reg_file.(Config.x1) <-- of_z ~width Config.infinity_x;
-        reg_file.(Config.y1) <-- of_z ~width Config.infinity_y;
-        reg_file.(Config.z1) <-- of_z ~width Config.infinity_z;
-        reg_file.(Config.param_a) <-- i.param_a;
-        reg_file.(Config.param_b3) <-- i.param_b3;
-        sm.set_next Wait_init;
-      ];
-      
-      State.Wait_init, [
-        sm.set_next Run_step;
-      ];
-      
-      State.Run_step, [
-        if_ (~:(op_started.value)) [
-          (* Check if we can skip this operation *)
-          if_ (p_is_infinity &: (j.value ==:. 0)) [
-            (* P is infinity and we're doubling: ∞ + ∞ = ∞, skip *)
-            if_ current_bit [
-              (* Need to add G next *)
-              j <-- vdd;
-            ] [
-              (* Skip to next bit *)
-              if_ (bit_pos.value ==:. 0) [
-                sm.set_next Done;
-              ] [
-                bit_pos <-- bit_pos.value -:. 1;
-              ];
-            ];
+      State.Loop, [
+        if_ last_step.value [
+          sm.set_next Done;
+        ] @@ elif doubling.value [
+          (* Doubling phase *)
+          doubling <-- gnd;  (* Next time go to adding step *)
+          if_ p_is_infinity [
+            (* Skip doubling when P is infinity *)
+            sm.set_next Loop;
           ] [
-            (* Normal case: start the arithmetic operation *)
-            arith_start <-- vdd;
-            op_started <-- vdd;
+            load_idx <-- gnd;  (* Load P *)
+            sm.set_next Load;
           ];
         ] [
-          (* Wait for operation to complete *)
-          when_ arith_out.done_ [
-            proc (Array.to_list (Array.mapi reg_file ~f:(fun idx reg ->
-              when_ (current_dst ==:. idx) [
-                reg <-- arith_out.reg_write_data;
-              ])));
-            
-            if_ (step.value ==:. Config.num_steps - 1) [
-              step <-- zero 6;
-              op_started <-- gnd;
-              
-              if_ (j.value ==:. 0) [
-                if_ current_bit [
-                  j <-- vdd;
-                ] [
-                  if_ (bit_pos.value ==:. 0) [
-                    sm.set_next Done;
-                  ] [
-                    bit_pos <-- bit_pos.value -:. 1;
-                  ];
-                ];
-              ] [
-                j <-- gnd;
-                if_ (bit_pos.value ==:. 0) [
-                  sm.set_next Done;
-                ] [
-                  bit_pos <-- bit_pos.value -:. 1;
-                ];
-              ];
-            ] [
-              step <-- step.value +:. 1;
-              op_started <-- gnd;
-            ];
+          (* Adding phase *)
+          doubling <-- vdd;  (* Next time go to doubling step *)
+          load_idx <-- current_bit;  (* Load G if bit is set, else 0 *)
+          last_step <-- (bit_pos.value ==:. 0);
+          bit_pos <-- bit_pos.value -:. 1;
+          
+          if_ (~: current_bit) [
+            (* Skip add when bit is 0 *)
+            sm.set_next Loop;
+          ] [
+            sm.set_next Load;
           ];
         ];
       ];
+      
+      State.Load, [
+        (* Latch second operand based on load_idx *)
+        if_ load_idx.value [
+          (* load_idx = 1: Load G *)
+          x2_latched <-- const_gx;
+          y2_latched <-- const_gy;
+          z2_latched <-- const_gz;
+        ] [
+          (* load_idx = 0: Load P *)
+          x2_latched <-- reg_file.(Config.x1).value;
+          y2_latched <-- reg_file.(Config.y1).value;
+          z2_latched <-- reg_file.(Config.z1).value;
+        ];
+        step <-- zero 6;
+        sm.set_next Run_add;
+      ];
+      
+      State.Run_add, [
+  (* Only start arith on the first cycle of each step *)
+  when_ (~:(arith_out.busy) &: (~:(arith_out.done_))) [
+    arith_start <-- vdd;
+  ];
+  when_ arith_out.done_ [
+    (* Write result to destination register *)
+    proc (Array.to_list (Array.mapi reg_file ~f:(fun idx reg ->
+      when_ (current_dst ==:. idx) [
+        reg <-- arith_out.reg_write_data;
+      ])));
+    
+    if_ (step.value ==:. Config.num_steps - 1) [
+      sm.set_next Loop;
+    ] [
+      step <-- step.value +:. 1;
+    ];
+  ];
+];
       
       State.Done, [
         out_x <-- reg_file.(Config.x1).value;
