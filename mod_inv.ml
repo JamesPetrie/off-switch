@@ -183,12 +183,31 @@ end
         ];
 
         State.Done, [
-          valid <-- vdd;
-          when_ i.start [
-            valid <-- gnd;
-            sm.set_next Idle;
-          ];
-        ];
+  valid <-- vdd;
+  when_ i.start [
+    if_ (i.x ==:. 0) [
+      result <-- zero width;
+      exists <-- gnd;
+      valid <-- vdd;
+      (* stay in Done *)
+    ] @@ elif (i.modulus ==:. 0) [
+      result <-- zero width;
+      exists <-- gnd;
+      valid <-- vdd;
+      (* stay in Done *)
+    ] @@ elif (i.x ==:. 1) [
+      result <-- of_int ~width:width 1;
+      exists <-- vdd;
+      valid <-- vdd;
+      (* stay in Done *)
+    ] [
+      x_orig <-- uresize i.x full_width;
+      modulus_orig <-- uresize i.modulus full_width;
+      valid <-- gnd;
+      sm.set_next Init;
+    ];
+  ];
+];
       ];
     ];
 

@@ -174,50 +174,57 @@ module ModAdd = struct
         State.Process_chunk_7, process_chunk_logic 7 Final_adjust;
         
         State.Final_adjust, [
-          (* For subtraction in 257-bit 2's complement:
-             After computing a + (~b) + 1 where b's lower 256 bits are inverted:
-             - If bit 256 of accumulator is 0, result is negative (a < b), add modulus
-             - If bit 256 of accumulator is 1, result is positive (a >= b), use lower 256 bits
-             
-             For addition:
-             - Try subtracting modulus
-             - If result MSB is 1 (negative), keep original; else use reduced
-          *)
-          
-          (* For subtraction: check bit 256 of the accumulator *)
-          let acc_bit_256 = msb accumulator.value in
-          let sub_is_negative = ~:acc_bit_256 in
-          
-          (* For subtraction: if negative, add modulus *)
-          let sub_corrected = accumulator.value +: modulus_reg.value in
-          
-          (* For addition: try subtracting modulus *)
-          let add_reduced = accumulator.value -: modulus_reg.value in
-          let add_is_negative = msb add_reduced in
-          
-          (* Select final result based on operation *)
-          let final_result = 
-            mux2 is_subtract.value
-              (* Subtraction: if bit 256 is 0, we need correction *)
-              (mux2 sub_is_negative
-                (sel_bottom sub_corrected Config.width)
-                (sel_bottom accumulator.value Config.width))
-              (* Addition: if reduction makes it negative, keep original; else use reduced *)
-              (mux2 add_is_negative 
-                (sel_bottom accumulator.value Config.width)
-                (sel_bottom add_reduced Config.width))
-          in
-          
-          proc [
+  let acc_bit_256 = msb accumulator.value in
+  let sub_is_negative = ~:acc_bit_256 in
+  let sub_corrected = accumulator.value +: modulus_reg.value in
+  let add_reduced = accumulator.value -: modulus_reg.value in
+  let add_is_negative = msb add_reduced in
+  
+  let final_result = 
+    mux2 is_subtract.value
+      (mux2 sub_is_negative
+        (sel_bottom sub_corrected Config.width)
+        (sel_bottom accumulator.value Config.width))
+      (mux2 add_is_negative 
+        (sel_bottom accumulator.value Config.width)
+        (sel_bottom add_reduced Config.width))
+  in
+  
+  proc [
     result <-- final_result;
     valid <-- vdd;
-    sm.set_next Idle;  (* Go directly to Idle, valid is only high for 1 cycle *)
-  ];
-
+    
+    (* Handle immediate restart *)
+    if_ i.start [
+      (* Start new operation immediately *)
+      operand_a <-- uresize i.a intermediate_width;
+      modulus_reg <-- uresize i.modulus intermediate_width;
+      
+      if_ i.subtract [
+        let b_inverted_256 = ~:(i.b) in
+        let b_inverted_257 = uresize b_inverted_256 intermediate_width in
+        proc [
+          operand_b <-- b_inverted_257;
+          carry <-- vdd;
         ];
-        
-        State.Done, [
-  (* Only keep valid high for one cycle, then drop it *)
+      ] [
+        proc [
+          operand_b <-- uresize i.b intermediate_width;
+          carry <-- gnd;
+        ];
+      ];
+      
+      accumulator <-- zero intermediate_width;
+      is_subtract <-- i.subtract;
+      sm.set_next Process_chunk_0;
+    ] [
+      sm.set_next Idle;
+    ];
+  ];
+];
+
+State.Done, [
+  (* This state is no longer used, but keep for safety *)
   valid <-- gnd;
   sm.set_next Idle;
 ];
