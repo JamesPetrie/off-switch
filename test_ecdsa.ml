@@ -2,8 +2,7 @@ open Base
 open Hardcaml
 
 let () =
-  Stdio.printf "=== ECDSA Scalar Derivation Test ===\n";
-  Stdio.printf "=== Computes u1*G + u2*Q from (z, r, s) ===\n\n";
+  Stdio.printf "=== ECDSA Signature Verification Test ===\n\n";
   
   let scope = Scope.create ~flatten_design:true () in
   let module Sim = Cyclesim.With_interface(Ecdsa.I)(Ecdsa.O) in
@@ -23,36 +22,21 @@ let () =
   let g_x = Z.of_string "0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798" in
   let g_y = Z.of_string "0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8" in
   
+  (* Private key d = 2, Public key Q = 2G *)
+  let private_key = Z.of_int 2 in
+  
   let z_to_bits z =
     let hex_str = Z.format "%x" z in
     let padded = String.pad_left hex_str ~len:64 ~char:'0' in
     Bits.of_hex ~width:256 padded
   in
   
-  let bits_to_z bits = Z.of_string_base 2 (Bits.to_bstr bits) in
-  
   (* Modular arithmetic helpers *)
   let mod_mul_p a b = Z.((a * b) mod prime_p) in
   let mod_inv_p a = Z.invert a prime_p in
   let mod_inv_n a = Z.invert a prime_n in
   let mod_mul_n a b = Z.((a * b) mod prime_n) in
-  
-  (* Convert projective to affine *)
-  let proj_to_affine x y z =
-    if Z.equal z Z.zero then
-      None
-    else
-      let z_inv = mod_inv_p z in
-      let aff_x = mod_mul_p x z_inv in
-      let aff_y = mod_mul_p y z_inv in
-      Some (aff_x, aff_y)
-  in
-  
-  let proj_equals_affine ~proj_x ~proj_y ~proj_z ~aff_x ~aff_y =
-    match proj_to_affine proj_x proj_y proj_z with
-    | None -> false
-    | Some (x, y) -> Z.equal x aff_x && Z.equal y aff_y
-  in
+  let mod_add_n a b = Z.((a + b) mod prime_n) in
   
   (* Reference: affine point addition *)
   let affine_add (x1, y1) (x2, y2) =
@@ -96,25 +80,20 @@ let () =
     loop k None (x, y)
   in
   
-  (* Q = 2G *)
-  let q_x = Z.of_string "0xc6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5" in
-  let q_y = Z.of_string "12158399299693830322967808612713398636155367887041628176798871954788371653930" in
-  
-  (* Compute expected u1*G + u2*Q *)
-  let expected_result ~z ~r ~s =
-    let w = mod_inv_n s in
-    let u1 = mod_mul_n z w in
-    let u2 = mod_mul_n r w in
-    Stdio.printf "  Computed u1 = %s...\n" (String.prefix (Z.to_string u1) 30);
-    Stdio.printf "  Computed u2 = %s...\n" (String.prefix (Z.to_string u2) 30);
-    
-    let u1_g = scalar_mult u1 (g_x, g_y) in
-    let u2_q = scalar_mult u2 (q_x, q_y) in
-    match u1_g, u2_q with
-    | None, None -> None
-    | Some p, None -> Some p
-    | None, Some p -> Some p
-    | Some p1, Some p2 -> affine_add p1 p2
+  (* Generate a valid ECDSA signature for message hash z using nonce k *)
+  let sign ~z ~k =
+    (* R = k*G *)
+    match scalar_mult k (g_x, g_y) with
+    | None -> None
+    | Some (rx, _ry) ->
+        let r = Z.(rx mod prime_n) in
+        if Z.equal r Z.zero then None
+        else
+          (* s = k^(-1) * (z + r*d) mod n *)
+          let k_inv = mod_inv_n k in
+          let s = mod_mul_n k_inv (mod_add_n z (mod_mul_n r private_key)) in
+          if Z.equal s Z.zero then None
+          else Some (r, s)
   in
   
   let reset () =
@@ -130,7 +109,7 @@ let () =
     Cyclesim.cycle sim
   in
   
-  let run_ecdsa ~z ~r ~s =
+  let run_verify ~z ~r ~s =
     reset ();
     
     inputs.z := z_to_bits z;
@@ -148,11 +127,9 @@ let () =
         Stdio.printf "  TIMEOUT after %d cycles\n" max_cycles;
         None
       end else if Bits.to_bool !(outputs.done_) then begin
-        let result_x = bits_to_z !(outputs.x) in
-        let result_y = bits_to_z !(outputs.y) in
-        let result_z = bits_to_z !(outputs.z_out) in
+        let valid = Bits.to_bool !(outputs.valid) in
         Stdio.printf "  Completed in %d cycles\n" n;
-        Some (result_x, result_y, result_z)
+        Some valid
       end else begin
         Cyclesim.cycle sim;
         wait (n + 1)
@@ -165,181 +142,190 @@ let () =
   let record result = results := result :: !results in
   
   (* ============================================== *)
-  (* TEST 1: Simple values                         *)
+  (* TEST 1: Valid signature with small values     *)
   (* ============================================== *)
   
-  Stdio.printf "Test 1: Simple values z=1, r=2, s=3\n";
+  Stdio.printf "Test 1: Valid signature (z=12345, k=7)\n";
   
-  let z = Z.one in
-  let r = Z.of_int 2 in
-  let s = Z.of_int 3 in
+  let z = Z.of_int 12345 in
+  let k = Z.of_int 7 in
   
-  (match run_ecdsa ~z ~r ~s with
-  | None -> record false
-  | Some (rx, ry, rz) ->
-      let expected = expected_result ~z ~r ~s in
-      match expected with
-      | None ->
-          let pass = Z.equal rz Z.zero in
-          Stdio.printf "  Expected: infinity\n";
-          Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
-          record pass
-      | Some (ex, ey) ->
-          let pass = proj_equals_affine ~proj_x:rx ~proj_y:ry ~proj_z:rz ~aff_x:ex ~aff_y:ey in
+  (match sign ~z ~k with
+  | None -> 
+      Stdio.printf "  Failed to generate signature\n";
+      record false
+  | Some (r, s) ->
+      Stdio.printf "  Generated r = %s...\n" (String.prefix (Z.to_string r) 30);
+      Stdio.printf "  Generated s = %s...\n" (String.prefix (Z.to_string s) 30);
+      match run_verify ~z ~r ~s with
+      | None -> record false
+      | Some valid ->
+          Stdio.printf "  Valid = %b (expected true)\n" valid;
+          let pass = valid in
           Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
           record pass);
   
   (* ============================================== *)
-  (* TEST 2: Larger values                         *)
+  (* TEST 2: Valid signature with larger values    *)
   (* ============================================== *)
   
-  Stdio.printf "Test 2: Larger values z=0xDEADBEEF, r=0xCAFEBABE, s=0x12345678\n";
+  Stdio.printf "Test 2: Valid signature (z=0xDEADBEEF, k=0x123456)\n";
   
   let z = Z.of_string "0xDEADBEEF" in
-  let r = Z.of_string "0xCAFEBABE" in
-  let s = Z.of_string "0x12345678" in
+  let k = Z.of_string "0x123456" in
   
-  (match run_ecdsa ~z ~r ~s with
-  | None -> record false
-  | Some (rx, ry, rz) ->
-      let expected = expected_result ~z ~r ~s in
-      match expected with
-      | None ->
-          let pass = Z.equal rz Z.zero in
-          Stdio.printf "  Expected: infinity\n";
-          Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
-          record pass
-      | Some (ex, ey) ->
-          let pass = proj_equals_affine ~proj_x:rx ~proj_y:ry ~proj_z:rz ~aff_x:ex ~aff_y:ey in
-          Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
-          record pass);
-  
-  (* ============================================== *)
-  (* TEST 3: 128-bit values                        *)
-  (* ============================================== *)
-  
-  Stdio.printf "Test 3: 128-bit values\n";
-  
-  let z = Z.of_string "0x123456789ABCDEF0123456789ABCDEF0" in
-  let r = Z.of_string "0xFEDCBA9876543210FEDCBA9876543210" in
-  let s = Z.of_string "0xAAAABBBBCCCCDDDDEEEEFFFF00001111" in
-  
-  (match run_ecdsa ~z ~r ~s with
-  | None -> record false
-  | Some (rx, ry, rz) ->
-      let expected = expected_result ~z ~r ~s in
-      match expected with
-      | None ->
-          let pass = Z.equal rz Z.zero in
-          Stdio.printf "  Expected: infinity\n";
-          Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
-          record pass
-      | Some (ex, ey) ->
-          let pass = proj_equals_affine ~proj_x:rx ~proj_y:ry ~proj_z:rz ~aff_x:ex ~aff_y:ey in
+  (match sign ~z ~k with
+  | None -> 
+      Stdio.printf "  Failed to generate signature\n";
+      record false
+  | Some (r, s) ->
+      Stdio.printf "  Generated r = %s...\n" (String.prefix (Z.to_string r) 30);
+      Stdio.printf "  Generated s = %s...\n" (String.prefix (Z.to_string s) 30);
+      match run_verify ~z ~r ~s with
+      | None -> record false
+      | Some valid ->
+          Stdio.printf "  Valid = %b (expected true)\n" valid;
+          let pass = valid in
           Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
           record pass);
   
   (* ============================================== *)
-  (* TEST 4: s = 1 (w = 1, so u1 = z, u2 = r)      *)
+  (* TEST 3: Valid signature with 256-bit hash     *)
   (* ============================================== *)
   
-  Stdio.printf "Test 4: s=1 means u1=z, u2=r directly\n";
-  
-  let z = Z.of_int 5 in
-  let r = Z.of_int 3 in
-  let s = Z.one in
-  
-  Stdio.printf "  This should compute 5*G + 3*Q = 5G + 6G = 11G\n";
-  
-  (match run_ecdsa ~z ~r ~s with
-  | None -> record false
-  | Some (rx, ry, rz) ->
-      let expected = expected_result ~z ~r ~s in
-      match expected with
-      | None ->
-          let pass = Z.equal rz Z.zero in
-          Stdio.printf "  Expected: infinity\n";
-          Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
-          record pass
-      | Some (ex, ey) ->
-          let pass = proj_equals_affine ~proj_x:rx ~proj_y:ry ~proj_z:rz ~aff_x:ex ~aff_y:ey in
-          Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
-          record pass);
-  
-  (* ============================================== *)
-  (* TEST 5: z = 0 (u1 = 0)                        *)
-  (* ============================================== *)
-  
-  Stdio.printf "Test 5: z=0 means u1=0, result is just u2*Q\n";
-  
-  let z = Z.zero in
-  let r = Z.of_int 7 in
-  let s = Z.of_int 11 in
-  
-  (match run_ecdsa ~z ~r ~s with
-  | None -> record false
-  | Some (rx, ry, rz) ->
-      let expected = expected_result ~z ~r ~s in
-      match expected with
-      | None ->
-          let pass = Z.equal rz Z.zero in
-          Stdio.printf "  Expected: infinity\n";
-          Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
-          record pass
-      | Some (ex, ey) ->
-          let pass = proj_equals_affine ~proj_x:rx ~proj_y:ry ~proj_z:rz ~aff_x:ex ~aff_y:ey in
-          Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
-          record pass);
-  
-  (* ============================================== *)
-  (* TEST 6: r = 0 (u2 = 0)                        *)
-  (* ============================================== *)
-  
-  Stdio.printf "Test 6: r=0 means u2=0, result is just u1*G\n";
-  
-  let z = Z.of_int 13 in
-  let r = Z.zero in
-  let s = Z.of_int 17 in
-  
-  (match run_ecdsa ~z ~r ~s with
-  | None -> record false
-  | Some (rx, ry, rz) ->
-      let expected = expected_result ~z ~r ~s in
-      match expected with
-      | None ->
-          let pass = Z.equal rz Z.zero in
-          Stdio.printf "  Expected: infinity\n";
-          Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
-          record pass
-      | Some (ex, ey) ->
-          let pass = proj_equals_affine ~proj_x:rx ~proj_y:ry ~proj_z:rz ~aff_x:ex ~aff_y:ey in
-          Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
-          record pass);
-  
-  (* ============================================== *)
-  (* TEST 7: 256-bit realistic values              *)
-  (* ============================================== *)
-  
-  Stdio.printf "Test 7: 256-bit realistic ECDSA-like values\n";
+  Stdio.printf "Test 3: Valid signature (256-bit z, k)\n";
   
   let z = Z.of_string "0xb94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9" in
-  let r = Z.of_string "0x241097efbf8c27ad1ff6d370a878a6c3a5f1d2c5e4f3c2b1a0987654321fedcb" in
-  let s = Z.of_string "0x3b78ce563f89a0ed9414f5aa28ad0d96d6795f9c63012d1acde45678c0def123" in
+  let k = Z.of_string "0x3b78ce563f89a0ed9414f5aa28ad0d96d6795f9c63" in
   
-  (match run_ecdsa ~z ~r ~s with
-  | None -> record false
-  | Some (rx, ry, rz) ->
-      let expected = expected_result ~z ~r ~s in
-      match expected with
-      | None ->
-          let pass = Z.equal rz Z.zero in
-          Stdio.printf "  Expected: infinity\n";
-          Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
-          record pass
-      | Some (ex, ey) ->
-          let pass = proj_equals_affine ~proj_x:rx ~proj_y:ry ~proj_z:rz ~aff_x:ex ~aff_y:ey in
+  (match sign ~z ~k with
+  | None -> 
+      Stdio.printf "  Failed to generate signature\n";
+      record false
+  | Some (r, s) ->
+      Stdio.printf "  Generated r = %s...\n" (String.prefix (Z.to_string r) 30);
+      Stdio.printf "  Generated s = %s...\n" (String.prefix (Z.to_string s) 30);
+      match run_verify ~z ~r ~s with
+      | None -> record false
+      | Some valid ->
+          Stdio.printf "  Valid = %b (expected true)\n" valid;
+          let pass = valid in
           Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
           record pass);
+  
+  (* ============================================== *)
+  (* TEST 4: Invalid signature - wrong z           *)
+  (* ============================================== *)
+  
+  Stdio.printf "Test 4: Invalid signature (wrong message hash)\n";
+  
+  let z = Z.of_int 12345 in
+  let k = Z.of_int 7 in
+  
+  (match sign ~z ~k with
+  | None -> 
+      Stdio.printf "  Failed to generate signature\n";
+      record false
+  | Some (r, s) ->
+      let wrong_z = Z.of_int 99999 in  (* Different message *)
+      Stdio.printf "  Verifying with wrong z = 99999\n";
+      match run_verify ~z:wrong_z ~r ~s with
+      | None -> record false
+      | Some valid ->
+          Stdio.printf "  Valid = %b (expected false)\n" valid;
+          let pass = not valid in
+          Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+          record pass);
+  
+  (* ============================================== *)
+  (* TEST 5: Invalid signature - wrong r           *)
+  (* ============================================== *)
+  
+  Stdio.printf "Test 5: Invalid signature (wrong r)\n";
+  
+  let z = Z.of_int 12345 in
+  let k = Z.of_int 7 in
+  
+  (match sign ~z ~k with
+  | None -> 
+      Stdio.printf "  Failed to generate signature\n";
+      record false
+  | Some (_r, s) ->
+      let wrong_r = Z.of_int 11111 in  (* Different r *)
+      Stdio.printf "  Verifying with wrong r = 11111\n";
+      match run_verify ~z ~r:wrong_r ~s with
+      | None -> record false
+      | Some valid ->
+          Stdio.printf "  Valid = %b (expected false)\n" valid;
+          let pass = not valid in
+          Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+          record pass);
+  
+  (* ============================================== *)
+  (* TEST 6: Invalid signature - wrong s           *)
+  (* ============================================== *)
+  
+  Stdio.printf "Test 6: Invalid signature (wrong s)\n";
+  
+  let z = Z.of_int 12345 in
+  let k = Z.of_int 7 in
+  
+  (match sign ~z ~k with
+  | None -> 
+      Stdio.printf "  Failed to generate signature\n";
+      record false
+  | Some (r, _s) ->
+      let wrong_s = Z.of_int 22222 in  (* Different s *)
+      Stdio.printf "  Verifying with wrong s = 22222\n";
+      match run_verify ~z ~r ~s:wrong_s with
+      | None -> record false
+      | Some valid ->
+          Stdio.printf "  Valid = %b (expected false)\n" valid;
+          let pass = not valid in
+          Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+          record pass);
+  
+  (* ============================================== *)
+  (* TEST 7: Valid signature - another random case *)
+  (* ============================================== *)
+  
+  Stdio.printf "Test 7: Valid signature (z=0xCAFEBABE, k=0x999)\n";
+  
+  let z = Z.of_string "0xCAFEBABE" in
+  let k = Z.of_string "0x999" in
+  
+  (match sign ~z ~k with
+  | None -> 
+      Stdio.printf "  Failed to generate signature\n";
+      record false
+  | Some (r, s) ->
+      Stdio.printf "  Generated r = %s...\n" (String.prefix (Z.to_string r) 30);
+      Stdio.printf "  Generated s = %s...\n" (String.prefix (Z.to_string s) 30);
+      match run_verify ~z ~r ~s with
+      | None -> record false
+      | Some valid ->
+          Stdio.printf "  Valid = %b (expected true)\n" valid;
+          let pass = valid in
+          Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+          record pass);
+  
+  (* ============================================== *)
+  (* TEST 8: Completely random signature (invalid) *)
+  (* ============================================== *)
+  
+  Stdio.printf "Test 8: Random values (should be invalid)\n";
+  
+  let z = Z.of_string "0x1111111111111111" in
+  let r = Z.of_string "0x2222222222222222" in
+  let s = Z.of_string "0x3333333333333333" in
+  
+  (match run_verify ~z ~r ~s with
+  | None -> record false
+  | Some valid ->
+      Stdio.printf "  Valid = %b (expected false)\n" valid;
+      let pass = not valid in
+      Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+      record pass);
   
   (* ============================================== *)
   (* TEST SUMMARY                                  *)
@@ -360,6 +346,6 @@ let () =
     Stdio.printf "╚════██║██║   ██║██║     ██║     ██╔══╝  ╚════██║╚════██║\n";
     Stdio.printf "███████║╚██████╔╝╚██████╗╚██████╗███████╗███████║███████║\n";
     Stdio.printf "╚══════╝ ╚═════╝  ╚═════╝ ╚═════╝╚══════╝╚══════╝╚══════╝\n";
-    Stdio.printf "\nAll ECDSA scalar derivation tests passed! ✓✓✓\n"
+    Stdio.printf "\nAll ECDSA verification tests passed! ✓✓✓\n"
   end else
     Stdio.printf "\n✗ Some tests failed - review above for details\n"

@@ -73,6 +73,7 @@ module O = struct
   type 'a t =
     { busy : 'a
     ; done_ : 'a
+    ; valid : 'a                        (* signature is valid *)
     ; x : 'a [@bits Config.width]
     ; y : 'a [@bits Config.width]
     ; z_out : 'a [@bits Config.width]
@@ -87,6 +88,8 @@ module State = struct
     | Loop
     | Load
     | Run_add
+    | Finalize_op
+    | Compare
     | Done
   [@@deriving sexp_of, compare, enumerate]
 end
@@ -94,7 +97,7 @@ end
 type instr = { op : int; src1 : int; src2 : int; dst : int }
 
 let program = [|
-{ op = Op.mul; src1 = Config.x1; src2 = Config.x2; dst = Config.t0 };
+  { op = Op.mul; src1 = Config.x1; src2 = Config.x2; dst = Config.t0 };
   { op = Op.mul; src1 = Config.y1; src2 = Config.y2; dst = Config.t1 };
   { op = Op.mul; src1 = Config.z1; src2 = Config.z2; dst = Config.t2 };
   { op = Op.add; src1 = Config.x1; src2 = Config.y1; dst = Config.t3 };
@@ -190,9 +193,17 @@ let create scope (i : _ I.t) =
   let y2_latched = Variable.reg spec ~width in
   let z2_latched = Variable.reg spec ~width in
   
+  (* Finalize phase registers *)
+  let finalize_step = Variable.reg spec ~width:1 in
+  let finalize_op_started = Variable.reg spec ~width:1 in
+  let z_inv_reg = Variable.reg spec ~width in
+  let x_affine_reg = Variable.reg spec ~width in
+  
+  (* Output registers *)
   let out_x = Variable.reg spec ~width in
   let out_y = Variable.reg spec ~width in
   let out_z = Variable.reg spec ~width in
+  let valid_reg = Variable.reg spec ~width:1 in
   let done_flag = Variable.reg spec ~width:1 in
   
   let current_bit_u = bit_select_dynamic u1_reg.value bit_pos.value in
@@ -237,19 +248,22 @@ let create scope (i : _ I.t) =
         (mux2 (idx ==:. Config.z2) z2_latched.value base))
   in
   
+  (* Select arith inputs based on current state *)
+  let in_prep_or_finalize = (sm.is Prep_op) |: (sm.is Finalize_op) in
+  
   let arith_read_data_a = 
-    mux2 (sm.is Prep_op) arith_a.value (reg_read current_src1)
+    mux2 in_prep_or_finalize arith_a.value (reg_read current_src1)
   in
   let arith_read_data_b = 
-    mux2 (sm.is Prep_op) arith_b.value (reg_read current_src2)
+    mux2 in_prep_or_finalize arith_b.value (reg_read current_src2)
   in
   
   let arith_op_selected =
-    mux2 (sm.is Prep_op) arith_op.value current_op_from_program
+    mux2 in_prep_or_finalize arith_op.value current_op_from_program
   in
   
   let arith_prime_sel_selected =
-    mux2 (sm.is Prep_op) arith_prime_sel.value gnd
+    mux2 in_prep_or_finalize arith_prime_sel.value gnd
   in
   
   let arith_out = Arith.create (Scope.sub_scope scope "arith")
@@ -292,7 +306,7 @@ let create scope (i : _ I.t) =
           (* w = s^(-1) mod n *)
           arith_op <--. Op.inv;
           arith_a <-- s_reg.value;
-          arith_b <-- zero width;  (* unused for inv *)
+          arith_b <-- zero width;
         ] @@ elif (prep_step.value ==:. 1) [
           (* u1 = z * w mod n *)
           arith_op <--. Op.mul;
@@ -340,7 +354,10 @@ let create scope (i : _ I.t) =
       
       State.Loop, [
         if_ last_step.value [
-          sm.set_next Done;
+          (* Initialize for finalize phase *)
+          finalize_step <-- gnd;
+          finalize_op_started <-- gnd;
+          sm.set_next Finalize_op;
         ] @@ elif doubling.value [
           (* Doubling phase *)
           doubling <-- gnd;
@@ -409,10 +426,54 @@ let create scope (i : _ I.t) =
         ];
       ];
       
-      State.Done, [
+      State.Finalize_op, [
+        (* Set up arith inputs based on finalize_step *)
+        arith_prime_sel <-- gnd;  (* Finalize ops use mod p *)
+        
+        if_ (~:(finalize_step.value)) [
+          (* z_inv = Z1^(-1) mod p *)
+          arith_op <--. Op.inv;
+          arith_a <-- reg_file.(Config.z1).value;
+          arith_b <-- zero width;
+        ] [
+          (* x_affine = X1 * z_inv mod p *)
+          arith_op <--. Op.mul;
+          arith_a <-- reg_file.(Config.x1).value;
+          arith_b <-- z_inv_reg.value;
+        ];
+        
+        if_ (~:(finalize_op_started.value)) [
+          arith_start <-- vdd;
+          finalize_op_started <-- vdd;
+        ] [
+          when_ arith_out.done_ [
+            (* Store result *)
+            if_ (~:(finalize_step.value)) [
+              z_inv_reg <-- arith_out.reg_write_data;
+            ] [
+              x_affine_reg <-- arith_out.reg_write_data;
+            ];
+            
+            if_ finalize_step.value [
+              sm.set_next Compare;
+            ] [
+              finalize_step <-- vdd;
+              finalize_op_started <-- gnd;
+            ];
+          ];
+        ];
+      ];
+      
+      State.Compare, [
+        (* Compare x_affine with r *)
+        valid_reg <-- (x_affine_reg.value ==: r_reg.value);
         out_x <-- reg_file.(Config.x1).value;
         out_y <-- reg_file.(Config.y1).value;
         out_z <-- reg_file.(Config.z1).value;
+        sm.set_next Done;
+      ];
+      
+      State.Done, [
         done_flag <-- vdd;
         sm.set_next Idle;
       ];
@@ -422,6 +483,7 @@ let create scope (i : _ I.t) =
   { O.
     busy = ~:(sm.is Idle)
   ; done_ = done_flag.value
+  ; valid = valid_reg.value
   ; x = out_x.value
   ; y = out_y.value
   ; z_out = out_z.value
