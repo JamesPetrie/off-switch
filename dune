@@ -52,7 +52,7 @@
 (library
  (name ecdsa)
  (modules ecdsa)
- (libraries base hardcaml zarith mod_add mod_mul mod_inv)
+ (libraries base hardcaml zarith arith)
  (preprocess (pps ppx_jane ppx_hardcaml)))
 
  (library
@@ -87,11 +87,6 @@
  (preprocess (pps ppx_jane ppx_hardcaml)))
 
 
- (executable
- (name test_point_ops)
- (modules test_point_ops)
- (libraries base hardcaml stdio zarith ecdsa)
- (preprocess (pps ppx_jane ppx_hardcaml)))
 
 
 
