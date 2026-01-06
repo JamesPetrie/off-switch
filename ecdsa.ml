@@ -33,12 +33,9 @@ module Config = struct
   let generator_z = Z.one
   
   (* Public key Q = 2G *)
-
-  (* Public key Q = 2G *)
-let q_x = Z.of_string "0xc6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
-let q_y = Z.of_string "12158399299693830322967808612713398636155367887041628176798871954788371653930"
-let q_z = Z.one
-
+  let q_x = Z.of_string "0xc6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
+  let q_y = Z.of_string "12158399299693830322967808612713398636155367887041628176798871954788371653930"
+  let q_z = Z.one
   
   (* Precomputed G + Q = 3G *)
   let gpq_x = Z.of_string "0xf9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"
@@ -55,6 +52,7 @@ module Op = struct
   let add = 0
   let sub = 1
   let mul = 2
+  let inv = 3
 end
 
 module I = struct
@@ -62,8 +60,9 @@ module I = struct
     { clock : 'a
     ; clear : 'a
     ; start : 'a
-    ; scalar_u : 'a [@bits Config.width]  (* scalar for G *)
-    ; scalar_v : 'a [@bits Config.width]  (* scalar for Q *)
+    ; z : 'a [@bits Config.width]       (* message hash *)
+    ; r : 'a [@bits Config.width]       (* signature r *)
+    ; s : 'a [@bits Config.width]       (* signature s *)
     ; param_a : 'a [@bits Config.width]
     ; param_b3 : 'a [@bits Config.width]
     }
@@ -76,7 +75,7 @@ module O = struct
     ; done_ : 'a
     ; x : 'a [@bits Config.width]
     ; y : 'a [@bits Config.width]
-    ; z : 'a [@bits Config.width]
+    ; z_out : 'a [@bits Config.width]
     }
   [@@deriving sexp_of, hardcaml]
 end
@@ -84,6 +83,7 @@ end
 module State = struct
   type t =
     | Idle
+    | Prep_op
     | Loop
     | Load
     | Run_add
@@ -94,7 +94,7 @@ end
 type instr = { op : int; src1 : int; src2 : int; dst : int }
 
 let program = [|
-  { op = Op.mul; src1 = Config.x1; src2 = Config.x2; dst = Config.t0 };
+{ op = Op.mul; src1 = Config.x1; src2 = Config.x2; dst = Config.t0 };
   { op = Op.mul; src1 = Config.y1; src2 = Config.y2; dst = Config.t1 };
   { op = Op.mul; src1 = Config.z1; src2 = Config.z2; dst = Config.t2 };
   { op = Op.add; src1 = Config.x1; src2 = Config.y1; dst = Config.t3 };
@@ -165,13 +165,24 @@ let create scope (i : _ I.t) =
   let const_gpqy = of_z ~width Config.gpq_y in
   let const_gpqz = of_z ~width Config.gpq_z in
   
-  let scalar_u_reg = Variable.reg spec ~width in
-  let scalar_v_reg = Variable.reg spec ~width in
+  (* Input registers *)
+  let z_reg = Variable.reg spec ~width in
+  let r_reg = Variable.reg spec ~width in
+  let s_reg = Variable.reg spec ~width in
+  
+  (* Prep phase registers *)
+  let w_reg = Variable.reg spec ~width in      (* s^(-1) mod n *)
+  let u1_reg = Variable.reg spec ~width in     (* z * w mod n *)
+  let u2_reg = Variable.reg spec ~width in     (* r * w mod n *)
+  let prep_step = Variable.reg spec ~width:2 in
+  let prep_op_started = Variable.reg spec ~width:1 in
+  
+  (* Main loop registers *)
   let bit_pos = Variable.reg spec ~width:8 in
   let doubling = Variable.reg spec ~width:1 in
   let last_step = Variable.reg spec ~width:1 in
   let step = Variable.reg spec ~width:6 in
-  let load_idx = Variable.reg spec ~width:2 in  (* 0=P, 1=G, 2=Q, 3=G+Q *)
+  let load_idx = Variable.reg spec ~width:2 in
   let op_started = Variable.reg spec ~width:1 in
   
   (* Latched second operand registers *)
@@ -184,12 +195,13 @@ let create scope (i : _ I.t) =
   let out_z = Variable.reg spec ~width in
   let done_flag = Variable.reg spec ~width:1 in
   
-  let current_bit_u = bit_select_dynamic scalar_u_reg.value bit_pos.value in
-  let current_bit_v = bit_select_dynamic scalar_v_reg.value bit_pos.value in
+  let current_bit_u = bit_select_dynamic u1_reg.value bit_pos.value in
+  let current_bit_v = bit_select_dynamic u2_reg.value bit_pos.value in
   
   (* Check if P is point at infinity (z1 = 0) *)
   let p_is_infinity = reg_file.(Config.z1).value ==:. 0 in
   
+  (* Instruction decode for point addition *)
   let default_instr = of_int ~width:addr_width 0 in
   let decode field =
     mux step.value 
@@ -207,11 +219,16 @@ let create scope (i : _ I.t) =
   let current_dst = decode (fun instr -> instr.dst) in
   let current_src1 = decode (fun instr -> instr.src1) in
   let current_src2 = decode (fun instr -> instr.src2) in
-  let current_op = decode_op in
+  let current_op_from_program = decode_op in
   
+  (* Arith control signals *)
   let arith_start = Variable.wire ~default:gnd in
+  let arith_op = Variable.wire ~default:(zero 2) in
+  let arith_prime_sel = Variable.wire ~default:gnd in
+  let arith_a = Variable.wire ~default:(zero width) in
+  let arith_b = Variable.wire ~default:(zero width) in
   
-  (* Use latched values for x2/y2/z2 *)
+  (* Use latched values for x2/y2/z2 in point addition *)
   let reg_read idx =
     let base_values = Array.to_list (Array.map reg_file ~f:(fun r -> r.value)) in
     let base = mux idx base_values in
@@ -220,16 +237,28 @@ let create scope (i : _ I.t) =
         (mux2 (idx ==:. Config.z2) z2_latched.value base))
   in
   
-  let arith_read_data_a = reg_read current_src1 in
-  let arith_read_data_b = reg_read current_src2 in
+  let arith_read_data_a = 
+    mux2 (sm.is Prep_op) arith_a.value (reg_read current_src1)
+  in
+  let arith_read_data_b = 
+    mux2 (sm.is Prep_op) arith_b.value (reg_read current_src2)
+  in
+  
+  let arith_op_selected =
+    mux2 (sm.is Prep_op) arith_op.value current_op_from_program
+  in
+  
+  let arith_prime_sel_selected =
+    mux2 (sm.is Prep_op) arith_prime_sel.value gnd
+  in
   
   let arith_out = Arith.create (Scope.sub_scope scope "arith")
     { Arith.I.
       clock = i.clock
     ; clear = i.clear
     ; start = arith_start.value
-    ; op = current_op
-    ; prime_sel = gnd
+    ; op = arith_op_selected
+    ; prime_sel = arith_prime_sel_selected
     ; addr_a = current_src1
     ; addr_b = current_src2
     ; addr_out = current_dst
@@ -244,19 +273,68 @@ let create scope (i : _ I.t) =
     sm.switch [
       State.Idle, [
         when_ i.start [
-          scalar_u_reg <-- i.scalar_u;
-          scalar_v_reg <-- i.scalar_v;
-          bit_pos <--. 255;
-          doubling <-- vdd;
-          last_step <-- gnd;
-          step <-- zero 6;
-          op_started <-- gnd;
-          reg_file.(Config.x1) <-- of_z ~width Config.infinity_x;
-          reg_file.(Config.y1) <-- of_z ~width Config.infinity_y;
-          reg_file.(Config.z1) <-- of_z ~width Config.infinity_z;
+          z_reg <-- i.z;
+          r_reg <-- i.r;
+          s_reg <-- i.s;
+          prep_step <--. 0;
+          prep_op_started <-- gnd;
           reg_file.(Config.param_a) <-- i.param_a;
           reg_file.(Config.param_b3) <-- i.param_b3;
-          sm.set_next Loop;
+          sm.set_next Prep_op;
+        ];
+      ];
+      
+      State.Prep_op, [
+        (* Set up arith inputs based on prep_step *)
+        arith_prime_sel <-- vdd;  (* All prep ops use mod n *)
+        
+        if_ (prep_step.value ==:. 0) [
+          (* w = s^(-1) mod n *)
+          arith_op <--. Op.inv;
+          arith_a <-- s_reg.value;
+          arith_b <-- zero width;  (* unused for inv *)
+        ] @@ elif (prep_step.value ==:. 1) [
+          (* u1 = z * w mod n *)
+          arith_op <--. Op.mul;
+          arith_a <-- z_reg.value;
+          arith_b <-- w_reg.value;
+        ] [
+          (* u2 = r * w mod n *)
+          arith_op <--. Op.mul;
+          arith_a <-- r_reg.value;
+          arith_b <-- w_reg.value;
+        ];
+        
+        if_ (~:(prep_op_started.value)) [
+          arith_start <-- vdd;
+          prep_op_started <-- vdd;
+        ] [
+          when_ arith_out.done_ [
+            (* Store result *)
+            if_ (prep_step.value ==:. 0) [
+              w_reg <-- arith_out.reg_write_data;
+            ] @@ elif (prep_step.value ==:. 1) [
+              u1_reg <-- arith_out.reg_write_data;
+            ] [
+              u2_reg <-- arith_out.reg_write_data;
+            ];
+            
+            if_ (prep_step.value ==:. 2) [
+              (* Initialize for main loop *)
+              bit_pos <--. 255;
+              doubling <-- vdd;
+              last_step <-- gnd;
+              step <-- zero 6;
+              op_started <-- gnd;
+              reg_file.(Config.x1) <-- of_z ~width Config.infinity_x;
+              reg_file.(Config.y1) <-- of_z ~width Config.infinity_y;
+              reg_file.(Config.z1) <-- of_z ~width Config.infinity_z;
+              sm.set_next Loop;
+            ] [
+              prep_step <-- prep_step.value +:. 1;
+              prep_op_started <-- gnd;
+            ];
+          ];
         ];
       ];
       
@@ -269,18 +347,17 @@ let create scope (i : _ I.t) =
           if_ p_is_infinity [
             sm.set_next Loop;
           ] [
-            load_idx <--. 0;  (* Load P *)
+            load_idx <--. 0;
             sm.set_next Load;
           ];
         ] [
           (* Adding phase *)
           doubling <-- vdd;
-          load_idx <-- (current_bit_v @: current_bit_u);  (* {v[i], u[i]} as 2-bit value *)
+          load_idx <-- (current_bit_v @: current_bit_u);
           last_step <-- (bit_pos.value ==:. 0);
           bit_pos <-- bit_pos.value -:. 1;
           
           if_ ((~: current_bit_u) &: (~: current_bit_v)) [
-            (* load_idx = 0, skip add *)
             sm.set_next Loop;
           ] [
             sm.set_next Load;
@@ -289,8 +366,6 @@ let create scope (i : _ I.t) =
       ];
       
       State.Load, [
-        (* Latch second operand based on load_idx *)
-        (* 0=P, 1=G, 2=Q, 3=G+Q *)
         if_ (load_idx.value ==:. 0) [
           x2_latched <-- reg_file.(Config.x1).value;
           y2_latched <-- reg_file.(Config.y1).value;
@@ -304,7 +379,6 @@ let create scope (i : _ I.t) =
           y2_latched <-- const_qy;
           z2_latched <-- const_qz;
         ] [
-          (* load_idx = 3 *)
           x2_latched <-- const_gpqx;
           y2_latched <-- const_gpqy;
           z2_latched <-- const_gpqz;
@@ -350,5 +424,5 @@ let create scope (i : _ I.t) =
   ; done_ = done_flag.value
   ; x = out_x.value
   ; y = out_y.value
-  ; z = out_z.value
+  ; z_out = out_z.value
   }
