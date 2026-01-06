@@ -2,6 +2,48 @@ open Base
 open Hardcaml
 open Signal
 
+
+(* ECDSA Signature Verification for secp256k1
+   
+   Verifies ECDSA signatures using the equation:
+     R = u1*G + u2*Q
+   where:
+     u1 = z * s^(-1) mod n
+     u2 = r * s^(-1) mod n
+   
+   Signature is valid if R.x mod n == r
+
+    Uses Renes, Costello and Batina's complete addition formula in projective coordinates
+
+    Uses the Arith module for modular {add, sub, mul, inv}.
+   
+   Inputs:
+     - z: message hash (256 bits)
+     - r, s: signature components (256 bits each)
+     - param_a, param_b3: curve parameters (a=0, b3=21 for secp256k1)
+   
+   Outputs:
+     - valid: 1 if signature is valid, 0 otherwise
+     - done_: pulses high for one cycle when verification completes
+     - busy: high while verification is in progress
+     - x, y, z_out: final point coordinates (for debugging)
+   
+   Hardcoded:
+     - G: generator point
+     - Q: public key (currently 2G for testing)
+     - G+Q: precomputed sum (currently 3G)
+   
+   State machine:
+     Idle -> Prep_op (3 ops) -> Loop/Load/Run_add (scalar mult) 
+          -> Finalize_op (2 ops) -> Compare -> Done -> Idle
+   
+   Cycle count: ~1.5-2M cycles for typical 256-bit scalars
+   
+   Note: Does not currently reduce x_affine mod n before comparison, 
+   or check that z, s, r are within range.
+
+*)
+
 module Config = struct
   let width = 256
   let reg_addr_width = 5
