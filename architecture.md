@@ -58,7 +58,7 @@ flowchart TB
     SL -->|"nonce, ready"| AUTH
     WIN --> ADDER
     AND --> WOUT
-'''
+```
 Security block architecture. The Int8 adder is a placeholder for actual chip operations (matrix multiplies, data routing, etc.).
 
 Module Summary
