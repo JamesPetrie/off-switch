@@ -32,14 +32,26 @@ The security block implements a hardware-level "deadman's switch" for AI acceler
 
 ```mermaid
 flowchart TB
+    subgraph external_left[" "]
+        AUTH["License<br/>Authority"]:::external
+    end
+    
     subgraph SECURITY_BLOCK["SECURITY BLOCK"]
         direction TB
-        SL["Security Logic<br/>(State Machine)"]
-        TRNG["TRNG<br/>256-bit"]
-        ECDSA["ECDSA<br/>secp256k1"]
-        ALLOW["Allowance<br/>64-bit"]
-        ADDER["Int8 Add"]
-        AND["AND Gate"]
+        SL["Security Logic<br/>(State Machine)"]:::security
+        
+        subgraph submodules[" "]
+            direction LR
+            TRNG["TRNG<br/>256-bit"]:::trng
+            ECDSA["ECDSA<br/>secp256k1"]:::ecdsa
+            ALLOW["Allowance<br/>64-bit"]:::allowance
+        end
+        
+        subgraph datapath[" "]
+            direction LR
+            ADDER["Int8 Add"]:::adder
+            AND["AND Gate"]:::andgate
+        end
         
         SL -->|request_new| TRNG
         TRNG -->|"nonce, valid"| SL
@@ -50,14 +62,23 @@ flowchart TB
         ADDER --> AND
     end
     
-    AUTH["License<br/>Authority"]
-    WIN["Workload<br/>Input"]
-    WOUT["Workload<br/>Output"]
+    subgraph external_io[" "]
+        direction LR
+        WIN["Workload<br/>Input"]:::external
+        WOUT["Workload<br/>Output"]:::external
+    end
     
-    AUTH -->|"license_submit, r, s"| SL
-    SL -->|"nonce, ready"| AUTH
+    AUTH <-->|"license_submit, r, s<br/>nonce, ready"| SL
     WIN --> ADDER
     AND --> WOUT
+    
+    classDef external fill:#fff,stroke:#333,stroke-dasharray: 5 5
+    classDef security fill:#cce5ff,stroke:#004085
+    classDef trng fill:#c3e6cb,stroke:#155724
+    classDef ecdsa fill:#ffeeba,stroke:#856404
+    classDef allowance fill:#fff3cd,stroke:#856404
+    classDef adder fill:#e2d5f1,stroke:#6f42c1
+    classDef andgate fill:#f8d7da,stroke:#721c24
 ```
 Security block architecture. The Int8 adder is a placeholder for actual chip operations (matrix multiplies, data routing, etc.).
 
