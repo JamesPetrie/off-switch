@@ -55,6 +55,18 @@
  (libraries base hardcaml zarith arith)
  (preprocess (pps ppx_jane ppx_hardcaml)))
 
+(library
+ (name trng)
+ (modules trng)
+ (libraries hardcaml)
+ (preprocess (pps ppx_jane ppx_hardcaml)))
+
+(library
+ (name security_block)
+ (modules security_block)
+ (libraries hardcaml trng ecdsa arith)
+ (preprocess (pps ppx_jane ppx_hardcaml)))
+
  (library
  (name point_add)
  (modules point_add)
@@ -87,6 +99,12 @@
  (preprocess (pps ppx_jane ppx_hardcaml)))
 
 
+
+(executable
+ (name test_security_block)
+ (modules test_security_block)
+ (libraries base hardcaml stdio zarith ecdsa security_block)
+ (preprocess (pps ppx_jane ppx_hardcaml)))
 
 
 
