@@ -9,12 +9,14 @@
    - Inline Int8 workload with output gating
    
    State machine:
-   - Requests nonce from TRNG
+   - Requests nonce from TRNG at initialization
    - Publishes nonce for external license generation
    - Verifies received licenses via ECDSA
-   - Increments allowance on valid license
+   - Increments allowance on valid license, then generates new nonce
+   - On invalid license, returns to Publish with same nonce
    
-   Workload continues during verification as long as allowance > 0.
+   Workload output is gated by ANDing each bit with (allowance > 0).
+   Allowance decrements every clock cycle (time-based authorization).
 *)
 
 open Hardcaml
@@ -23,9 +25,9 @@ open Signal
 module Config = struct
   let nonce_width = 256
   let signature_width = 256
-  let allowance_width = 32
+  let allowance_width = 64
   let init_delay_cycles = 100
-  let allowance_increment = 1_000_000
+  let allowance_increment = 1_000_000_000_000  (* ~11.5 days at 1GHz *)
 end
 
 module I = struct
@@ -64,7 +66,6 @@ module O = struct
     (* Debug *)
     ; state_debug : 'a [@bits 4]
     ; licenses_accepted : 'a [@bits 16]
-    ; licenses_rejected : 'a [@bits 16]
     ; ecdsa_busy : 'a
     }
   [@@deriving sexp_of, hardcaml]
@@ -128,9 +129,7 @@ let create scope (i : _ I.t) =
   
   let enabled = allowance.value >:. 0 in
   
-  let workload_active = i.workload_valid &: enabled in
-  
-  (* Allowance update: increment takes priority, no simultaneous inc/dec *)
+  (* Allowance update: increment takes priority, otherwise decrement each cycle *)
   let increment_amount = of_int ~width:Config.allowance_width Config.allowance_increment in
   let incremented_allowance = 
     let sum = allowance.value +: increment_amount in
@@ -141,7 +140,6 @@ let create scope (i : _ I.t) =
   
   (* === Statistics === *)
   let licenses_accepted = Variable.reg spec ~width:16 in
-  let licenses_rejected = Variable.reg spec ~width:16 in
   
   (* === Init Delay Counter === *)
   let delay_counter = Variable.reg spec ~width:16 in
@@ -149,9 +147,10 @@ let create scope (i : _ I.t) =
   (* === State Machine === *)
   compile [
     (* Allowance update logic - runs every cycle independent of state machine *)
+    (* Increment takes priority; otherwise decrement every cycle if allowance > 0 *)
     if_ increment_allowance.value [
       allowance <-- incremented_allowance;
-    ] @@ elif (workload_active &: (allowance.value >:. 0)) [
+    ] @@ elif (allowance.value >:. 0) [
       allowance <-- decremented_allowance;
     ] [];
     
@@ -200,24 +199,28 @@ let create scope (i : _ I.t) =
       
       State.Update, [
         if_ ecdsa.valid [
+          (* Valid license: increment allowance, get new nonce *)
           increment_allowance <-- vdd;
           licenses_accepted <-- licenses_accepted.value +:. 1;
+          sm.set_next Request_nonce;
         ] [
-          licenses_rejected <-- licenses_rejected.value +:. 1;
+          (* Invalid license: return to Publish with same nonce *)
+          sm.set_next Publish;
         ];
-        sm.set_next Request_nonce;
       ];
     ];
   ];
   
-  (* === Workload: Signed Int8 Addition with Output Gating === *)
+  (* === Workload: Signed Int8 Addition with AND-based Output Gating === *)
   let int8_sum = 
     let a_signed = i.int8_a in
     let b_signed = i.int8_b in
     (a_signed +: b_signed).:[(7, 0)]  (* Wrapping addition *)
   in
   
-  let gated_result = mux2 enabled int8_sum (zero 8) in
+  (* SECURITY GATE: AND each output bit with enabled signal *)
+  let enabled_mask = repeat enabled 8 in
+  let gated_result = int8_sum &: enabled_mask in
   
   (* Pipeline register for workload output *)
   let result_reg = Variable.reg spec ~width:8 in
@@ -228,7 +231,7 @@ let create scope (i : _ I.t) =
     result_reg <-- gated_result;
   ];
   
-(* === State Encoding for Debug === *)
+  (* === State Encoding for Debug === *)
   let state_encoding = 
     uresize (sm.current) 4
   in
@@ -242,6 +245,5 @@ let create scope (i : _ I.t) =
   ; enabled = enabled
   ; state_debug = state_encoding
   ; licenses_accepted = licenses_accepted.value
-  ; licenses_rejected = licenses_rejected.value
   ; ecdsa_busy = ecdsa.busy
   }

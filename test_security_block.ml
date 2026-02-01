@@ -38,8 +38,11 @@ let () =
   
   let bits_to_int8 b =
     let v = Bits.to_int b in
-    (* Sign extend if negative *)
     if v > 127 then v - 256 else v
+  in
+  
+  let bits_to_int64 b =
+    Bits.to_int64 b
   in
   
   (* Modular arithmetic helpers *)
@@ -108,7 +111,7 @@ let () =
   
   let reset () =
     inputs.clear := Bits.vdd;
-    inputs.license_valid := Bits.gnd;
+    inputs.license_submit := Bits.gnd;
     inputs.license_r := Bits.zero 256;
     inputs.license_s := Bits.zero 256;
     inputs.workload_valid := Bits.gnd;
@@ -123,14 +126,8 @@ let () =
     Cyclesim.cycle sim
   in
   
-  let cycle ?(n=1) () =
-    for _ = 1 to n do
-      Cyclesim.cycle sim
-    done
-  in
-  
   let get_allowance () =
-    Bits.to_int !(outputs.allowance)
+    bits_to_int64 !(outputs.allowance)
   in
   
   let get_enabled () =
@@ -153,10 +150,6 @@ let () =
     Bits.to_int !(outputs.licenses_accepted)
   in
   
-  let get_licenses_rejected () =
-    Bits.to_int !(outputs.licenses_rejected)
-  in
-  
   let state_name state =
     match state with
     | 0 -> "Init_delay"
@@ -169,7 +162,6 @@ let () =
     | _ -> "Unknown"
   in
   
-  (* Wait for nonce_ready to go high *)
   let wait_for_nonce_ready ~max_cycles =
     let rec loop n =
       if n >= max_cycles then begin
@@ -186,41 +178,40 @@ let () =
     loop 0
   in
   
-  (* Submit a license and wait for verification to complete *)
   let submit_license ~r ~s =
-    inputs.license_valid := Bits.vdd;
+    inputs.license_submit := Bits.vdd;
     inputs.license_r := z_to_bits r;
     inputs.license_s := z_to_bits s;
     Cyclesim.cycle sim;
-    inputs.license_valid := Bits.gnd;
+    inputs.license_submit := Bits.gnd;
     inputs.license_r := Bits.zero 256;
     inputs.license_s := Bits.zero 256;
     
-    (* Wait for state machine to return to Publish (state 3) *)
     let max_cycles = 5_000_000 in
-    let rec loop n =
+    let rec loop n last_state =
       if n >= max_cycles then begin
         Stdio.printf "    TIMEOUT waiting for verification after %d cycles\n" max_cycles;
-        false
-      end else if get_state () = 3 then begin  (* Back to Publish *)
-        Stdio.printf "    Verification completed in %d cycles\n" n;
-        true
+        None
       end else begin
-        Cyclesim.cycle sim;
-        loop (n + 1)
+        let current_state = get_state () in
+        if last_state = 6 && current_state <> 6 then begin
+          Stdio.printf "    Verification completed in %d cycles\n" n;
+          Some current_state
+        end else begin
+          Cyclesim.cycle sim;
+          loop (n + 1) current_state
+        end
       end
     in
-    loop 0
+    loop 0 (get_state ())
   in
   
-  (* Submit workload and get result *)
   let do_workload ~a ~b =
     inputs.workload_valid := Bits.vdd;
     inputs.int8_a := int8_to_bits a;
     inputs.int8_b := int8_to_bits b;
     Cyclesim.cycle sim;
     inputs.workload_valid := Bits.gnd;
-    (* Result available after one cycle due to pipeline register *)
     let result = bits_to_int8 !(outputs.int8_result) in
     let valid = Bits.to_bool !(outputs.result_valid) in
     (result, valid)
@@ -240,10 +231,10 @@ let () =
   let initial_allowance = get_allowance () in
   let initial_enabled = get_enabled () in
   
-  Stdio.printf "  Initial allowance = %d (expected 0)\n" initial_allowance;
+  Stdio.printf "  Initial allowance = %Ld (expected 0)\n" initial_allowance;
   Stdio.printf "  Initial enabled = %b (expected false)\n" initial_enabled;
   
-  let pass = (initial_allowance = 0) && (not initial_enabled) in
+  let pass = (Int64.(=) initial_allowance 0L) && (not initial_enabled) in
   Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
   record pass;
   
@@ -273,7 +264,6 @@ let () =
   
   reset ();
   
-  (* Set a known seed for deterministic testing *)
   inputs.trng_seed := z_to_bits (Z.of_int 42);
   inputs.trng_load_seed := Bits.vdd;
   Cyclesim.cycle sim;
@@ -298,7 +288,6 @@ let () =
   
   reset ();
   
-  (* Set a known seed *)
   inputs.trng_seed := z_to_bits (Z.of_int 12345);
   inputs.trng_load_seed := Bits.vdd;
   Cyclesim.cycle sim;
@@ -314,8 +303,7 @@ let () =
       let allowance_before = get_allowance () in
       let accepted_before = get_licenses_accepted () in
       
-      (* Sign the nonce *)
-      let k = Z.of_int 7 in  (* Signing nonce *)
+      let k = Z.of_int 7 in
       (match sign ~z:nonce ~k with
       | None ->
           Stdio.printf "  Failed to generate signature\n";
@@ -324,19 +312,22 @@ let () =
           Stdio.printf "  Generated r = %s...\n" (String.prefix (Z.to_string r) 30);
           Stdio.printf "  Generated s = %s...\n" (String.prefix (Z.to_string s) 30);
           
-          if submit_license ~r ~s then begin
-            let allowance_after = get_allowance () in
-            let accepted_after = get_licenses_accepted () in
-            
-            Stdio.printf "  Allowance before = %d\n" allowance_before;
-            Stdio.printf "  Allowance after = %d\n" allowance_after;
-            Stdio.printf "  Licenses accepted: %d -> %d\n" accepted_before accepted_after;
-            
-            let pass = (allowance_after > allowance_before) && (accepted_after = accepted_before + 1) in
-            Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
-            record pass
-          end else
-            record false));
+          (match submit_license ~r ~s with
+          | None -> record false
+          | Some new_state ->
+              let allowance_after = get_allowance () in
+              let accepted_after = get_licenses_accepted () in
+              
+              Stdio.printf "  Allowance before = %Ld\n" allowance_before;
+              Stdio.printf "  Allowance after = %Ld\n" allowance_after;
+              Stdio.printf "  Licenses accepted: %d -> %d\n" accepted_before accepted_after;
+              Stdio.printf "  New state = %s (expected Request_nonce)\n" (state_name new_state);
+              
+              let pass = Int64.(>) allowance_after allowance_before 
+                        && (accepted_after = accepted_before + 1)
+                        && (new_state = 1) in
+              Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+              record pass)));
   
   (* ============================================== *)
   (* TEST 5: Workload works after valid license    *)
@@ -344,30 +335,9 @@ let () =
   
   Stdio.printf "Test 5: Workload works after valid license\n";
   
-  (* Continue from previous state where allowance > 0 *)
-  let enabled_now = get_enabled () in
-  Stdio.printf "  Enabled = %b (expected true)\n" enabled_now;
-  
-  let (result, valid) = do_workload ~a:10 ~b:20 in
-  
-  Stdio.printf "  Workload: 10 + 20\n";
-  Stdio.printf "  Result = %d (expected 30)\n" result;
-  Stdio.printf "  Valid = %b\n" valid;
-  
-  let pass = (result = 30) && valid && enabled_now in
-  Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
-  record pass;
-  
-  (* ============================================== *)
-  (* TEST 6: Invalid license does not increment    *)
-  (* ============================================== *)
-  
-  Stdio.printf "Test 6: Invalid license does not increment allowance\n";
-  
   reset ();
   
-  (* Set a known seed *)
-  inputs.trng_seed := z_to_bits (Z.of_int 99999);
+  inputs.trng_seed := z_to_bits (Z.of_int 55555);
   inputs.trng_load_seed := Bits.vdd;
   Cyclesim.cycle sim;
   inputs.trng_load_seed := Bits.gnd;
@@ -377,30 +347,74 @@ let () =
       Stdio.printf "  Failed to reach Publish state\n";
       record false
   | Some nonce ->
-      Stdio.printf "  Nonce (z) = %s\n" (Z.to_string nonce);
+      let k = Z.of_int 13 in
+      (match sign ~z:nonce ~k with
+      | None ->
+          Stdio.printf "  Failed to generate signature\n";
+          record false
+      | Some (r, s) ->
+          (match submit_license ~r ~s with
+          | None -> record false
+          | Some _ ->
+              (match wait_for_nonce_ready ~max_cycles:200 with
+              | None -> record false
+              | Some _ ->
+                  let enabled_now = get_enabled () in
+                  Stdio.printf "  Enabled = %b (expected true)\n" enabled_now;
+                  
+                  let (result, valid) = do_workload ~a:10 ~b:20 in
+                  
+                  Stdio.printf "  Workload: 10 + 20\n";
+                  Stdio.printf "  Result = %d (expected 30)\n" result;
+                  Stdio.printf "  Valid = %b\n" valid;
+                  
+                  let pass = (result = 30) && valid && enabled_now in
+                  Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+                  record pass))));
+  
+  (* ============================================== *)
+  (* TEST 6: Invalid license - same nonce retained *)
+  (* ============================================== *)
+  
+  Stdio.printf "Test 6: Invalid license does not increment allowance, same nonce retained\n";
+  
+  reset ();
+  
+  inputs.trng_seed := z_to_bits (Z.of_int 99999);
+  inputs.trng_load_seed := Bits.vdd;
+  Cyclesim.cycle sim;
+  inputs.trng_load_seed := Bits.gnd;
+  
+  (match wait_for_nonce_ready ~max_cycles:200 with
+  | None ->
+      Stdio.printf "  Failed to reach Publish state\n";
+      record false
+  | Some nonce_before ->
+      Stdio.printf "  Nonce (z) = %s\n" (Z.to_string nonce_before);
       
       let allowance_before = get_allowance () in
-      let rejected_before = get_licenses_rejected () in
       
-      (* Submit a wrong signature *)
       let wrong_r = Z.of_int 11111 in
       let wrong_s = Z.of_int 22222 in
       
       Stdio.printf "  Submitting invalid signature (r=11111, s=22222)\n";
       
-      if submit_license ~r:wrong_r ~s:wrong_s then begin
-        let allowance_after = get_allowance () in
-        let rejected_after = get_licenses_rejected () in
-        
-        Stdio.printf "  Allowance before = %d\n" allowance_before;
-        Stdio.printf "  Allowance after = %d\n" allowance_after;
-        Stdio.printf "  Licenses rejected: %d -> %d\n" rejected_before rejected_after;
-        
-        let pass = (allowance_after = allowance_before) && (rejected_after = rejected_before + 1) in
-        Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
-        record pass
-      end else
-        record false);
+      (match submit_license ~r:wrong_r ~s:wrong_s with
+      | None -> record false
+      | Some new_state ->
+          let allowance_after = get_allowance () in
+          let nonce_after = get_nonce () in
+          
+          Stdio.printf "  Allowance before = %Ld\n" allowance_before;
+          Stdio.printf "  Allowance after = %Ld\n" allowance_after;
+          Stdio.printf "  New state = %s (expected Publish)\n" (state_name new_state);
+          Stdio.printf "  Nonce unchanged = %b\n" (Z.equal nonce_before nonce_after);
+          
+          let pass = Int64.(=) allowance_after allowance_before
+                    && (new_state = 3)
+                    && Z.equal nonce_before nonce_after in
+          Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+          record pass));
   
   (* ============================================== *)
   (* TEST 7: Signed Int8 addition - positive       *)
@@ -410,7 +424,6 @@ let () =
   
   reset ();
   
-  (* First get a valid license *)
   inputs.trng_seed := z_to_bits (Z.of_int 777);
   inputs.trng_load_seed := Bits.vdd;
   Cyclesim.cycle sim;
@@ -427,14 +440,17 @@ let () =
           Stdio.printf "  Failed to generate signature\n";
           record false
       | Some (r, s) ->
-          if submit_license ~r ~s then begin
-            let (result, _) = do_workload ~a:50 ~b:30 in
-            Stdio.printf "  Workload: 50 + 30 = %d (expected 80)\n" result;
-            let pass = (result = 80) in
-            Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
-            record pass
-          end else
-            record false));
+          (match submit_license ~r ~s with
+          | None -> record false
+          | Some _ ->
+              (match wait_for_nonce_ready ~max_cycles:200 with
+              | None -> record false
+              | Some _ ->
+                  let (result, _) = do_workload ~a:50 ~b:30 in
+                  Stdio.printf "  Workload: 50 + 30 = %d (expected 80)\n" result;
+                  let pass = (result = 80) in
+                  Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+                  record pass))));
   
   (* ============================================== *)
   (* TEST 8: Signed Int8 addition - negative       *)
@@ -442,7 +458,6 @@ let () =
   
   Stdio.printf "Test 8: Signed Int8 addition - negative values\n";
   
-  (* Continue with existing allowance *)
   let (result, _) = do_workload ~a:(-10) ~b:(-20) in
   Stdio.printf "  Workload: -10 + -20 = %d (expected -30)\n" result;
   let pass = (result = -30) in
@@ -474,34 +489,33 @@ let () =
   record pass;
   
   (* ============================================== *)
-  (* TEST 11: Allowance decrements with workload   *)
+  (* TEST 11: Allowance decrements each cycle      *)
   (* ============================================== *)
   
-  Stdio.printf "Test 11: Allowance decrements with workload\n";
+  Stdio.printf "Test 11: Allowance decrements each clock cycle\n";
   
   let allowance_before = get_allowance () in
   
-  (* Do several workload operations *)
-  for _ = 1 to 10 do
-    let _ = do_workload ~a:1 ~b:1 in ()
+  for _ = 1 to 100 do
+    Cyclesim.cycle sim
   done;
   
   let allowance_after = get_allowance () in
+  let decrement = Int64.(-) allowance_before allowance_after in
   
-  Stdio.printf "  Allowance before = %d\n" allowance_before;
-  Stdio.printf "  Allowance after = %d\n" allowance_after;
-  Stdio.printf "  Decrement = %d (expected ~10)\n" (allowance_before - allowance_after);
+  Stdio.printf "  Allowance before = %Ld\n" allowance_before;
+  Stdio.printf "  Allowance after = %Ld\n" allowance_after;
+  Stdio.printf "  Decrement over 100 cycles = %Ld (expected 100)\n" decrement;
   
-  (* Allow some tolerance due to pipeline timing *)
-  let pass = (allowance_before - allowance_after >= 9) && (allowance_before - allowance_after <= 11) in
+  let pass = Int64.(=) decrement 100L in
   Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
   record pass;
   
   (* ============================================== *)
-  (* TEST 12: New nonce after license processing   *)
+  (* TEST 12: New nonce after valid license only   *)
   (* ============================================== *)
   
-  Stdio.printf "Test 12: New nonce generated after license processing\n";
+  Stdio.printf "Test 12: New nonce generated after valid license only\n";
   
   reset ();
   
@@ -523,17 +537,18 @@ let () =
           Stdio.printf "  Failed to generate signature\n";
           record false
       | Some (r, s) ->
-          if submit_license ~r ~s then begin
-            (* After verification, should have new nonce *)
-            let nonce2 = get_nonce () in
-            Stdio.printf "  Second nonce = %s\n" (Z.to_string nonce2);
-            
-            let pass = not (Z.equal nonce1 nonce2) in
-            Stdio.printf "  Nonces different = %b (expected true)\n" pass;
-            Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
-            record pass
-          end else
-            record false));
+          (match submit_license ~r ~s with
+          | None -> record false
+          | Some _ ->
+              (match wait_for_nonce_ready ~max_cycles:200 with
+              | None -> record false
+              | Some nonce2 ->
+                  Stdio.printf "  Second nonce = %s\n" (Z.to_string nonce2);
+                  
+                  let pass = not (Z.equal nonce1 nonce2) in
+                  Stdio.printf "  Nonces different = %b (expected true)\n" pass;
+                  Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+                  record pass))));
   
   (* ============================================== *)
   (* TEST 13: License for wrong nonce is rejected  *)
@@ -557,7 +572,6 @@ let () =
       
       let allowance_before = get_allowance () in
       
-      (* Sign a DIFFERENT nonce *)
       let wrong_nonce = Z.of_int 9999 in
       let k = Z.of_int 7 in
       Stdio.printf "  Signing wrong nonce = %s\n" (Z.to_string wrong_nonce);
@@ -567,18 +581,77 @@ let () =
           Stdio.printf "  Failed to generate signature\n";
           record false
       | Some (r, s) ->
-          if submit_license ~r ~s then begin
-            let allowance_after = get_allowance () in
-            
-            Stdio.printf "  Allowance before = %d\n" allowance_before;
-            Stdio.printf "  Allowance after = %d\n" allowance_after;
-            
-            let pass = (allowance_after = allowance_before) in
-            Stdio.printf "  Allowance unchanged = %b (expected true)\n" pass;
-            Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
-            record pass
-          end else
-            record false));
+          (match submit_license ~r ~s with
+          | None -> record false
+          | Some new_state ->
+              let allowance_after = get_allowance () in
+              
+              Stdio.printf "  Allowance before = %Ld\n" allowance_before;
+              Stdio.printf "  Allowance after = %Ld\n" allowance_after;
+              Stdio.printf "  New state = %s (expected Publish)\n" (state_name new_state);
+              
+              let pass = Int64.(<=) allowance_after allowance_before 
+                        && (new_state = 3) in
+              Stdio.printf "  Allowance not incremented = %b (expected true)\n" pass;
+              Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+              record pass)));
+  
+  (* ============================================== *)
+  (* TEST 14: Cannot replay same license twice     *)
+  (* ============================================== *)
+  
+  Stdio.printf "Test 14: Cannot replay same valid license twice\n";
+  
+  reset ();
+  
+  inputs.trng_seed := z_to_bits (Z.of_int 7777);
+  inputs.trng_load_seed := Bits.vdd;
+  Cyclesim.cycle sim;
+  inputs.trng_load_seed := Bits.gnd;
+  
+  (match wait_for_nonce_ready ~max_cycles:200 with
+  | None ->
+      Stdio.printf "  Failed to reach Publish state\n";
+      record false
+  | Some nonce1 ->
+      Stdio.printf "  First nonce = %s\n" (Z.to_string nonce1);
+      
+      let k = Z.of_int 19 in
+      (match sign ~z:nonce1 ~k with
+      | None ->
+          Stdio.printf "  Failed to generate signature\n";
+          record false
+      | Some (r, s) ->
+          Stdio.printf "  Generated signature for first nonce\n";
+          
+          let accepted_before = get_licenses_accepted () in
+          (match submit_license ~r ~s with
+          | None -> record false
+          | Some _ ->
+              let accepted_after_first = get_licenses_accepted () in
+              Stdio.printf "  First submission: accepted = %b\n" (accepted_after_first > accepted_before);
+              
+              (match wait_for_nonce_ready ~max_cycles:200 with
+              | None -> record false
+              | Some nonce2 ->
+                  Stdio.printf "  Second nonce = %s\n" (Z.to_string nonce2);
+                  
+                  Stdio.printf "  Attempting to replay same signature...\n";
+                  (match submit_license ~r ~s with
+                  | None -> record false
+                  | Some new_state ->
+                      let accepted_after_second = get_licenses_accepted () in
+                      
+                      Stdio.printf "  Second submission: accepted = %b\n" 
+                        (accepted_after_second > accepted_after_first);
+                      Stdio.printf "  New state = %s\n" (state_name new_state);
+                      
+                      let pass = (accepted_after_first = accepted_before + 1)
+                                && (accepted_after_second = accepted_after_first)
+                                && (new_state = 3) in
+                      Stdio.printf "  Replay rejected = %b (expected true)\n" pass;
+                      Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
+                      record pass)))));
   
   (* ============================================== *)
   (* TEST SUMMARY                                  *)
