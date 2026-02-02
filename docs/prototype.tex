@@ -40,7 +40,7 @@ Prior work proposed embedding thousands of ``security blocks'' for authorization
 
 \subsection{Approach}
 
-Hardware designs are typically written in a hardware description language (HDL), simulated to verify correctness, then synthesized to physical circuits. HardCaml is an HDL embedded in OCaml that supports simulation and testing before committing to silicon. Using HardCaml allows the design to be validated against test cases and iterated on quickly.
+The security block is implemented in HardCaml, a hardware description language embedded in OCaml. This allows the design to be simulated and validated against test cases before synthesis to physical circuits.
 
 The implementation is available at \url{https://github.com/JamesPetrie/off-switch} (key files: \texttt{security\_block.ml}, \texttt{ecdsa.ml}, \texttt{arith.ml}, \texttt{point\_add.ml}).
 
@@ -116,7 +116,7 @@ Components:
 
 Outputs pass through only when authorized. Each bit is ANDed with \texttt{enabled}, which is high only when \texttt{allowance} $> 0$. The rest of the design ensures \texttt{allowance} increments only on presentation of a valid signature over the current nonce.
 
-The state machine (Figure \ref{fig:statemachine}) orchestrates the authorization flow:
+The state machine orchestrates the authorization flow:
 \begin{enumerate}[nosep]
     \item TRNG generates a nonce
     \item Security block publishes nonce, asserts \texttt{nonce\_ready}
@@ -126,6 +126,7 @@ The state machine (Figure \ref{fig:statemachine}) orchestrates the authorization
     \item If invalid: allowance unchanged, same nonce retained (retry permitted)
 \end{enumerate}
 
+\iffalse
 \begin{figure}[h]
 \begin{center}
 \begin{tikzpicture}[
@@ -149,14 +150,16 @@ The state machine (Figure \ref{fig:statemachine}) orchestrates the authorization
 \draw[arrow] (vstart) -- (vwait);
 \draw[arrow] (vwait) -- node[label, right]{done\_} (update);
 \draw[arrow] (update) -- node[label, above]{valid} (request);
-\draw[arrow, rounded corners] (update.south) -- ++(0, -0.4) -- ++(1.2, 0) -- ++(0, -2.6) -- ++(-4.5, 0) -- (publish.south);
-\node[font=\scriptsize] at (3.2, -5.3) {invalid};
+\draw[arrow, rounded corners] (update.south) -- ++(0, -0.5) -- ++(-4.5, 0) -- ++(0, -0.5) -- (publish.south);
+\node[font=\scriptsize] at (2.25, -5.5) {invalid};
 
 \end{tikzpicture}
 \caption{State machine transitions.}
 \label{fig:statemachine}
 \end{center}
 \end{figure}
+
+\fi
 
 The ECDSA module (Figure \ref{fig:ecdsa}) verifies signatures by computing $R = u_1 \cdot G + u_2 \cdot Q$ and checking whether $R_x \equiv r \pmod{n}$.
 
@@ -321,5 +324,23 @@ Complete addition formulas for prime order elliptic curves.
 \textit{IACR Cryptology ePrint Archive}, 2015/1060.
 
 \end{thebibliography}
+
+\appendix
+
+\section{Limitations \& Dual-Use Considerations}
+
+\subsection{Technical Limitations}
+
+\textbf{False security from insecure implementations}: A flawed implementation could give false confidence that chips are controlled when they are not. If the ECDSA verification has subtle bugs, or if the TRNG produces predictable nonces, attackers might forge valid licenses. This risk motivates the emphasis on formal verification and the use of complete addition formulas that eliminate edge cases.
+
+\textbf{Accidental denial of service}: Bugs or operational failures could disable chips that should remain operational. If the licensing authority's systems fail, or if network connectivity is lost, legitimate users lose access to their hardware. The time-based allowance provides a buffer, but extended outages could still cause disruption. Production systems would need redundant licensing infrastructure and appropriate allowance periods.
+
+\subsection{Dual-Use Risks}
+
+\textbf{Concentration of power}: Hardware off-switches grant significant power to whoever controls the licensing keys. If a single entity controls authorization for a large fraction of global AI compute, that concentration could be misused for censorship, rent-seeking, or geopolitical coercion. Governance structures around key management would need careful design, potentially involving multiple independent parties or threshold signatures.
+
+\textbf{Encouraging parallel supply chains}: If off-switches are mandated in some jurisdictions but not others, actors seeking ungovernable compute may invest in alternative chip fabrication. This could accelerate development of competing supply chains outside the reach of governance mechanisms, potentially worsening the problem the technology aims to solve.
+
+\textbf{Sabotage and weaponization}: The same mechanism that allows legitimate authorities to disable chips could be exploited by attackers who compromise the licensing infrastructure. A compromised private key could disable chips globally. Conversely, state actors might use off-switches as a tool of economic warfare rather than safety governance.
 
 \end{document}
