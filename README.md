@@ -1,4 +1,4 @@
-# Security Block Architecture Documentation
+# Security Block Architecture
 
 ## Table of Contents
 - [Purpose](#purpose)
