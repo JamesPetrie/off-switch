@@ -1,3 +1,4 @@
+
 # Security Block Architecture
 
 ## Table of Contents
@@ -12,12 +13,15 @@
 - [Test Coverage](#test-coverage)
 - [Prototype Limitations](#prototype-limitations)
 - [Configuration Parameters](#configuration-parameters)
+- [References](#references)
 
 ---
 
 ## Purpose
 
-The security block implements a hardware-level "deadman's switch" for AI accelerators, as described in Petrie's "Embedded Off-Switches for AI Compute" paper. The block gates essential chip operations, allowing them to proceed only when valid, cryptographically-signed authorization has been recently received.
+This security block implements a hardware-level "deadman's switch" for AI accelerators, based on the design described in Petrie (2025), [Embedded Off-Switches for AI Compute](https://arxiv.org/abs/2509.07637). The block gates essential chip operations, allowing them to proceed only when valid, cryptographically-signed authorization has been recently received.
+
+The paper proposes embedding thousands of these security blocks throughout an AI chip, each independently verifying authorization. This prototype implements a single block to validate the core mechanism.
 
 ### Design Goals
 
@@ -80,7 +84,7 @@ flowchart TB
     classDef adder fill:#e2d5f1,stroke:#6f42c1
     classDef andgate fill:#f8d7da,stroke:#721c24
 ```
-*Security block architecture. The Int8 adder is a placeholder for actual chip operations (matrix multiplies, data routing, etc.).*
+*Security block architecture. The Int8 adder is a placeholder for actual chip operations (matrix multiplies, data routing, etc.). See Figure 3 in Petrie (2025) for the conceptual diagram this implements.*
 
 ### Module Summary
 
@@ -97,6 +101,8 @@ flowchart TB
 ## Data Flow
 
 ### Authorization Flow
+
+The authorization protocol follows Section 2 of the paper (see Figure 2):
 
 1. TRNG generates nonce (at initialization or after valid license)
 2. Security Logic latches and publishes nonce (`nonce_ready` = 1)
@@ -120,7 +126,7 @@ flowchart TB
    - If `allowance = 0`: `enabled` = 0, result forced to zero
 4. Result registered and output on next cycle
 
-> **Note:** Allowance decrements every clock cycle regardless of workload activity. This provides time-based authorization depletion.
+> **Note:** Allowance decrements every clock cycle regardless of workload activity, providing time-based authorization depletion as described in the paper's usage allowance properties.
 
 ---
 
@@ -147,6 +153,8 @@ flowchart TB
 2. ECDSA (secp256k1) is cryptographically secure—an attacker cannot forge signatures without the private key.
 3. The TRNG produces non-repeating nonces, preventing replay attacks. (Predictability is not a concern; uniqueness is.)
 4. The hardware implementation faithfully reflects this RTL design (no manufacturing-time tampering).
+
+The paper's Section 4 discusses attack vectors against these assumptions in detail, including physical tampering, side-channel attacks, and supply chain compromise.
 
 ---
 
@@ -244,6 +252,7 @@ stateDiagram-v2
     Update --> Request_nonce: valid
     Update --> Publish: invalid
 ```
+
 ### State Descriptions
 
 | State | Entry Condition | Actions | Exit Condition |
@@ -271,3 +280,95 @@ stateDiagram-v2
 ### Allowance Calculation
 
 For a desired licensing period *T* seconds at clock frequency *f* Hz:
+
+```
+allowance_increment = T × f
+```
+
+**Examples at 1 GHz:**
+- 1 hour: 3600 × 10⁹ = 3.6 × 10¹²
+- 1 day: 86400 × 10⁹ = 8.64 × 10¹³
+- 1 week: 604800 × 10⁹ = 6.05 × 10¹⁴
+
+With 64-bit allowance counter, maximum value is 2⁶⁴ - 1 ≈ 1.8 × 10¹⁹, supporting approximately 584 years at 1 GHz.
+
+The current default of 10¹² provides approximately 17 minutes of authorization per valid license at 1 GHz.
+
+---
+
+## Test Coverage
+
+### Test Cases
+
+| # | Test Name | Description | Property |
+|---|-----------|-------------|----------|
+| 1 | Initial state | Allowance = 0, enabled = false | Fail-secure |
+| 2 | Workload blocked | Output = 0 when allowance = 0 | Output gating |
+| 3 | State machine | Reaches Publish state with valid nonce | State machine |
+| 4 | Valid license | Allowance increments, accepted count increases | Crypto auth |
+| 5 | Workload unblocked | Correct result after valid license | Output gating |
+| 6 | Invalid license | Allowance unchanged, same nonce retained | Crypto auth, retry |
+| 7 | Int8 positive | 50 + 30 = 80 | Workload |
+| 8 | Int8 negative | -10 + -20 = -30 | Workload |
+| 9 | Int8 mixed | 100 + -30 = 70 | Workload |
+| 10 | Int8 wrapping | 127 + 1 = -128 | Workload |
+| 11 | Allowance decrement | Decreases by 100 over 100 cycles | Time depletion |
+| 12 | New nonce | Generated after valid license only | Replay prevention |
+| 13 | Wrong nonce | License for different nonce rejected | Crypto auth |
+| 14 | Replay attack | Same license rejected on second use | No double-spend |
+
+### Property Coverage Matrix
+
+| Property | T1 | T2 | T4 | T5 | T6 | T11 | T12 | T13 | T14 |
+|----------|:--:|:--:|:--:|:--:|:--:|:---:|:---:|:---:|:---:|
+| Output Gating | ● | ● | | ● | | | | | |
+| Crypto Authorization | | | ● | | ● | | | ● | ● |
+| Replay Prevention | | | | | | | ● | | ● |
+| Time-Based Depletion | | | | | | ● | | | |
+| Fail-Secure Default | ● | ● | | | | | | | |
+| Retry Allowed | | | | | ● | | | | |
+| No Double-Spend | | | | | | | | | ● |
+
+---
+
+## Prototype Limitations
+
+This is a proof-of-concept implementation. The paper discusses broader limitations of the approach in Section 6, and Table 1 catalogs hardware attack vectors and countermeasures.
+
+| Component | Prototype | Production |
+|-----------|-----------|------------|
+| TRNG | 256-bit counter | Ring oscillator(s) with XORed entropy |
+| Hash function | Identity (nonce = message z) | SHA-256 |
+| Public key | Hardcoded (Q = 2G) | Configurable via Mask ROM or fuses |
+| Curve | secp256k1 only | Multiple curves for redundancy |
+| Input validation | Minimal | Full range checking (r, s ∈ [1, n-1]) |
+| Side-channel | None | Constant-time operations |
+| Redundancy | Single block | Thousands of independent blocks per chip |
+
+---
+
+## Configuration Parameters
+
+```ocaml
+module Config = struct
+  let nonce_width = 256
+  let signature_width = 256
+  let allowance_width = 64
+  let init_delay_cycles = 100
+  let allowance_increment = 1_000_000_000_000  (* ~17 min at 1GHz *)
+end
+```
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `nonce_width` | 256 | Width of nonce in bits (matches ECDSA message size) |
+| `signature_width` | 256 | Width of signature components r and s |
+| `allowance_width` | 64 | Width of allowance counter (supports ~584 years at 1 GHz) |
+| `init_delay_cycles` | 100 | Cycles to wait after reset before requesting first nonce |
+| `allowance_increment` | 10¹² | Cycles added to allowance per valid license (~17 min at 1 GHz) |
+
+---
+
+## References
+
+Petrie, J. (2025). Embedded Off-Switches for AI Compute. *arXiv preprint* arXiv:2509.07637. https://arxiv.org/abs/2509.07637
