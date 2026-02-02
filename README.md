@@ -80,120 +80,159 @@ flowchart TB
     classDef adder fill:#e2d5f1,stroke:#6f42c1
     classDef andgate fill:#f8d7da,stroke:#721c24
 ```
-Security block architecture. The Int8 adder is a placeholder for actual chip operations (matrix multiplies, data routing, etc.).
+*Security block architecture. The Int8 adder is a placeholder for actual chip operations (matrix multiplies, data routing, etc.).*
 
-Module Summary
-Module	Type	Purpose
-Trng	Submodule	Nonce generation (256-bit counter in prototype; ring oscillator in production)
-Ecdsa	Submodule	Signature verification using secp256k1 curve
-Security Logic	Inline	State machine orchestration (7 states)
-Usage Allowance	Inline	64-bit authorization counter
-Workload	Inline	Gated essential operation (Int8 Add example)
-Data Flow
-Authorization Flow
-TRNG generates nonce (at initialization or after valid license)
-Security Logic latches and publishes nonce (nonce_ready = 1)
-External authority reads nonce, signs it with private key
-Authority submits license (r, s) via license_submit pulse
-ECDSA verifies signature against nonce and hardcoded public key
-If valid:
-Allowance incremented
-Return to step 1 (new nonce generated)
-If invalid:
-Allowance unchanged
-Same nonce retained (allows retry with correct signature)
-Return to step 2
-Workload Flow
-Workload inputs (int8_a, int8_b) arrive with workload_valid = 1
-Computation performed (Int8 addition, wrapping on overflow)
-Output gating: each result bit ANDed with enabled signal
-If allowance > 0: enabled = 1, result passes through
-If allowance = 0: enabled = 0, result forced to zero
-Result registered and output on next cycle
-Note: Allowance decrements every clock cycle regardless of workload activity. This provides time-based authorization depletion.
+### Module Summary
 
-Trust Model
-Trust Boundaries
-Untrusted:
+| Module | Type | Purpose |
+|--------|------|---------|
+| `Trng` | Submodule | Nonce generation (256-bit counter in prototype; ring oscillator in production) |
+| `Ecdsa` | Submodule | Signature verification using secp256k1 curve |
+| Security Logic | Inline | State machine orchestration (7 states) |
+| Usage Allowance | Inline | 64-bit authorization counter |
+| Workload | Inline | Gated essential operation (Int8 Add example) |
 
-External license authority communication channel
-Workload inputs
-All signals crossing the security block boundary
-Trusted:
+---
 
-ECDSA verification logic
-Hardcoded public key (in ECDSA module)
-Allowance counter logic
-Output gating logic (AND gates)
-State machine transitions
-TRNG entropy source (ring oscillator in production)
-Trust Assumptions
-The hardcoded public key corresponds to a private key held only by authorized parties.
-ECDSA (secp256k1) is cryptographically secure—an attacker cannot forge signatures without the private key.
-The TRNG produces non-repeating nonces, preventing replay attacks. (Predictability is not a concern; uniqueness is.)
-The hardware implementation faithfully reflects this RTL design (no manufacturing-time tampering).
-Security Properties
-Property	Description	Enforcement
-Output Gating	Workload output is 0 when unauthorized	result & repeat(enabled, 8)
-Cryptographic Authorization	Only valid signatures increment allowance	ECDSA verification before increment
-Replay Prevention	Each license valid for one nonce only	New nonce generated only after valid license accepted
-Time-Based Depletion	Authorization depletes continuously	Allowance decrements every clock cycle
-Fail-Secure Default	Allowance initializes to 0 on reset	Register default value; no license = no output
-Retry Allowed	Invalid signatures allow retry with same nonce	State returns to Publish without changing nonce
-No Double-Spend	Same license cannot be reused	Nonce changes immediately after valid license
-Interface Specification
-Top-Level Inputs
-Signal	Width	Description
-clock	1	System clock
-clear	1	Synchronous reset (active high)
-license_submit	1	Pulse high for one cycle to submit license
-license_r	256	ECDSA signature r component
-license_s	256	ECDSA signature s component
-workload_valid	1	Workload input data valid
-int8_a	8	Signed 8-bit operand A
-int8_b	8	Signed 8-bit operand B
-param_a	256	ECDSA curve parameter a (0 for secp256k1)
-param_b3	256	ECDSA curve parameter 3b (21 for secp256k1)
-trng_seed	256	Seed value for TRNG (testing only)
-trng_load_seed	1	Load seed into TRNG (testing only)
-Top-Level Outputs
-Signal	Width	Description
-nonce	256	Current nonce value
-nonce_ready	1	Nonce is stable and ready for signing
-int8_result	8	Gated workload output
-result_valid	1	Result output is valid
-allowance	64	Current allowance counter value
-enabled	1	Allowance > 0
-state_debug	4	Current state machine state (debug)
-licenses_accepted	16	Count of valid licenses processed (debug)
-ecdsa_busy	1	ECDSA verification in progress (debug)
-TRNG Submodule Interface
-Direction	Signal	Width	Description
-Input	clock	1	System clock
-Input	clear	1	Synchronous reset
-Input	enable	1	Enable entropy counter
-Input	request_new	1	Pulse to latch new nonce
-Input	seed	256	Seed value (testing only)
-Input	load_seed	1	Load seed (testing only)
-Output	nonce	256	Latched nonce value
-Output	nonce_valid	1	Nonce has been latched
-ECDSA Submodule Interface
-Direction	Signal	Width	Description
-Input	clock	1	System clock
-Input	clear	1	Synchronous reset
-Input	start	1	Pulse to begin verification
-Input	z	256	Message hash (= nonce)
-Input	r	256	Signature r component
-Input	s	256	Signature s component
-Input	param_a	256	Curve parameter a
-Input	param_b3	256	Curve parameter 3b
-Output	done_	1	Verification complete (pulse)
-Output	valid	1	Signature is valid
-Output	busy	1	Verification in progress
-State Machine
-State Diagram
-mermaid
-Copy code
+## Data Flow
+
+### Authorization Flow
+
+1. TRNG generates nonce (at initialization or after valid license)
+2. Security Logic latches and publishes nonce (`nonce_ready` = 1)
+3. External authority reads nonce, signs it with private key
+4. Authority submits license (r, s) via `license_submit` pulse
+5. ECDSA verifies signature against nonce and hardcoded public key
+6. **If valid:**
+   - Allowance incremented
+   - Return to step 1 (new nonce generated)
+7. **If invalid:**
+   - Allowance unchanged
+   - Same nonce retained (allows retry with correct signature)
+   - Return to step 2
+
+### Workload Flow
+
+1. Workload inputs (`int8_a`, `int8_b`) arrive with `workload_valid` = 1
+2. Computation performed (Int8 addition, wrapping on overflow)
+3. Output gating: each result bit ANDed with `enabled` signal
+   - If `allowance > 0`: `enabled` = 1, result passes through
+   - If `allowance = 0`: `enabled` = 0, result forced to zero
+4. Result registered and output on next cycle
+
+> **Note:** Allowance decrements every clock cycle regardless of workload activity. This provides time-based authorization depletion.
+
+---
+
+## Trust Model
+
+### Trust Boundaries
+
+**Untrusted:**
+- External license authority communication channel
+- Workload inputs
+- All signals crossing the security block boundary
+
+**Trusted:**
+- ECDSA verification logic
+- Hardcoded public key (in ECDSA module)
+- Allowance counter logic
+- Output gating logic (AND gates)
+- State machine transitions
+- TRNG entropy source (ring oscillator in production)
+
+### Trust Assumptions
+
+1. The hardcoded public key corresponds to a private key held only by authorized parties.
+2. ECDSA (secp256k1) is cryptographically secure—an attacker cannot forge signatures without the private key.
+3. The TRNG produces non-repeating nonces, preventing replay attacks. (Predictability is not a concern; uniqueness is.)
+4. The hardware implementation faithfully reflects this RTL design (no manufacturing-time tampering).
+
+---
+
+## Security Properties
+
+| Property | Description | Enforcement |
+|----------|-------------|-------------|
+| Output Gating | Workload output is 0 when unauthorized | `result & repeat(enabled, 8)` |
+| Cryptographic Authorization | Only valid signatures increment allowance | ECDSA verification before increment |
+| Replay Prevention | Each license valid for one nonce only | New nonce generated only after valid license accepted |
+| Time-Based Depletion | Authorization depletes continuously | Allowance decrements every clock cycle |
+| Fail-Secure Default | Allowance initializes to 0 on reset | Register default value; no license = no output |
+| Retry Allowed | Invalid signatures allow retry with same nonce | State returns to Publish without changing nonce |
+| No Double-Spend | Same license cannot be reused | Nonce changes immediately after valid license |
+
+---
+
+## Interface Specification
+
+### Top-Level Inputs
+
+| Signal | Width | Description |
+|--------|-------|-------------|
+| `clock` | 1 | System clock |
+| `clear` | 1 | Synchronous reset (active high) |
+| `license_submit` | 1 | Pulse high for one cycle to submit license |
+| `license_r` | 256 | ECDSA signature r component |
+| `license_s` | 256 | ECDSA signature s component |
+| `workload_valid` | 1 | Workload input data valid |
+| `int8_a` | 8 | Signed 8-bit operand A |
+| `int8_b` | 8 | Signed 8-bit operand B |
+| `param_a` | 256 | ECDSA curve parameter a (0 for secp256k1) |
+| `param_b3` | 256 | ECDSA curve parameter 3b (21 for secp256k1) |
+| `trng_seed` | 256 | Seed value for TRNG (testing only) |
+| `trng_load_seed` | 1 | Load seed into TRNG (testing only) |
+
+### Top-Level Outputs
+
+| Signal | Width | Description |
+|--------|-------|-------------|
+| `nonce` | 256 | Current nonce value |
+| `nonce_ready` | 1 | Nonce is stable and ready for signing |
+| `int8_result` | 8 | Gated workload output |
+| `result_valid` | 1 | Result output is valid |
+| `allowance` | 64 | Current allowance counter value |
+| `enabled` | 1 | Allowance > 0 |
+| `state_debug` | 4 | Current state machine state (debug) |
+| `licenses_accepted` | 16 | Count of valid licenses processed (debug) |
+| `ecdsa_busy` | 1 | ECDSA verification in progress (debug) |
+
+### TRNG Submodule Interface
+
+| Direction | Signal | Width | Description |
+|-----------|--------|-------|-------------|
+| Input | `clock` | 1 | System clock |
+| Input | `clear` | 1 | Synchronous reset |
+| Input | `enable` | 1 | Enable entropy counter |
+| Input | `request_new` | 1 | Pulse to latch new nonce |
+| Input | `seed` | 256 | Seed value (testing only) |
+| Input | `load_seed` | 1 | Load seed (testing only) |
+| Output | `nonce` | 256 | Latched nonce value |
+| Output | `nonce_valid` | 1 | Nonce has been latched |
+
+### ECDSA Submodule Interface
+
+| Direction | Signal | Width | Description |
+|-----------|--------|-------|-------------|
+| Input | `clock` | 1 | System clock |
+| Input | `clear` | 1 | Synchronous reset |
+| Input | `start` | 1 | Pulse to begin verification |
+| Input | `z` | 256 | Message hash (= nonce) |
+| Input | `r` | 256 | Signature r component |
+| Input | `s` | 256 | Signature s component |
+| Input | `param_a` | 256 | Curve parameter a |
+| Input | `param_b3` | 256 | Curve parameter 3b |
+| Output | `done_` | 1 | Verification complete (pulse) |
+| Output | `valid` | 1 | Signature is valid |
+| Output | `busy` | 1 | Verification in progress |
+
+---
+
+## State Machine
+
+### State Diagram
+
+```mermaid
 stateDiagram-v2
     [*] --> Init_delay
     Init_delay --> Request_nonce: counter ≥ 100
@@ -204,97 +243,31 @@ stateDiagram-v2
     Verify_wait --> Update: ecdsa.done_
     Update --> Request_nonce: valid
     Update --> Publish: invalid
-State Descriptions
-State	Entry Condition	Actions	Exit Condition
-Init_delay	Reset	Increment delay counter	Counter ≥ 100
-Request_nonce	From Init_delay or Update (valid)	Assert request_new to TRNG	Immediate
-Wait_nonce	From Request_nonce	Wait for TRNG	nonce_valid
-Publish	From Wait_nonce or Update (invalid)	Latch nonce; nonce_ready = 1	license_submit
-Verify_start	From Publish	Latch r, s; assert ecdsa_start	!ecdsa.busy
-Verify_wait	From Verify_start	Wait for ECDSA	ecdsa.done_
-Update	From Verify_wait	If valid: increment allowance	Immediate
-Timing Characteristics
-Operation	Cycles	Notes
-Initialization delay	100	Configurable via Config.init_delay_cycles
-Nonce generation	2	Request + latch
-License verification	~1.5–2M	ECDSA scalar multiplication dominates
-Workload operation	1	Combinational add + output register
-Allowance per license	10¹²	Configurable via Config.allowance_increment
-Allowance Calculation
-For a desired licensing period T seconds at clock frequency f Hz:
+```
+### State Descriptions
 
-makefile
-Copy code
-allowance_increment = T × f
-Examples at 1 GHz:
+| State | Entry Condition | Actions | Exit Condition |
+|-------|-----------------|---------|----------------|
+| `Init_delay` | Reset | Increment delay counter | Counter ≥ 100 |
+| `Request_nonce` | From Init_delay or Update (valid) | Assert `request_new` to TRNG | Immediate |
+| `Wait_nonce` | From Request_nonce | Wait for TRNG | `nonce_valid` |
+| `Publish` | From Wait_nonce or Update (invalid) | Latch nonce; `nonce_ready` = 1 | `license_submit` |
+| `Verify_start` | From Publish | Latch r, s; assert `ecdsa_start` | `!ecdsa.busy` |
+| `Verify_wait` | From Verify_start | Wait for ECDSA | `ecdsa.done_` |
+| `Update` | From Verify_wait | If valid: increment allowance | Immediate |
 
-1 hour: 3600 × 10⁹ = 3.6 × 10¹²
-1 day: 86400 × 10⁹ = 8.64 × 10¹³
-1 week: 604800 × 10⁹ = 6.05 × 10¹⁴
-With 64-bit allowance counter, maximum value is 2⁶⁴ - 1 ≈ 1.8 × 10¹⁹, supporting approximately 584 years at 1 GHz.
+---
 
-The current default of 10¹² provides approximately 17 minutes of authorization per valid license at 1 GHz.
+## Timing Characteristics
 
-Test Coverage
-Test Cases
-#	Test Name	Description	Property
-1	Initial state	Allowance = 0, enabled = false	Fail-secure
-2	Workload blocked	Output = 0 when allowance = 0	Output gating
-3	State machine	Reaches Publish state with valid nonce	State machine
-4	Valid license	Allowance increments, accepted count increases	Crypto auth
-5	Workload unblocked	Correct result after valid license	Output gating
-6	Invalid license	Allowance unchanged, same nonce retained	Crypto auth, retry
-7	Int8 positive	50 + 30 = 80	Workload
-8	Int8 negative	-10 + -20 = -30	Workload
-9	Int8 mixed	100 + -30 = 70	Workload
-10	Int8 wrapping	127 + 1 = -128	Workload
-11	Allowance decrement	Decreases by 100 over 100 cycles	Time depletion
-12	New nonce	Generated after valid license only	Replay prevention
-13	Wrong nonce	License for different nonce rejected	Crypto auth
-14	Replay attack	Same license rejected on second use	No double-spend
-Property Coverage Matrix
-Property	T1	T2	T4	T5	T6	T11	T12	T13	T14
-Output Gating	●	●		●					
-Crypto Authorization			●		●			●	●
-Replay Prevention							●		●
-Time-Based Depletion						●			
-Fail-Secure Default	●	●							
-Retry Allowed					●				
-No Double-Spend									●
-Prototype Limitations
-Component	Prototype	Production
-TRNG	256-bit counter	Ring oscillator(s) with XORed entropy
-Hash function	Identity (nonce = message z)	SHA-256
-Public key	Hardcoded (Q = 2G)	Configurable via ROM or fuses
-Curve	secp256k1 only	Multiple curves for redundancy
-Input validation	Minimal	Full range checking (r, s ∈ [1, n-1])
-Side-channel	None	Constant-time operations
-Security Considerations for Production
-TRNG: Replace counter with ring oscillator design. XOR multiple independent entropy sources for robustness against single-source failures or attacks.
+| Operation | Cycles | Notes |
+|-----------|--------|-------|
+| Initialization delay | 100 | Configurable via `Config.init_delay_cycles` |
+| Nonce generation | 2 | Request + latch |
+| License verification | ~1.5–2M | ECDSA scalar multiplication dominates |
+| Workload operation | 1 | Combinational add + output register |
+| Allowance per license | 10¹² | Configurable via `Config.allowance_increment` |
 
-Hash function: Implement SHA-256 to hash nonce before use as ECDSA message. Current design uses nonce directly, which is acceptable for prototyping but not recommended for production.
+### Allowance Calculation
 
-Input validation: Add range checking for signature components. Values r and s must be in range [1, n-1] where n is the curve order.
-
-Side-channel resistance: ECDSA implementation should use constant-time algorithms to prevent timing attacks. Consider power analysis countermeasures.
-
-Formal verification: State machine transitions and security properties should be formally verified to ensure no edge cases allow unauthorized operation.
-
-Physical security: Consider glitch detection, voltage monitoring, and physical shielding to protect against fault injection attacks.
-
-Configuration Parameters
-
-module Config = struct
-  let nonce_width = 256
-  let signature_width = 256
-  let allowance_width = 64
-  let init_delay_cycles = 100
-  let allowance_increment = 1_000_000_000_000  (* ~17 min at 1GHz *)
-end
-Parameter	Value	Description
-nonce_width	256	Width of nonce in bits (matches ECDSA message size)
-signature_width	256	Width of signature components r and s
-allowance_width	64	Width of allowance counter (supports ~584 years at 1 GHz)
-init_delay_cycles	100	Cycles to wait after reset before requesting first nonce
-allowance_increment	10¹²	Cycles added to allowance per valid license (~17 min at 1 GHz)
-
+For a desired licensing period *T* seconds at clock frequency *f* Hz:
