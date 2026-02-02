@@ -1,26 +1,13 @@
-(lang dune 3.20)
-
-(name ecdsa)
-
-(generate_opam_files true)
-
-(source
- (github username/reponame))
-
-(authors "Author Name <author@example.com>")
-
-(maintainers "Maintainer Name <maintainer@example.com>")
-
-(license LICENSE)
-
-(documentation https://url/to/documentation)
+(lang dune 3.0)
+(name off_switch)
 
 (package
- (name ecdsa)
- (synopsis "A short synopsis")
- (description "A longer description")
- (depends ocaml hardcaml signal)
- (tags
-  ("add topics" "to describe" your project)))
-
-; See the complete stanza docs at https://dune.readthedocs.io/en/stable/reference/dune-project/index.html
+ (name off_switch)
+ (synopsis "Hardware off-switch with cryptographic authorization for AI accelerators")
+ (depends
+  (ocaml (>= 4.14))
+  base
+  hardcaml
+  zarith
+  ppx_jane
+  ppx_hardcaml))

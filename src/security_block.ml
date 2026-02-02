@@ -6,7 +6,7 @@
    - TRNG submodule for nonce generation
    - ECDSA submodule for license verification
    - Inline usage allowance counter
-   - Inline Int8 workload with output gating
+   - Inline workload with output gating
    
    State machine:
    - Requests nonce from TRNG at initialization
@@ -17,6 +17,10 @@
    
    Workload output is gated by ANDing each bit with (allowance > 0).
    Allowance decrements every clock cycle (time-based authorization).
+   
+   Note: The Int8 Add workload is an example. In production, this would be
+   replaced with actual essential chip operations (e.g., matrix multiply units,
+   data routing logic).
 *)
 
 open Hardcaml
@@ -27,7 +31,7 @@ module Config = struct
   let signature_width = 256
   let allowance_width = 64
   let init_delay_cycles = 100
-  let allowance_increment = 1_000_000_000_000  (* ~11.5 days at 1GHz *)
+  let allowance_increment = 1_000_000_000_000  (* ~17 min at 1GHz *)
 end
 
 module I = struct
@@ -35,7 +39,7 @@ module I = struct
     { clock : 'a
     ; clear : 'a
     (* License interface *)
-    ; license_valid : 'a
+    ; license_submit : 'a
     ; license_r : 'a [@bits Config.signature_width]
     ; license_s : 'a [@bits Config.signature_width]
     (* Workload interface *)
@@ -177,7 +181,7 @@ let create scope (i : _ I.t) =
       
       State.Publish, [
         (* Nonce is stable, wait for license submission *)
-        when_ i.license_valid [
+        when_ i.license_submit [
           license_r_reg <-- i.license_r;
           license_s_reg <-- i.license_s;
           sm.set_next Verify_start;

@@ -1,0 +1,7 @@
+(library
+ (name off_switch)
+ (public_name off_switch)
+ (wrapped false)
+ (modules trng security_block ecdsa arith mod_add mod_mul mod_inv point_add point_mul)
+ (libraries base hardcaml zarith)
+ (preprocess (pps ppx_jane ppx_hardcaml)))
