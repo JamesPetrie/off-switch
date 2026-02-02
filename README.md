@@ -273,7 +273,7 @@ Here's an expanded section on the ECDSA and modular arithmetic architecture to a
 
 ## ECDSA and Modular Arithmetic Architecture
 
-```
+```mermaid
 flowchart TB
     subgraph ECDSA["ECDSA Verification Block"]
         direction LR
