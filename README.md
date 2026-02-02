@@ -58,14 +58,8 @@ dune build
 ### Run Tests
 
 ```bash
-# Full security block test suite
+# Run security block test suite
 dune exec ./test/test_security_block.exe
-```
-
-### Generate Verilog
-
-```bash
-dune exec ./bin/generate_verilog.exe > security_block.v
 ```
 
 ---
