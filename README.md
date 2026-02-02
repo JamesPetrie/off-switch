@@ -21,7 +21,7 @@
 
 This security block implements a hardware-level "deadman's switch" for AI accelerators, based on the design described in Petrie (2025), [Embedded Off-Switches for AI Compute](https://arxiv.org/abs/2509.07637). The block gates essential chip operations, allowing them to proceed only when valid, cryptographically-signed authorization has been recently received.
 
-The paper proposes embedding thousands of these security blocks throughout an AI chip, each independently verifying authorization. This prototype implements a single block to validate the core mechanism.
+The paper proposes embedding thousands of these security blocks throughout an AI chip, each independently verifying authorization. This prototype implements a single ECDSA-based block to validate the mechanism.
 
 ### Design Goals
 
@@ -29,6 +29,38 @@ The paper proposes embedding thousands of these security blocks throughout an AI
 - **Cryptographic authorization**: Only holders of the private key can generate valid licenses
 - **Replay prevention**: Each license is valid for exactly one nonce
 - **Time-based depletion**: Authorization expires over time without renewal
+
+
+---
+
+## Quickstart
+
+### Prerequisites
+
+- **OCaml** (4.14+) and **opam**
+
+### Installation
+
+```bash
+# Install opam if needed (macOS: brew install opam, Ubuntu: apt install opam)
+opam init
+eval $(opam env)
+
+# Install dependencies
+opam install hardcaml hardcaml_waveterm zarith
+
+# Clone and build
+git clone https://github.com/JamesPetrie/off-switch
+cd off-switch
+dune build
+```
+
+### Run Tests
+
+```bash
+# Run security block test suite
+dune exec ./test/test_security_block.exe
+```
 
 ---
 
