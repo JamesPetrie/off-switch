@@ -267,6 +267,214 @@ stateDiagram-v2
 
 ---
 
+Here's an expanded section on the ECDSA and modular arithmetic architecture to add to the README:
+
+---
+
+## ECDSA and Modular Arithmetic Architecture
+
+```
+flowchart TB
+    subgraph ECDSA["ECDSA Verification Block"]
+        direction LR
+        
+        subgraph left[" "]
+            direction TB
+            
+            subgraph SM["State Machine"]
+                direction TB
+                SM_PREP["Prep Phase<br/>u₁, u₂ computation"]
+                SM_LOOP["Scalar Mult Loop<br/>256 iterations"]
+                SM_FIN["Finalize<br/>projective → affine"]
+                SM_CMP["Compare<br/>x_affine == r?"]
+                
+                SM_PREP --> SM_LOOP
+                SM_LOOP --> SM_FIN
+                SM_FIN --> SM_CMP
+            end
+            
+            subgraph REGS["Register File (17 × 256-bit)"]
+                direction TB
+                R_PT["Point Coords<br/>X₁,Y₁,Z₁ / X₂,Y₂,Z₂ / X₃,Y₃,Z₃"]
+                R_TMP["Temporaries<br/>t₀–t₅"]
+                R_PRM["Parameters<br/>a, b3"]
+            end
+        end
+        
+        subgraph right[" "]
+            direction TB
+            
+            subgraph ARITH["Modular Arithmetic Unit"]
+                direction TB
+                
+                INV["Inverse<br/>(Ext. Euclidean)<br/>~500 cycles"]
+                MUL["Multiplication<br/>(shift-and-add)<br/>~260 cycles"]
+                ADDSUB["Add / Subtract<br/>~3 cycles"]
+                
+                subgraph shared[" "]
+                    direction LR
+                    MOD["Modulus Logic<br/>(p or n)"]
+                    ADD256["256-bit Adder"]
+                end
+                
+                INV --> shared
+                MUL --> shared
+                ADDSUB --> shared
+            end
+        end
+        
+        SM <-->|"start op<br/>done"| ARITH
+        REGS <-->|"read A,B<br/>write result"| ARITH
+    end
+    
+    EXT_IN["z, r, s<br/>(inputs)"] --> ECDSA
+    ECDSA --> EXT_OUT["valid<br/>(output)"]
+    
+    classDef ecdsa fill:#cce5ff,stroke:#004085
+    classDef arith fill:#fff3cd,stroke:#856404
+    classDef sm fill:#d4edda,stroke:#155724
+    classDef regs fill:#e2d5f1,stroke:#6f42c1
+    classDef subunit fill:#f8f9fa,stroke:#6c757d
+    classDef external fill:#fff,stroke:#333,stroke-dasharray: 5 5
+    
+    class ECDSA ecdsa
+    class ARITH arith
+    class SM,SM_PREP,SM_LOOP,SM_FIN,SM_CMP sm
+    class REGS,R_PT,R_TMP,R_PRM regs
+    class INV,MUL,ADDSUB,MOD,ADD256,shared subunit
+    class EXT_IN,EXT_OUT external
+```
+
+The security block uses ECDSA signature verification on the secp256k1 curve to validate licenses. This section describes the implementation approach; for background on why public-key cryptography is preferable to symmetric alternatives, see Section 3 of Petrie (2025).
+
+### Verification Algorithm
+
+ECDSA verification computes:
+
+```
+R = u₁·G + u₂·Q
+```
+
+where:
+- `u₁ = z · s⁻¹ mod n`
+- `u₂ = r · s⁻¹ mod n`
+- `G` is the generator point (hardcoded)
+- `Q` is the public key (hardcoded; `Q = 2G` in prototype)
+- `z` is the message hash (= nonce in prototype)
+- `(r, s)` is the signature
+
+The signature is valid if `R.x mod n == r`.
+
+### Scalar Multiplication via Shamir's Trick
+
+Computing `u₁·G + u₂·Q` naively would require two separate scalar multiplications followed by a point addition. Instead, we use Shamir's trick (simultaneous multi-scalar multiplication) to process both scalars in a single pass through their bits.
+
+For each bit position `i` from 255 down to 0:
+1. **Double** the accumulator point `P`
+2. **Add** a precomputed point based on the bit pair `(u₁[i], u₂[i])`:
+   - `(0,0)`: add nothing (skip)
+   - `(1,0)`: add `G`
+   - `(0,1)`: add `Q`
+   - `(1,1)`: add `G+Q` (precomputed)
+
+This reduces the operation count from ~512 point additions to ~256 point additions plus ~256 doublings, with the doublings and additions unified through a complete addition formula.
+
+### Complete Addition Formula
+
+Point addition uses the complete addition formulas from Renes, Costello, and Batina (2016) in projective coordinates. These formulas:
+- Handle all cases uniformly (including doubling, adding the point at infinity, and adding a point to its negation)
+- Avoid branching on point values, which simplifies the state machine and improves side-channel resistance
+- Require only field operations (add, subtract, multiply) with no inversions during the main loop
+
+Each point addition/doubling executes a fixed sequence of 40 field operations, implemented as a microcode program:
+
+```ocaml
+let program = [|
+  { op = Op.mul; src1 = Config.x1; src2 = Config.x2; dst = Config.t0 };  (* t0 = X1·X2 *)
+  { op = Op.mul; src1 = Config.y1; src2 = Config.y2; dst = Config.t1 };  (* t1 = Y1·Y2 *)
+  { op = Op.mul; src1 = Config.z1; src2 = Config.z2; dst = Config.t2 };  (* t2 = Z1·Z2 *)
+  (* ... 37 more operations ... *)
+|]
+```
+
+The formula uses 6 temporary registers (`t0`–`t5`) plus input/output point coordinates and curve parameters, for a total of 17 registers.
+
+### Modular Arithmetic Unit
+
+The `Arith` module provides the four operations needed for elliptic curve arithmetic:
+
+| Operation | Description | Algorithm |
+|-----------|-------------|-----------|
+| `add` | `(a + b) mod m` | Add with conditional subtraction |
+| `sub` | `(a - b) mod m` | Subtract with conditional addition |
+| `mul` | `(a · b) mod m` | Montgomery multiplication (256 iterations) |
+| `inv` | `a⁻¹ mod m` | Extended Euclidean algorithm |
+
+All operations work over 256-bit operands and can use either the field prime `p` or curve order `n` as the modulus:
+- Point arithmetic (during scalar multiplication) uses `mod p`
+- Scalar preparation (`u₁`, `u₂` computation) and final comparison use `mod n`
+
+The arithmetic unit interfaces with a 17-register file. Operations are started with a pulse and signal completion via `done_`. Typical cycle counts:
+- Add/Sub: 2–3 cycles
+- Mul: ~260 cycles (bit-serial)
+- Inv: ~500–600 cycles (varies with input)
+
+### State Machine Overview
+
+The ECDSA verification state machine proceeds through these phases:
+
+```
+Idle → Prep_op → Loop ⟷ Load → Run_add → Finalize_op → Compare → Done
+         ↑__________________|
+```
+
+**Prep_op** (3 operations, using `mod n`):
+1. `w = s⁻¹ mod n`
+2. `u₁ = z · w mod n`
+3. `u₂ = r · w mod n`
+
+**Loop/Load/Run_add** (256 bit positions × ~40 ops each):
+- For each bit position, double the accumulator and conditionally add `G`, `Q`, or `G+Q`
+- Point at infinity handled via projective coordinates (`Z = 0`)
+
+**Finalize_op** (2 operations, using `mod p`):
+1. `z_inv = Z⁻¹ mod p` (convert from projective to affine)
+2. `x_affine = X · z_inv mod p`
+
+**Compare**: Check if `x_affine == r`
+
+### Cycle Count
+
+Total verification takes approximately 1.5–2 million cycles, dominated by the ~256 point operations in the scalar multiplication loop. At 1 GHz, this is 1.5–2 milliseconds—negligible compared to the licensing interval (minutes to days).
+
+### Hardcoded Constants
+
+The prototype hardcodes:
+- Generator point `G` (from secp256k1 specification)
+- Public key `Q = 2G` (would be chip-specific in production)
+- Precomputed sum `G + Q = 3G`
+- Point at infinity `(0, 1, 0)` in projective coordinates
+- Field prime `p = 2²⁵⁶ - 2³² - 977`
+- Curve order `n = 2²⁵⁶ - 432420386565659656852420866394968145599`
+
+In production, `Q` would be unique per chip (or per batch) and stored in Mask ROM, as recommended in the paper. The other constants are fixed by the secp256k1 specification.
+
+### Prototype Simplifications
+
+This implementation omits several features needed for production:
+
+| Feature | Prototype | Production |
+|---------|-----------|------------|
+| Input validation | None | Check `r, s ∈ [1, n-1]` |
+| Final reduction | None | Reduce `x_affine mod n` before comparison |
+| Side-channel resistance | None | Constant-time field operations |
+| Public key | Single hardcoded `Q` | Configurable via Mask ROM |
+
+
+---
+
+
+
 ## Timing Characteristics
 
 | Operation | Cycles | Notes |
