@@ -30,6 +30,44 @@ The paper proposes embedding thousands of these security blocks throughout an AI
 - **Replay prevention**: Each license is valid for exactly one nonce
 - **Time-based depletion**: Authorization expires over time without renewal
 
+
+---
+
+## Quickstart
+
+### Prerequisites
+
+- **OCaml** (4.14+) and **opam**
+
+### Installation
+
+```bash
+# Install opam if needed (macOS: brew install opam, Ubuntu: apt install opam)
+opam init
+eval $(opam env)
+
+# Install dependencies
+opam install hardcaml hardcaml_waveterm zarith
+
+# Clone and build
+git clone https://github.com/JamesPetrie/off-switch
+cd off-switch
+dune build
+```
+
+### Run Tests
+
+```bash
+# Full security block test suite
+dune exec ./test/test_security_block.exe
+```
+
+### Generate Verilog
+
+```bash
+dune exec ./bin/generate_verilog.exe > security_block.v
+```
+
 ---
 
 ## High-Level Block Diagram
