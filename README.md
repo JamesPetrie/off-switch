@@ -338,11 +338,9 @@ This is a proof-of-concept implementation. The paper discusses broader limitatio
 | Component | Prototype | Production |
 |-----------|-----------|------------|
 | TRNG | 256-bit counter | Ring oscillator(s) with XORed entropy |
-| Hash function | Identity (nonce = message z) | SHA-256 |
-| Public key | Hardcoded (Q = 2G) | Configurable via Mask ROM or fuses |
+| Public key | Hardcoded (Q = 2G) | Configurable via Mask ROM |
 | Curve | secp256k1 only | Multiple curves for redundancy |
 | Input validation | Minimal | Full range checking (r, s ∈ [1, n-1]) |
-| Side-channel | None | Constant-time operations |
 | Redundancy | Single block | Thousands of independent blocks per chip |
 
 ---
