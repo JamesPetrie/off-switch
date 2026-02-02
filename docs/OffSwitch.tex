@@ -15,6 +15,9 @@
 \usepackage{fancyhdr}       % header
 \usepackage{graphicx}       % graphics
 \usepackage{appendix}
+\usepackage{amsmath}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, backgrounds}
 \graphicspath{{media/}}     % organize your images and other figures under media/ folder
 
 %Header
@@ -270,6 +273,188 @@ Beyond a simple on/off mechanism, this distributed security architecture could p
 %Bibliography
 \bibliographystyle{unsrt}  
 \bibliography{OffSwitch}  
+
+\begin{appendices}
+
+\section{Prototype Implementation}
+\label{appendix:prototype}
+
+To validate the security block design presented in Section \ref{sec:primary_design}, we implemented a single-block prototype in RTL (register-transfer level) hardware description language. The prototype demonstrates that the core cryptographic authorization mechanism is implementable with standard digital logic, and that the security properties described in the paper can be enforced in hardware. Source code is available at \url{https://github.com/jamesbpetrie/security_block}.
+
+\subsection{Architecture}
+
+Figure \ref{fig:prototype_architecture} shows the prototype architecture, which implements the conceptual design from Figure \ref{fig:security_block}. The security block contains five main components: a true random number generator (TRNG) for nonce generation, an ECDSA verification unit, a state machine orchestrating the authorization flow, a 64-bit usage allowance counter, and gated essential logic (an Int8 adder as a placeholder for actual chip operations).
+
+\begin{figure}[h]
+\begin{center}
+\begin{tikzpicture}[
+    block/.style={rectangle, draw, thick, minimum width=2.5cm, minimum height=1.2cm, align=center, font=\small},
+    smallblock/.style={rectangle, draw, thick, minimum width=2cm, minimum height=0.8cm, align=center, font=\footnotesize},
+    external/.style={rectangle, draw, thick, dashed, minimum width=2cm, minimum height=1cm, align=center, font=\small},
+    arrow/.style={-{Stealth[length=2mm]}, thick},
+    label/.style={font=\scriptsize},
+]
+
+\node[block, fill=blue!20, minimum width=5cm, minimum height=1.5cm] (security) at (0, 0) 
+    {Security Logic\\{\footnotesize (State Machine)}};
+
+\node[block, fill=green!20] (trng) at (-4.5, -3.5) {TRNG\\{\footnotesize 256-bit}};
+\node[block, fill=orange!20] (ecdsa) at (0, -3.5) {ECDSA\\{\footnotesize secp256k1}};
+\node[block, fill=yellow!20] (allowance) at (4.5, -3.5) {Allowance\\{\footnotesize 64-bit}};
+
+\node[smallblock, fill=purple!20] (adder) at (-1, -6.5) {Int8 Add};
+\node[smallblock, fill=red!20] (andgate) at (3, -6.5) {AND Gate};
+
+\node[external] (authority) at (-7.5, 0) {License\\Authority};
+\node[external] (workload_in) at (-7.5, -6.5) {Workload\\Input};
+\node[external] (workload_out) at (7.5, -6.5) {Workload\\Output};
+
+\begin{scope}[on background layer]
+    \draw[thick, rounded corners, fill=gray!10] 
+        (-6.2, 1.3) rectangle (6.2, -7.8);
+    \node[font=\small\bfseries] at (0, 1.6) {SECURITY BLOCK};
+\end{scope}
+
+\draw[arrow] ([xshift=-2cm]security.south) -- 
+    node[label, left]{request\_new} (trng.north);
+\draw[arrow] ([xshift=-0.4cm]security.south) -- 
+    node[label, left]{start} ([xshift=-0.4cm]ecdsa.north);
+\draw[arrow] ([xshift=2cm]security.south) -- 
+    node[label, right]{increment} (allowance.north);
+\draw[arrow] ([xshift=0.5cm]trng.north) -- 
+    node[label, right]{nonce, valid} ([xshift=-1.5cm]security.south);
+\draw[arrow] ([xshift=0.4cm]ecdsa.north) -- 
+    node[label, right]{done, valid} ([xshift=0.4cm]security.south);
+\draw[arrow] (allowance.south) -- ++(0, -1.5) -|
+    node[label, above, pos=0.3]{enabled} (andgate.north);
+\draw[arrow] (workload_in.east) -- (adder.west);
+\draw[arrow] (adder.east) -- (andgate.west);
+\draw[arrow] (andgate.east) -- (workload_out.west);
+\draw[arrow] (authority.east) -- 
+    node[label, above]{license\_submit, r, s} (security.west);
+\draw[arrow] ([yshift=-0.3cm]security.west) -- 
+    node[label, below]{nonce, ready} ([yshift=-0.3cm]authority.east);
+
+\end{tikzpicture}
+\caption{Prototype security block architecture. The Int8 adder serves as a placeholder for actual chip operations such as matrix multiplies or data routing.}
+\label{fig:prototype_architecture}
+\end{center}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}llp{7cm}@{}}
+\toprule
+\textbf{Module} & \textbf{Type} & \textbf{Purpose} \\
+\midrule
+TRNG & Submodule & Generates 256-bit nonces (counter-based in prototype; ring oscillator in production) \\
+ECDSA & Submodule & Verifies license signatures using secp256k1 curve \\
+Security Logic & Inline & 7-state machine orchestrating authorization flow \\
+Allowance & Inline & 64-bit counter gating chip operations \\
+Workload & Inline & Gated essential operation (Int8 addition) \\
+\bottomrule
+\end{tabular}
+\caption{Prototype module summary.}
+\label{table:modules}
+\end{table}
+
+The authorization flow follows the protocol described in Section \ref{sec:design}: the TRNG generates a nonce, which is published for the external license authority to sign. Upon receiving a license $(r, s)$, the ECDSA module verifies the signature against the nonce and a hardcoded public key. Valid signatures increment the allowance counter; invalid signatures leave the allowance unchanged but retain the same nonce to permit retry. The allowance decrements every clock cycle, providing time-based authorization depletion. When the allowance reaches zero, the AND gate blocks workload outputs by forcing all result bits to zero.
+
+\subsection{ECDSA Implementation}
+
+The ECDSA verification module computes $R = u_1 \cdot G + u_2 \cdot Q$, where $u_1 = z \cdot s^{-1} \mod n$, $u_2 = r \cdot s^{-1} \mod n$, $G$ is the generator point, $Q$ is the public key, and $z$ is the nonce. The signature is valid if $R_x \mod n = r$. Figure \ref{fig:ecdsa_architecture} shows the internal structure of the ECDSA module, which consists of three main components: a state machine, a register file, and a modular arithmetic unit.
+
+\begin{figure}[h]
+\begin{center}
+\begin{tikzpicture}[
+    block/.style={rectangle, draw, thick, minimum width=2.2cm, minimum height=1cm, align=center, font=\small},
+    smallblock/.style={rectangle, draw, thick, minimum width=1.8cm, minimum height=0.8cm, align=center, font=\footnotesize},
+    container/.style={rectangle, draw, thick, rounded corners, fill=#1},
+    arrow/.style={-{Stealth[length=2mm]}, thick},
+    biarrow/.style={{Stealth[length=2mm]}-{Stealth[length=2mm]}, thick},
+    label/.style={font=\scriptsize},
+]
+
+% State Machine
+\node[container=green!10, minimum height=5.8cm, minimum width=3.5cm] (sm_box) at (-3, 1.2) {};
+\node[font=\small\bfseries] at (-3, 3.6) {State Machine};
+
+\node[smallblock, fill=green!30] (prep) at (-3, 2.7) {Prep Phase\\{\scriptsize $u_1, u_2$}};
+\node[smallblock, fill=green!30] (loop) at (-3, 1.6) {Scalar Mult\\{\scriptsize 256 iter}};
+\node[smallblock, fill=green!30] (fin) at (-3, 0.5) {Finalize\\{\scriptsize proj $\to$ affine}};
+\node[smallblock, fill=green!30] (cmp) at (-3, -0.6) {Compare\\{\scriptsize $x = r$?}};
+
+\draw[arrow] (prep) -- (loop);
+\draw[arrow] (loop) -- (fin);
+\draw[arrow] (fin) -- (cmp);
+
+% Register File
+\node[container=purple!10, minimum height=2.6cm, minimum width=3.5cm] (reg_box) at (-3, -4) {};
+\node[font=\small\bfseries] at (-3, -2.95) {Register File};
+\node[font=\footnotesize] at (-3, -3.45) {17 $\times$ 256-bit};
+
+\node[smallblock, fill=purple!20] (rpt) at (-4, -4.7) {Points\\{\scriptsize $X,Y,Z$}};
+\node[smallblock, fill=purple!20] (rtmp) at (-2, -4.7) {Temps\\{\scriptsize $t_0$--$t_5$}};
+
+% Arithmetic Unit
+\node[container=orange!10, minimum height=4.2cm, minimum width=5cm] (arith_box) at (4, -1.2) {};
+\node[font=\small\bfseries] at (4, 0.6) {Modular Arithmetic Unit};
+
+\node[smallblock, fill=orange!30] (inv) at (2.3, -0.4) {Inverse\\{\scriptsize Ext. Euclid}};
+\node[smallblock, fill=orange!30] (mul) at (4, -0.4) {Multiply\\{\scriptsize shift-add}};
+\node[smallblock, fill=orange!30] (addsub) at (5.7, -0.4) {Add/Sub};
+
+\node[smallblock, fill=yellow!30, minimum width=4cm] (mod) at (4, -1.7) {Modulus Select\\{\scriptsize prime $p$ or order $n$}};
+\node[smallblock, fill=yellow!30, minimum width=4cm] (add256) at (4, -2.8) {256-bit Adder};
+
+\draw[arrow] (inv.south) -- ([yshift=0.15cm]mod.north -| inv.south);
+\draw[arrow] (mul.south) -- ([yshift=0.15cm]mod.north);
+\draw[arrow] (addsub.south) -- ([yshift=0.15cm]mod.north -| addsub.south);
+\draw[arrow] (mod) -- (add256);
+
+% Connection: State Machine to Arithmetic Unit
+\draw[biarrow] ([yshift=0.3cm]sm_box.east) -- 
+    node[label, above, pos=0.5]{start, op} 
+    node[label, below, pos=0.5]{done} 
+    ([yshift=1.5cm]arith_box.west);
+
+% Connection: Register File to Arithmetic Unit
+\draw[biarrow] (reg_box.east) --
+    node[label, above, pos=0.5]{read $A$, $B$} 
+    node[label, below, pos=0.5]{write result} 
+    ([yshift=-1.5cm]arith_box.west);
+
+% External I/O
+\node[rectangle, draw, dashed, thick, minimum width=1.5cm, minimum height=0.8cm, align=center, font=\footnotesize] (in) at (-7, -1.2) {Inputs:\\$z, r, s$};
+\node[rectangle, draw, dashed, thick, minimum width=1.5cm, minimum height=0.8cm, align=center, font=\footnotesize] (out) at (8, -1.2) {Output:\\valid};
+
+\draw[arrow] (in.east) -- (-5, -1.2);
+\draw[arrow] (6.75, -1.2) -- (out.west);
+
+% Outer box
+\begin{scope}[on background layer]
+    \draw[thick, rounded corners, fill=blue!5] 
+        (-5.2, 4.3) rectangle (7, -5.7);
+    \node[font=\small\bfseries] at (0.9, 4.7) {ECDSA VERIFICATION BLOCK};
+\end{scope}
+
+\end{tikzpicture}
+\caption{ECDSA verification module architecture. The state machine orchestrates scalar multiplication using the modular arithmetic unit and register file.}
+\label{fig:ecdsa_architecture}
+\end{center}
+\end{figure}
+
+The \textbf{state machine} controls the verification process through four phases. In the prep phase, it computes the scalar coefficients $u_1$ and $u_2$ by first inverting $s$ modulo the curve order $n$, then multiplying to obtain $u_1 = z \cdot s^{-1}$ and $u_2 = r \cdot s^{-1}$. The scalar multiplication phase iterates through all 256 bits of the scalars, performing point doubling and conditional point addition at each step. The finalize phase converts the result from projective to affine coordinates by computing a modular inverse of the $Z$ coordinate. Finally, the compare phase checks whether the $x$-coordinate of the computed point equals $r$.
+
+The \textbf{register file} holds 17 registers of 256 bits each. Nine registers store the coordinates of three elliptic curve points in projective form $(X, Y, Z)$: the accumulator, a working point, and temporary storage for point addition. Six registers ($t_0$ through $t_5$) hold intermediate values during the 40-operation point addition sequence. The remaining two registers store the curve parameters $a$ and $3b$.
+
+The \textbf{modular arithmetic unit} provides four operations over 256-bit operands: addition, subtraction, multiplication, and inversion. Addition and subtraction use a 256-bit adder with conditional correction to keep results in the field. Multiplication uses a shift-and-add algorithm, processing one bit per cycle. Inversion uses the extended Euclidean algorithm. A modulus selector allows operations to use either the field prime $p$ (for point arithmetic) or the curve order $n$ (for scalar arithmetic and final comparison).
+
+Rather than performing two separate scalar multiplications, the implementation uses Shamir's trick (simultaneous multi-scalar multiplication) to process both scalars in a single pass. For each of the 256 bit positions, the accumulator point is doubled and then conditionally added with one of four precomputed points ($G$, $Q$, $G+Q$, or none) depending on the corresponding bits of $u_1$ and $u_2$. This reduces the operation count from approximately 512 point additions to 256 doublings plus 256 conditional additions.
+
+Point operations use the complete addition formulas from Renes, Costello, and Batina \cite{renes_complete_2016} in projective coordinates. These formulas handle all cases uniformly---including doubling, adding the point at infinity, and adding a point to its negation---without branching on point values. Each point operation executes a fixed sequence of 40 field operations (additions, subtractions, and multiplications over the 256-bit prime field), implemented as a microcode program that reads operands from the register file, dispatches them to the arithmetic unit, and writes results back.
+
+\end{appendices}
 
 
 \end{document}
