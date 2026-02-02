@@ -283,21 +283,21 @@ flowchart TB
             
             subgraph SM["State Machine"]
                 direction TB
-                SM_PREP["Prep Phase<br/>u₁, u₂ computation"]
+                SM_PREP["Prep Phase<br/>u1, u2 computation"]
                 SM_LOOP["Scalar Mult Loop<br/>256 iterations"]
-                SM_FIN["Finalize<br/>projective → affine"]
-                SM_CMP["Compare<br/>x_affine == r?"]
+                SM_FIN["Finalize<br/>projective to affine"]
+                SM_CMP["Compare<br/>x_affine == r ?"]
                 
                 SM_PREP --> SM_LOOP
                 SM_LOOP --> SM_FIN
                 SM_FIN --> SM_CMP
             end
             
-            subgraph REGS["Register File (17 × 256-bit)"]
-                direction TB
-                R_PT["Point Coords<br/>X₁,Y₁,Z₁ / X₂,Y₂,Z₂ / X₃,Y₃,Z₃"]
-                R_TMP["Temporaries<br/>t₀–t₅"]
-                R_PRM["Parameters<br/>a, b3"]
+            subgraph REGS["Register File --- 17 x 256-bit"]
+                direction LR
+                R_PT["Point Coords<br/>X1 Y1 Z1<br/>X2 Y2 Z2<br/>X3 Y3 Z3"]
+                R_TMP["Temps<br/>t0 - t5"]
+                R_PRM["Params<br/>a, b3"]
             end
         end
         
@@ -307,14 +307,18 @@ flowchart TB
             subgraph ARITH["Modular Arithmetic Unit"]
                 direction TB
                 
-                INV["Inverse<br/>(Ext. Euclidean)<br/>~500 cycles"]
-                MUL["Multiplication<br/>(shift-and-add)<br/>~260 cycles"]
-                ADDSUB["Add / Subtract<br/>~3 cycles"]
-                
-                subgraph shared[" "]
+                subgraph ops[" "]
                     direction LR
-                    MOD["Modulus Logic<br/>(p or n)"]
+                    INV["Inverse<br/>Ext Euclidean<br/>500 cycles"]
+                    MUL["Multiply<br/>shift-and-add<br/>260 cycles"]
+                    ADDSUB["Add - Sub<br/>3 cycles"]
+                end
+                
+                subgraph shared["Shared Datapath"]
+                    direction TB
+                    MOD["Modulus Select<br/>prime p or order n"]
                     ADD256["256-bit Adder"]
+                    MOD --> ADD256
                 end
                 
                 INV --> shared
@@ -323,25 +327,31 @@ flowchart TB
             end
         end
         
-        SM <-->|"start op<br/>done"| ARITH
-        REGS <-->|"read A,B<br/>write result"| ARITH
+        SM <-->|"start, op<br/>done"| ARITH
+        REGS <-->|"read A B<br/>write result"| ARITH
     end
     
-    EXT_IN["z, r, s<br/>(inputs)"] --> ECDSA
-    ECDSA --> EXT_OUT["valid<br/>(output)"]
+    EXT_IN["Inputs:<br/>z, r, s"] --> ECDSA
+    ECDSA --> EXT_OUT["Output:<br/>valid"]
     
-    classDef ecdsa fill:#cce5ff,stroke:#004085
-    classDef arith fill:#fff3cd,stroke:#856404
-    classDef sm fill:#d4edda,stroke:#155724
-    classDef regs fill:#e2d5f1,stroke:#6f42c1
-    classDef subunit fill:#f8f9fa,stroke:#6c757d
-    classDef external fill:#fff,stroke:#333,stroke-dasharray: 5 5
+    classDef outer fill:#f0f7ff,stroke:#2563eb,stroke-width:2px,color:#1e40af
+    classDef arithbox fill:#fef9e7,stroke:#b7950b,stroke-width:2px,color:#7d6608
+    classDef smbox fill:#e8f8f5,stroke:#1abc9c,stroke-width:2px,color:#0e6655
+    classDef smnode fill:#d5f5e3,stroke:#27ae60,stroke-width:1px,color:#1d8348
+    classDef regsbox fill:#f5eef8,stroke:#8e44ad,stroke-width:2px,color:#6c3483
+    classDef regsnode fill:#ebdef0,stroke:#9b59b6,stroke-width:1px,color:#7d3c98
+    classDef subunit fill:#fdebd0,stroke:#e67e22,stroke-width:1px,color:#a04000
+    classDef sharedbox fill:#fcf3cf,stroke:#d4ac0d,stroke-width:1px,color:#9a7d0a
+    classDef external fill:#ffffff,stroke:#5d6d7e,stroke-width:1px,stroke-dasharray: 5 5,color:#2c3e50
     
-    class ECDSA ecdsa
-    class ARITH arith
-    class SM,SM_PREP,SM_LOOP,SM_FIN,SM_CMP sm
-    class REGS,R_PT,R_TMP,R_PRM regs
-    class INV,MUL,ADDSUB,MOD,ADD256,shared subunit
+    class ECDSA outer
+    class ARITH arithbox
+    class SM smbox
+    class SM_PREP,SM_LOOP,SM_FIN,SM_CMP smnode
+    class REGS regsbox
+    class R_PT,R_TMP,R_PRM regsnode
+    class INV,MUL,ADDSUB subunit
+    class shared,MOD,ADD256 sharedbox
     class EXT_IN,EXT_OUT external
 ```
 
