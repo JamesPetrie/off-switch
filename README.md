@@ -47,7 +47,7 @@ opam init
 eval $(opam env)
 
 # Install dependencies
-opam install hardcaml hardcaml_waveterm zarith
+opam install hardcaml hardcaml_waveterm ppx_hardcaml zarith 
 
 # Clone and build
 git clone https://github.com/JamesPetrie/off-switch
