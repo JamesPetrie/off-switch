@@ -121,7 +121,7 @@ let () =
     Cyclesim.cycle sim;
     inputs.start := Bits.gnd;
     
-    let max_cycles = 5_000_000 in
+    let max_cycles = 15_000_000 in
     let rec wait n =
       if n >= max_cycles then begin
         Stdio.printf "  TIMEOUT after %d cycles\n" max_cycles;

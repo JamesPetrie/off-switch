@@ -5,6 +5,7 @@ open Signal
 (* Configuration for 256-bit operations *)
 module Config = struct
   let width = 256
+  let bit_count_width = num_bits_to_represent width
 end
 
 (* Simple Modular Multiplication
@@ -17,7 +18,9 @@ module ModMul = struct
     type t =
       | Idle
       | Init
-      | Loop
+      | Add
+      | Adjust
+      | Double_adjust
       | Done
     [@@deriving sexp_of, compare, enumerate]
   end
@@ -30,7 +33,7 @@ module ModMul = struct
       ; x : 'a [@bits Config.width]  (* First multiplicand *)
       ; y : 'a [@bits Config.width]  (* Second multiplicand *)
       ; modulus : 'a [@bits Config.width]  (* Modulus r *)
-      ; num_bits : 'a [@bits 9]  (* Number of bits to process in y (0-256) *)
+      ; num_bits : 'a [@bits Config.bit_count_width]  (* Number of bits to process in y (0-256) *)
       }
     [@@deriving sexp_of, hardcaml]
   end
@@ -47,9 +50,7 @@ module ModMul = struct
     let open Always in
     let ( -- ) = Scope.naming scope in
     let width = Config.width in
-
-    (* Need one extra bit to handle doubling without overflow *)
-    let acc_width = width + 1 in
+    let bit_count_width = Config.bit_count_width in
 
     let spec = Reg_spec.create ~clock:i.clock ~clear:i.clear () in
 
@@ -57,22 +58,36 @@ module ModMul = struct
     let sm = State_machine.create (module State) spec ~enable:vdd in
 
     (* Result accumulator *)
-    let result_acc = Variable.reg spec ~width:acc_width in
+    let result_acc = Variable.reg spec ~width:width in
+    let add_carry = Variable.reg spec ~width:1 in
 
     (* Multiplier (y) and bit counter *)
     let multiplier = Variable.reg spec ~width in
-    let bit_count = Variable.reg spec ~width:9 in
+    let bit_count = Variable.reg spec ~width:bit_count_width in
 
     (* Current value of x (gets doubled each iteration) *)
-    let x_current = Variable.reg spec ~width:acc_width in
+    let x_current = Variable.reg spec ~width:width in
     
     (* Stored modulus *)
-    let modulus_orig = Variable.reg spec ~width:acc_width in
-    let num_bits_orig = Variable.reg spec ~width:9 in
+    let modulus_reg = Variable.reg spec ~width:width in
+    let num_bits_orig = Variable.reg spec ~width:bit_count_width in
 
     (* Output registers *)
     let result = Variable.reg spec ~width in
     let valid = Variable.reg spec ~width:1 in
+
+    (* 256 bit adder instance *)
+    let in_add_state        = sm.is Add in
+    let in_double_adj_state = sm.is Double_adjust in
+    let x_doubled           = sll x_current.value 1 in
+    
+    let comb_add_a    = mux2 ~:in_double_adj_state result_acc.value x_doubled         in
+    let comb_add_b    = mux2   in_add_state        x_current.value  modulus_reg.value in
+    let comb_subtract = mux2   in_add_state        gnd              vdd               in
+    let comb_add_out  =
+      Comb_add.CombAdd.create (Scope.sub_scope scope "comb_add")
+        { Comb_add.CombAdd.I.a = comb_add_a; b = comb_add_b; subtract = comb_subtract }
+    in
 
     compile [
       sm.switch [
@@ -93,8 +108,8 @@ module ModMul = struct
               valid <-- vdd;
               sm.set_next Done;
             ] [
-              x_current <-- uresize i.x acc_width;
-              modulus_orig <-- uresize i.modulus acc_width;
+              x_current <-- i.x;
+              modulus_reg <-- i.modulus;
               multiplier <-- i.y;
               num_bits_orig <-- i.num_bits;
               sm.set_next Init;
@@ -104,65 +119,79 @@ module ModMul = struct
 
         State.Init, [
           valid <-- gnd;
-          result_acc <-- zero acc_width;
-          bit_count <-- of_int ~width:9 0;
-          sm.set_next Loop;
+          result_acc <-- zero width;
+          bit_count <-- zero bit_count_width;
+          sm.set_next Add;
         ];
 
-        State.Loop, [
-          valid <-- gnd;
-          
-            if_ ((bit_count.value ==: num_bits_orig.value) |: (multiplier.value ==:. 0)) [
-    (* Exit when done OR when no more bits to process *)
-    result <-- sel_bottom result_acc.value width;
-    valid <-- vdd;
-    sm.set_next Done;
-  ] [
-            (* Check LSB of multiplier *)
-            let current_bit = lsb multiplier.value in
-            
-            (* If bit is set, add current x to result *)
-            let after_add = 
-              mux2 current_bit
-                (result_acc.value +: x_current.value)
-                result_acc.value
-            in
-            
-            (* Reduce if >= modulus   
-              todo: improve efficiency by subtracting 
-            first and check underflow as mux condition*)
-            let after_add_reduce =
-              mux2 (after_add >=: modulus_orig.value)
-                (after_add -: modulus_orig.value)
-                after_add
-            in
-            
-            (* Double x for next iteration *)
-            let x_doubled = sll x_current.value 1 in
-            
-            (* Reduce doubled x if >= modulus 
-              todo: improve efficiency by subtracting 
-            first and check underflow as mux condition*)
+        State.Add, [
+          (* Check LSB of multiplier *)
+          let current_bit = lsb multiplier.value in
 
-            let x_doubled_reduce =
-              mux2 (x_doubled >=: modulus_orig.value)
-                (x_doubled -: modulus_orig.value)
-                x_doubled
-            in
-            
-            proc [
-              result_acc <-- after_add_reduce;
-              x_current <-- x_doubled_reduce;
-              multiplier <-- srl multiplier.value 1;  (* Shift right *)
-              bit_count <-- bit_count.value +:. 1;
+          (* If bit is set, add current x to result *)
+          let after_add = mux2 current_bit comb_add_out.result result_acc.value in
+
+          proc [
+            valid <-- gnd;
+            result_acc <-- after_add;
+            add_carry  <-- mux2 current_bit comb_add_out.carry_out gnd;
+            sm.set_next Adjust;
+          ];
+        ];
+
+        State.Adjust, [
+
+          (* Reduce if >= modulus:
+              -- if the addition had overflow (add_carry=1)
+              -- if subtracting the modulus does not underflow (comb_add_out.carry_out=0) *)
+          let add_reduce_needed = add_carry.value |: ~:(comb_add_out.carry_out) in
+          let after_add_reduce = mux2 add_reduce_needed comb_add_out.result result_acc.value in
+          
+          proc [
+            valid <-- gnd;  
+            result_acc <-- after_add_reduce;
+            add_carry  <-- gnd;  (* Clear carry as it is N/A here *)
+            sm.set_next Double_adjust;
+          ];
+        ];
+
+        State.Double_adjust, [
+
+          (* Double x for next iteration and
+              reduce new x if >= modulus:
+              -- if the doubling caused overflow (MSB=1)
+              -- if subtracting the modulus does not underflow (comb_add_out.carry_out=0) *)
+          let double_reduce_needed = msb x_current.value |: ~:(comb_add_out.carry_out) in
+          let new_x = mux2 double_reduce_needed comb_add_out.result x_doubled in
+          let new_multiplier = srl multiplier.value 1 in
+          let new_bit_count = bit_count.value +:. 1 in
+          
+          proc [
+            valid <-- gnd;
+            x_current <-- new_x;
+            multiplier <-- new_multiplier;
+            bit_count <-- new_bit_count;
+
+            if_ ((new_bit_count ==: num_bits_orig.value) |: (new_multiplier ==:. 0)) [
+              (* Exit when done OR when no more bits to process *)
+              result <-- result_acc.value;
+              valid <-- vdd;
+              sm.set_next Done;
+            ] (* REVISIT is it okay to just skip Add and Adjust if LSB=0? *)
+            @@ elif ( ~:(lsb new_multiplier) ) [
+              (* Skip Add if next bit is 0 *)
+              sm.set_next Double_adjust;
+            ]
+            @@ [
+              sm.set_next Add;
             ];
           ];
         ];
 
         State.Done, [
-  valid <-- vdd;
-  sm.set_next Idle;  (* Return to Idle after one cycle *)
-];
+          valid <-- gnd;
+          sm.set_next Idle;  (* Return to Idle after one cycle *)
+        ];
       ];
     ];
 
