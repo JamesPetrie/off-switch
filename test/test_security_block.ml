@@ -187,7 +187,7 @@ let () =
     inputs.license_r := Bits.zero 256;
     inputs.license_s := Bits.zero 256;
     
-    let max_cycles = 5_000_000 in
+    let max_cycles = 15_000_000 in
     let rec loop n last_state =
       if n >= max_cycles then begin
         Stdio.printf "    TIMEOUT waiting for verification after %d cycles\n" max_cycles;

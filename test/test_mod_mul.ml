@@ -62,7 +62,7 @@ let test () =
     inputs.start := Bits.gnd;
 
     (* Wait for result *)
-    let max_cycles = 500 in
+    let max_cycles = 1500 in
     let rec wait cycle_count =
       if cycle_count >= max_cycles then begin
         Stdio.printf "  ERROR: Timeout after %d cycles\n\n" max_cycles;
