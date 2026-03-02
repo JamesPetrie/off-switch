@@ -164,13 +164,18 @@ let test () =
 
     test_case "Inverse mod secp256k1 curve order n"
       (Z.of_string "999999999999999999")
-      (Z.of_string "115792089237316195423570985008687907853269984665640564039457584007908834671437")
+      (Z.of_string "0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141")
       true None;
       
     test_case "Edge: (m-1)^(-1) mod m"
       (Z.of_int 12)
       (Z.of_int 13)
       true (Some (Z.of_int 12));
+
+    test_case "Random 256-bit x mod secp256k1 prime"
+      (Z.of_string "110707857788799430918272628231015831947039709193752578283967915890624753014285")
+      (Z.of_string "115792089237316195423570985008687907853269984665640564039457584007908834671663")
+      true None;
   ] in
   
   let passed = List.count results ~f:Fn.id in

@@ -461,7 +461,7 @@ for i = 1 to 9 do
       current_x := rx;
       current_y := ry;
       current_z := rz;
-      if i mod 3 = 0 then
+      if i % 3 = 0 then
         Stdio.printf "  Addition %d complete\n" i
 done;
 
@@ -700,13 +700,6 @@ Stdio.printf "=== Rapid Small Operations Test ===\n\n";
 Stdio.printf "Test: 20 rapid point additions\n";
 
 let rapid_pass = ref true in
-let small_x = Z.of_int 12345 in
-let small_y = 
-  (* Find valid y for x=12345 on secp256k1: y² = x³ + 7 *)
-  let x3_plus_7 = Z.((small_x * small_x * small_x + of_int 7) mod prime_p) in
-  (* Use Tonelli-Shanks or just use G for simplicity *)
-  g_y  (* Use G's y for a valid point *)
-in
 
 (* Actually, let's just use multiples of G to ensure valid points *)
 let acc_x = ref g_x in

@@ -341,9 +341,9 @@ flowchart TB
                 
                 subgraph ops[" "]
                     direction LR
-                    INV["Inverse<br/>Ext Euclidean<br/>500 cycles"]
-                    MUL["Multiply<br/>shift-and-add<br/>260 cycles"]
-                    ADDSUB["Add - Sub<br/>3 cycles"]
+                    INV["Inverse<br/>Ext Euclidean"]
+                    MUL["Multiply<br/>shift-and-add"]
+                    ADDSUB["Add - Sub"]
                 end
                 
                 subgraph shared["Shared Datapath"]
@@ -458,8 +458,8 @@ All operations work over 256-bit operands and can use either the field prime `p`
 
 The arithmetic unit interfaces with a 17-register file. Operations are started with a pulse and signal completion via `done_`. Typical cycle counts:
 - Add/Sub: 2–3 cycles
-- Mul: ~260 cycles (bit-serial)
-- Inv: ~500–600 cycles (varies with input)
+- Mul: ~250-750 cycles (bit-serial, varies with y input)
+- Inv: ~1000–1500 cycles (varies with input)
 
 ### State Machine Overview
 
@@ -487,7 +487,7 @@ Idle → Prep_op → Loop ⟷ Load → Run_add → Finalize_op → Compare → D
 
 ### Cycle Count
 
-Total verification takes approximately 1.5–2 million cycles, dominated by the ~256 point operations in the scalar multiplication loop. At 1 GHz, this is 1.5–2 milliseconds—negligible compared to the licensing interval (minutes to days).
+Total verification takes approximately 3–4 million cycles, dominated by the ~256 point operations in the scalar multiplication loop. At 1 GHz, this is in milliseconds—negligible compared to the licensing interval (minutes to days).
 
 ### Hardcoded Constants
 
@@ -523,7 +523,7 @@ This implementation omits several features needed for production:
 |-----------|--------|-------|
 | Initialization delay | 100 | Configurable via `Config.init_delay_cycles` |
 | Nonce generation | 2 | Request + latch |
-| License verification | ~1.5–2M | ECDSA scalar multiplication dominates |
+| License verification | ~10⁶ | ECDSA scalar multiplication dominates |
 | Workload operation | 1 | Combinational add + output register |
 | Allowance per license | 10¹² | Configurable via `Config.allowance_increment` |
 
