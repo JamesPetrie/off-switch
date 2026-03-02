@@ -132,27 +132,15 @@ let create scope (i : _ I.t) =
   let num_bits_for_mul = of_int ~width:9 Config.width in
   
   (* Instantiate arithmetic modules *)
-  let mod_add_out = Mod_add.ModAdd.create (Scope.sub_scope scope "mod_add")
+  let mod_addsub_out = Mod_add.ModAdd.create (Scope.sub_scope scope "mod_add")
     { Mod_add.ModAdd.I.
       clock = i.clock
     ; clear = i.clear
-    ; start = start_add.value
+    ; start = start_add.value |: start_sub.value
     ; a = operand_a.value
     ; b = operand_b.value
     ; modulus = selected_prime
-    ; subtract = gnd
-    }
-  in
-  
-  let mod_sub_out = Mod_add.ModAdd.create (Scope.sub_scope scope "mod_sub")
-    { Mod_add.ModAdd.I.
-      clock = i.clock
-    ; clear = i.clear
-    ; start = start_sub.value
-    ; a = operand_a.value
-    ; b = operand_b.value
-    ; modulus = selected_prime
-    ; subtract = vdd
+    ; subtract = start_sub.value
     }
   in
   
@@ -181,8 +169,8 @@ let create scope (i : _ I.t) =
   (* Mux results based on operation *)
   let op_result = 
     mux op_reg.value [
-      mod_add_out.result;
-      mod_sub_out.result;
+      mod_addsub_out.result;
+      mod_addsub_out.result;
       mod_mul_out.result;
       mod_inv_out.result;
     ]
@@ -190,8 +178,8 @@ let create scope (i : _ I.t) =
   
   let op_valid =
     mux op_reg.value [
-      mod_add_out.valid;
-      mod_sub_out.valid;
+      mod_addsub_out.valid;
+      mod_addsub_out.valid;
       mod_mul_out.valid;
       mod_inv_out.valid;
     ]
