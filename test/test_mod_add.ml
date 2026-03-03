@@ -2,10 +2,10 @@ open Base
 open Hardcaml
 
 let test () =
-  let test_modulus_z = 
+  let test_modulus_z =
     Z.of_string "115792089237316195423570985008687907853269984665640564039457584007908834671663"
   in
-  
+
   Stdio.printf "=== ModAdd Hardware Test (256-bit modular add/sub) ===\n\n";
   Stdio.printf "Test Modulus (n) = %s\n\n" (Z.to_string test_modulus_z);
 
@@ -14,7 +14,7 @@ let test () =
   let sim = Sim.create (Mod_add.ModAdd.create scope) in
 
   let inputs = Cyclesim.inputs sim in
-  let outputs = Cyclesim.outputs sim in
+  let outputs = Cyclesim.outputs ~clock_edge:Before sim in
 
   let z_to_bits z =
     let hex_str = Z.format "%x" z in
@@ -35,14 +35,14 @@ let test () =
     Stdio.printf "  b = %s\n" (Z.to_string b_z);
     Stdio.printf "  n = %s\n" (Z.to_string modulus_z);
 
-    let expected_z = 
+    let expected_z =
       let raw = if is_sub then Z.(a_z - b_z) else Z.(a_z + b_z) in
       Z.(erem raw modulus_z)
     in
     Stdio.printf "  expected = %s\n" (Z.to_string expected_z);
 
     inputs.clear := Bits.vdd;
-    inputs.start := Bits.gnd;
+    inputs.valid := Bits.gnd;
     inputs.a := Bits.zero Mod_add.Config.width;
     inputs.b := Bits.zero Mod_add.Config.width;
     inputs.modulus := Bits.zero Mod_add.Config.width;
@@ -56,30 +56,28 @@ let test () =
     inputs.b := z_to_bits b_z;
     inputs.modulus := z_to_bits modulus_z;
     inputs.subtract := if is_sub then Bits.vdd else Bits.gnd;
-    inputs.start := Bits.vdd;
-    Cyclesim.cycle sim;
-
-    inputs.start := Bits.gnd;
+    inputs.valid := Bits.vdd;
 
     let max_cycles = 20 in
     let rec wait cycle_count =
       if cycle_count >= max_cycles then begin
         Stdio.printf "  ERROR: Timeout after %d cycles\n\n" max_cycles;
         false
-      end else if Bits.to_bool !(outputs.valid) then begin
+      end else if Bits.to_bool !(outputs.ready) then begin
+        inputs.valid := Bits.gnd;
         let result_z = bits_to_z !(outputs.result) in
-        
+
         Stdio.printf "  Completed in %d cycles\n" cycle_count;
         Stdio.printf "  result = %s\n" (Z.to_string result_z);
-        
+
         let verified = Z.equal result_z expected_z in
-        
+
         if verified then
           Stdio.printf "  Verification: PASS ✓\n"
         else
-          Stdio.printf "  Verification: FAIL ✗ (diff: %s)\n" 
+          Stdio.printf "  Verification: FAIL ✗ (diff: %s)\n"
             (Z.to_string Z.(result_z - expected_z));
-        
+
         Stdio.printf "\n";
         verified
       end else begin
@@ -87,7 +85,8 @@ let test () =
         wait (cycle_count + 1)
       end
     in
-    wait 0
+    Cyclesim.cycle sim;
+    wait 1
   in
 
   let test_with_default_modulus name a_z b_z is_sub =
@@ -97,29 +96,29 @@ let test () =
   let results = [
     test_with_default_modulus "Simple addition"
       (Z.of_int 100) (Z.of_int 200) false;
-    
+
     test_with_default_modulus "Addition with modular wrap"
       (Z.of_string "115792089237316195423570985008687907853269984665640564039457584007908834671600")
       (Z.of_int 100) false;
-    
+
     test_with_default_modulus "Simple subtraction"
       (Z.of_int 500) (Z.of_int 300) true;
-    
+
     test_with_default_modulus "Subtraction requiring modular correction"
       (Z.of_int 100) (Z.of_int 200) true;
-    
+
     test_with_default_modulus "Subtraction from modulus-1"
       Z.(test_modulus_z - one) (Z.of_int 10) true;
-    
+
     test_with_default_modulus "Add zero"
       (Z.of_int 12345) Z.zero false;
-    
+
     test_with_default_modulus "Subtract zero"
       (Z.of_int 12345) Z.zero true;
-    
+
     test_case "Different modulus: small prime 997"
       (Z.of_int 500) (Z.of_int 600) (Z.of_int 997) false;
-    
+
     test_case "BN254 subtraction wrap"
       (Z.of_int 10)
       (Z.of_int 20)

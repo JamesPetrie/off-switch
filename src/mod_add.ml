@@ -7,18 +7,18 @@ module Config = struct
   let width = 256
 end
 
-(* Modular Addition/Subtraction Module (combinatorial adder variant)
+(* Modular Addition/Subtraction Module
 
    Performs (a ± b) mod n where n is provided as an input.
-   - Uses comb_add for the initial a ± b in a single cycle
-   - 2-cycle operation: Free (latch + add) → Modulus_adjust (modular reduction)
+   - Uses an internal comb_add for arithmetic
+   - 2-cycle operation: Add (latch + add) → Adjust (modular reduction)
    - Automatic modular reduction
 *)
 module ModAdd = struct
   module State = struct
     type t =
-      | Free
-      | Modulus_adjust
+      | Add
+      | Adjust
     [@@deriving sexp_of, compare, enumerate]
   end
 
@@ -26,7 +26,7 @@ module ModAdd = struct
     type 'a t =
       { clock : 'a
       ; clear : 'a
-      ; start : 'a
+      ; valid : 'a
       ; a : 'a [@bits Config.width]  (* First operand *)
       ; b : 'a [@bits Config.width]  (* Second operand *)
       ; modulus : 'a [@bits Config.width]  (* Modulus n *)
@@ -38,7 +38,7 @@ module ModAdd = struct
   module O = struct
     type 'a t =
       { result : 'a [@bits Config.width]
-      ; valid : 'a
+      ; ready  : 'a  (* 1 result is valid *)
       }
     [@@deriving sexp_of, hardcaml]
   end
@@ -46,7 +46,7 @@ module ModAdd = struct
   let create scope (i : _ I.t) =
     let open Always in
     let ( -- ) = Scope.naming scope in
-    
+
     let spec = Reg_spec.create ~clock:i.clock ~clear:i.clear () in
 
     (* State machine *)
@@ -55,44 +55,39 @@ module ModAdd = struct
     (* Registers for computation *)
     let result_ab    = Variable.reg spec ~width:Config.width in
     let carry_ab     = Variable.reg spec ~width:1 in
-    let modulus_reg  = Variable.reg spec ~width:Config.width in
-    let is_subtract  = Variable.reg spec ~width:1 in
 
-    (* Output registers *)
-    let result = Variable.reg spec ~width:Config.width in
-    let valid  = Variable.reg spec ~width:1 in
-
-    (* Mux comb_add inputs by state:
-       - Free:         i.a ± i.b           (initial operation)
-       - Modulus_adjust: result_ab ± modulus (correction: add modulus if sub underflow,
-                                                subtract modulus if sum higher than modulus) *)
-    let in_modulus_adjust = sm.is Modulus_adjust in
-    let comb_a   = mux2 in_modulus_adjust result_ab.value i.a in
-    let comb_b   = mux2 in_modulus_adjust modulus_reg.value i.b in
+    (* Adder inputs muxed by state:
+       - Add:    i.a ± i.b           (initial operation)
+       - Adjust: result_ab ± modulus (correction step) *)
+    let in_adjust = sm.is Adjust in
+    let adder_a        = mux2 in_adjust result_ab.value i.a in
+    let adder_b        = mux2 in_adjust i.modulus i.b in
     (* modulus adjust uses the opposite of the original operation - add if a-b, subtract if a+b *)
-    let comb_subtract = mux2 in_modulus_adjust ~:(is_subtract.value) i.subtract in
+    let adder_subtract = mux2 in_adjust ~:(i.subtract) i.subtract in
 
+    let adder_ready = vdd in (* currently using combinatorial adder, so no delay *)
     let comb_add_out =
       Comb_add.CombAdd.create (Scope.sub_scope scope "comb_add")
-        { Comb_add.CombAdd.I.a = comb_a; b = comb_b; subtract = comb_subtract }
+        { Comb_add.CombAdd.I.a = adder_a; b = adder_b; subtract = adder_subtract }
     in
+
+    let result_w = Variable.wire ~default:(zero Config.width) in
+    let ready_w  = Variable.wire ~default:gnd in
 
     compile [
       sm.switch [
-        State.Free, [
-          valid <-- gnd;
-          when_ i.start [
+        State.Add, [
+          when_ (i.valid &: adder_ready) [
+            (* update register values and select next state *)
             result_ab   <-- comb_add_out.result;
             carry_ab    <-- comb_add_out.carry_out;
-            modulus_reg <-- i.modulus;
-            is_subtract <-- i.subtract;
-            sm.set_next Modulus_adjust;
+            sm.set_next Adjust;
           ];
         ];
-        
-        State.Modulus_adjust, [
-  
-          (* comb_add is computing result_ab ± modulus_reg here. *)
+
+        State.Adjust, [
+
+          (* adder is computing result_ab ± modulus here *)
           (* For add:
             -- reduce if carry_ab=1 (a+b overflowed 256 bits, so a+b >= 2^256 > n)
                 NOTE: comb_add_out.carry_out is not valid in this case
@@ -104,22 +99,24 @@ module ModAdd = struct
           let sub_needs_adjust = carry_ab.value in
 
           let final_result =
-            mux2 is_subtract.value
+            mux2 i.subtract
               (mux2 sub_needs_adjust comb_add_out.result result_ab.value)
               (mux2 add_needs_adjust comb_add_out.result result_ab.value)
           in
 
-          proc [
-            result <-- final_result;
-            valid <-- vdd;
-            sm.set_next Free;
+          when_ adder_ready [
+            (* combinatorial: drive result output *)
+            result_w <-- final_result;
+            ready_w  <-- vdd; (* No clear needed, Variable.wire ~default takes care *)
+            (* select next state *)
+            sm.set_next Add;
           ];
         ];
       ];
     ];
 
-    { O.result = result.value -- "result"
-    ; valid = valid.value -- "valid"
+    { O.result = result_w.value -- "result"
+    ; ready    = ready_w.value -- "ready"
     }
 end
 
