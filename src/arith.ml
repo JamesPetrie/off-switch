@@ -132,15 +132,22 @@ let create scope (i : _ I.t) =
   let num_bits_for_mul = of_int ~width:9 Config.width in
 
   (* Instantiate arithmetic modules *)
-  let mod_addsub_out = Mod_add.ModAdd.create (Scope.sub_scope scope "mod_add")
+
+  (* Forward declaration wires for mod_add inputs, driven below after mod_mul is available *)
+  let mod_add_valid_w    = Signal.wire 1 in
+  let mod_add_a_w        = Signal.wire Config.width in
+  let mod_add_b_w        = Signal.wire Config.width in
+  let mod_add_subtract_w = Signal.wire 1 in
+
+  let mod_add_out = Mod_add.ModAdd.create (Scope.sub_scope scope "mod_add")
     { Mod_add.ModAdd.I.
       clock    = i.clock
     ; clear    = i.clear
-    ; valid    = mod_add_valid.value |: mod_sub_valid.value
-    ; a        = operand_a.value
-    ; b        = operand_b.value
+    ; valid    = mod_add_valid_w
+    ; a        = mod_add_a_w
+    ; b        = mod_add_b_w
     ; modulus  = selected_prime
-    ; subtract = mux2 (op_reg.value ==: of_int ~width:2 Op.sub) vdd gnd
+    ; subtract = mod_add_subtract_w
     }
   in
 
@@ -153,6 +160,8 @@ let create scope (i : _ I.t) =
     ; y = operand_b.value
     ; modulus = selected_prime
     ; num_bits = num_bits_for_mul
+    ; mod_add_result = mod_add_out.result
+    ; mod_add_ready  = mod_add_out.ready
     }
   in
 
@@ -163,14 +172,43 @@ let create scope (i : _ I.t) =
     ; start = start_inv.value
     ; x = operand_a.value
     ; modulus = selected_prime
+    ; mod_add_result   = mod_add_out.result
+    ; mod_add_ready    = mod_add_out.ready
+    ; mod_add_adjusted = mod_add_out.adjusted
     }
   in
+
+  (* Drive mod_add inputs, muxed by operation *)
+  assign mod_add_valid_w (mux op_reg.value [
+    mod_add_valid.value;        (* add *)
+    mod_sub_valid.value;        (* sub *)
+    mod_mul_out.mod_add_valid;  (* mul *)
+    mod_inv_out.mod_add_valid;  (* inv *)
+  ]);
+  assign mod_add_a_w (mux op_reg.value [
+    operand_a.value;            (* add *)
+    operand_a.value;            (* sub *)
+    mod_mul_out.mod_add_a;      (* mul *)
+    mod_inv_out.mod_add_a;      (* inv *)
+  ]);
+  assign mod_add_b_w (mux op_reg.value [
+    operand_b.value;            (* add *)
+    operand_b.value;            (* sub *)
+    mod_mul_out.mod_add_b;      (* mul *)
+    mod_inv_out.mod_add_b;      (* inv *)
+  ]);
+  assign mod_add_subtract_w (mux op_reg.value [
+    gnd;                          (* add *)
+    vdd;                          (* sub *)
+    mod_mul_out.mod_add_subtract; (* mul *)
+    mod_inv_out.mod_add_subtract; (* inv *)
+  ]);
 
   (* Mux results based on operation *)
   let op_result =
     mux op_reg.value [
-      mod_addsub_out.result;
-      mod_addsub_out.result;
+      mod_add_out.result;
+      mod_add_out.result;
       mod_mul_out.result;
       mod_inv_out.result;
     ]
@@ -178,8 +216,8 @@ let create scope (i : _ I.t) =
 
   let op_ready =
     mux op_reg.value [
-      mod_addsub_out.ready;
-      mod_addsub_out.ready;
+      mod_add_out.ready;
+      mod_add_out.ready;
       mod_mul_out.valid;
       mod_inv_out.valid;
     ]
