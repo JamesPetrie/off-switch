@@ -71,24 +71,24 @@ flowchart TB
     subgraph external_left[" "]
         AUTH["License<br/>Authority"]:::external
     end
-    
+
     subgraph SECURITY_BLOCK["SECURITY BLOCK"]
         direction TB
         SL["Security Logic<br/>(State Machine)"]:::security
-        
+
         subgraph submodules[" "]
             direction LR
             TRNG["TRNG<br/>256-bit"]:::trng
             ECDSA["ECDSA<br/>secp256k1"]:::ecdsa
             ALLOW["Allowance<br/>64-bit"]:::allowance
         end
-        
+
         subgraph datapath[" "]
             direction LR
             ADDER["Int8 Add"]:::adder
             AND["AND Gate"]:::andgate
         end
-        
+
         SL -->|request_new| TRNG
         TRNG -->|"nonce, valid"| SL
         SL -->|start| ECDSA
@@ -97,17 +97,17 @@ flowchart TB
         ALLOW -->|enabled| AND
         ADDER --> AND
     end
-    
+
     subgraph external_io[" "]
         direction LR
         WIN["Workload<br/>Input"]:::external
         WOUT["Workload<br/>Output"]:::external
     end
-    
+
     AUTH <-->|"license_submit, r, s<br/>nonce, ready"| SL
     WIN --> ADDER
     AND --> WOUT
-    
+
     classDef external fill:#fff,stroke:#333,stroke-dasharray: 5 5
     classDef security fill:#cce5ff,stroke:#004085
     classDef trng fill:#c3e6cb,stroke:#155724
@@ -309,22 +309,22 @@ Here's an expanded section on the ECDSA and modular arithmetic architecture to a
 flowchart TB
     subgraph ECDSA["ECDSA Verification Block"]
         direction LR
-        
+
         subgraph left[" "]
             direction TB
-            
+
             subgraph SM["State Machine"]
                 direction TB
                 SM_PREP["Prep Phase<br/>u1, u2 computation"]
                 SM_LOOP["Scalar Mult Loop<br/>256 iterations"]
                 SM_FIN["Finalize<br/>projective to affine"]
                 SM_CMP["Compare<br/>x_affine == r ?"]
-                
+
                 SM_PREP --> SM_LOOP
                 SM_LOOP --> SM_FIN
                 SM_FIN --> SM_CMP
             end
-            
+
             subgraph REGS["Register File --- 17 x 256-bit"]
                 direction LR
                 R_PT["Point Coords<br/>X1 Y1 Z1<br/>X2 Y2 Z2<br/>X3 Y3 Z3"]
@@ -332,40 +332,40 @@ flowchart TB
                 R_PRM["Params<br/>a, b3"]
             end
         end
-        
+
         subgraph right[" "]
             direction TB
-            
+
             subgraph ARITH["Modular Arithmetic Unit"]
                 direction TB
-                
-                subgraph ops[" "]
-                    direction LR
-                    INV["Inverse<br/>Ext Euclidean"]
-                    MUL["Multiply<br/>shift-and-add"]
-                    ADDSUB["Add - Sub"]
+
+                subgraph INV["Inverse<br/>Ext Euclidean"]
+                    direction TB
                 end
-                
-                subgraph shared["Shared Datapath"]
+
+                subgraph MUL["Multiply<br/>shift-and-add"]
+                    direction TB
+                end
+
+                subgraph ADDSUB["Add - Sub"]
                     direction TB
                     MOD["Modulus Select<br/>prime p or order n"]
                     ADD256["256-bit Adder"]
                     MOD --> ADD256
                 end
-                
-                INV --> shared
-                MUL --> shared
-                ADDSUB --> shared
+
+                INV --> ADDSUB
+                MUL --> ADDSUB
             end
         end
-        
+
         SM <-->|"start, op<br/>done"| ARITH
         REGS <-->|"read A B<br/>write result"| ARITH
     end
-    
+
     EXT_IN["Inputs:<br/>z, r, s"] --> ECDSA
     ECDSA --> EXT_OUT["Output:<br/>valid"]
-    
+
     classDef outer fill:#f0f7ff,stroke:#2563eb,stroke-width:2px,color:#1e40af
     classDef arithbox fill:#fef9e7,stroke:#b7950b,stroke-width:2px,color:#7d6608
     classDef smbox fill:#e8f8f5,stroke:#1abc9c,stroke-width:2px,color:#0e6655
@@ -375,7 +375,7 @@ flowchart TB
     classDef subunit fill:#fdebd0,stroke:#e67e22,stroke-width:1px,color:#a04000
     classDef sharedbox fill:#fcf3cf,stroke:#d4ac0d,stroke-width:1px,color:#9a7d0a
     classDef external fill:#ffffff,stroke:#5d6d7e,stroke-width:1px,stroke-dasharray: 5 5,color:#2c3e50
-    
+
     class ECDSA outer
     class ARITH arithbox
     class SM smbox
@@ -458,8 +458,8 @@ All operations work over 256-bit operands and can use either the field prime `p`
 
 The arithmetic unit interfaces with a 17-register file. Operations are started with a pulse and signal completion via `done_`. Typical cycle counts:
 - Add/Sub: 2–3 cycles
-- Mul: ~250-750 cycles (bit-serial, varies with y input)
-- Inv: ~1000–1500 cycles (varies with input)
+- Mul: ~500-1000 cycles (bit-serial, varies with y input)
+- Inv: ~2000–3000 cycles (varies with input)
 
 ### State Machine Overview
 
@@ -487,7 +487,7 @@ Idle → Prep_op → Loop ⟷ Load → Run_add → Finalize_op → Compare → D
 
 ### Cycle Count
 
-Total verification takes approximately 3–4 million cycles, dominated by the ~256 point operations in the scalar multiplication loop. At 1 GHz, this is in milliseconds—negligible compared to the licensing interval (minutes to days).
+Total verification takes approximately 5 million cycles, dominated by the ~256 point operations in the scalar multiplication loop. At 1 GHz, this is in milliseconds—negligible compared to the licensing interval (minutes to days).
 
 ### Hardcoded Constants
 

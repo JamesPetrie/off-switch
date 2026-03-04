@@ -1,13 +1,49 @@
 open Base
 open Hardcaml
 
+module ModInvWithModAdd = struct
+  module I = Mod_inv.ModInv.I
+  module O = Mod_inv.ModInv.O
+
+  let create scope (i : _ I.t) =
+    let mod_add_result_w   = Signal.wire Mod_inv.Config.width in
+    let mod_add_ready_w    = Signal.wire 1 in
+    let mod_add_adjusted_w = Signal.wire 1 in
+
+    let inv_out = Mod_inv.ModInv.create (Scope.sub_scope scope "mod_inv")
+      { i with
+        mod_add_result   = mod_add_result_w
+      ; mod_add_ready    = mod_add_ready_w
+      ; mod_add_adjusted = mod_add_adjusted_w
+      }
+    in
+
+    let add_out = Mod_add.ModAdd.create (Scope.sub_scope scope "mod_add")
+      { Mod_add.ModAdd.I.
+        clock    = i.clock
+      ; clear    = i.clear
+      ; valid    = inv_out.mod_add_valid
+      ; a        = inv_out.mod_add_a
+      ; b        = inv_out.mod_add_b
+      ; modulus  = i.modulus
+      ; subtract = inv_out.mod_add_subtract
+      }
+    in
+
+    Signal.assign mod_add_result_w   add_out.result;
+    Signal.assign mod_add_ready_w    add_out.ready;
+    Signal.assign mod_add_adjusted_w add_out.adjusted;
+
+    inv_out
+end
+
 let test () =
   Stdio.printf "=== ModInv Hardware Test (256-bit with Zarith) ===\n";
   Stdio.printf "=== Assuming odd prime modulus ===\n\n";
   
   let scope = Scope.create ~flatten_design:true () in
-  let module Sim = Cyclesim.With_interface(Mod_inv.ModInv.I)(Mod_inv.ModInv.O) in
-  let sim = Sim.create (Mod_inv.ModInv.create scope) in
+  let module Sim = Cyclesim.With_interface(ModInvWithModAdd.I)(ModInvWithModAdd.O) in
+  let sim = Sim.create (ModInvWithModAdd.create scope) in
   
   let inputs = Cyclesim.inputs sim in
   let outputs = Cyclesim.outputs sim in

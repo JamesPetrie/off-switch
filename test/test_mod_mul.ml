@@ -1,12 +1,45 @@
 open Base
 open Hardcaml
 
+module ModMulWithModAdd = struct
+  module I = Mod_mul.ModMul.I
+  module O = Mod_mul.ModMul.O
+
+  let create scope (i : _ I.t) =
+    let mod_add_result_w = Signal.wire Mod_mul.Config.width in
+    let mod_add_ready_w  = Signal.wire 1 in
+
+    let mul_out = Mod_mul.ModMul.create (Scope.sub_scope scope "mod_mul")
+      { i with
+        mod_add_result = mod_add_result_w
+      ; mod_add_ready  = mod_add_ready_w
+      }
+    in
+
+    let add_out = Mod_add.ModAdd.create (Scope.sub_scope scope "mod_add")
+      { Mod_add.ModAdd.I.
+        clock    = i.clock
+      ; clear    = i.clear
+      ; valid    = mul_out.mod_add_valid
+      ; a        = mul_out.mod_add_a
+      ; b        = mul_out.mod_add_b
+      ; modulus  = i.modulus
+      ; subtract = mul_out.mod_add_subtract
+      }
+    in
+
+    Signal.(mod_add_result_w <== add_out.result);
+    Signal.(mod_add_ready_w  <== add_out.ready);
+
+    mul_out
+end
+
 let test () =
   Stdio.printf "=== ModMul Hardware Test (256-bit with Zarith and num_bits) ===\n\n";
 
   let scope = Scope.create ~flatten_design:true () in
-  let module Sim = Cyclesim.With_interface(Mod_mul.ModMul.I)(Mod_mul.ModMul.O) in
-  let sim = Sim.create (Mod_mul.ModMul.create scope) in
+  let module Sim = Cyclesim.With_interface(ModMulWithModAdd.I)(ModMulWithModAdd.O) in
+  let sim = Sim.create (ModMulWithModAdd.create scope) in
 
   let inputs = Cyclesim.inputs sim in
   let outputs = Cyclesim.outputs sim in
@@ -35,8 +68,8 @@ let test () =
     let y_bits = z_to_bits y_z in
     let mod_bits = z_to_bits mod_z in
     let num_bits = z_num_bits y_z in
-    
-    Stdio.printf "  y bits  = %d (optimization: %dx speedup)\n" 
+
+    Stdio.printf "  y bits  = %d (optimization: %dx speedup)\n"
       num_bits (Mod_mul.Config.width / (max 1 num_bits));
 
     (* Reset *)
@@ -69,21 +102,21 @@ let test () =
         false
       end else if Bits.to_bool !(outputs.valid) then begin
         let result_bits = !(outputs.result) in
-        let result_z = 
+        let result_z =
           let bin_str = Bits.to_bstr result_bits in
           Z.of_string_base 2 bin_str
         in
-        
+
         Stdio.printf "  Completed in %d cycles\n" cycle_count;
         Stdio.printf "  result  = %s\n" (Z.to_string result_z);
-        
+
         let verified = Z.equal result_z expected_z in
-        
+
         if verified then
           Stdio.printf "  Verification: PASS ✓\n"
         else
           Stdio.printf "  Verification: FAIL ✗\n";
-        
+
         Stdio.printf "\n";
         verified
       end else begin
@@ -97,32 +130,32 @@ let test () =
   let results = [
     test_case "3 * 5 mod 7"
       (Z.of_int 3) (Z.of_int 5) (Z.of_int 7);
-    
+
     test_case "12 * 15 mod 17"
       (Z.of_int 12) (Z.of_int 15) (Z.of_int 17);
-    
+
     test_case "123 * 456 mod 1009"
       (Z.of_int 123) (Z.of_int 456) (Z.of_int 1009);
-    
+
     test_case "Edge: x * 0 mod m"
       (Z.of_int 12345) (Z.of_int 0) (Z.of_int 7919);
-    
+
     test_case "Edge: x * 1 mod m"
       (Z.of_int 12345) (Z.of_int 1) (Z.of_int 7919);
-    
+
     test_case "Large: 123456 * 789012 mod 1000003"
       (Z.of_int 123456) (Z.of_int 789012) (Z.of_int 1000003);
-    
+
     test_case "64-bit multiplication"
       (Z.of_string "12345678901234")
       (Z.of_string "98765432109876")
       (Z.of_string "999999999999999989");
-    
+
     test_case "128-bit multiplication"
       (Z.of_string "123456789012345678901234567890")
       (Z.of_string "987654321098765432109876543210")
       (Z.of_string "340282366920938463463374607431768211297");
-    
+
     test_case "256-bit: multiplication mod secp256k1 prime"
       (Z.of_string "123456789012345678901234567890123456789")
       (Z.of_string "987654321098765432109876543210987654321")

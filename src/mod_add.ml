@@ -37,8 +37,9 @@ module ModAdd = struct
 
   module O = struct
     type 'a t =
-      { result : 'a [@bits Config.width]
-      ; ready  : 'a  (* 1 result is valid *)
+      { result   : 'a [@bits Config.width]
+      ; ready    : 'a  (* 1 result is valid *)
+      ; adjusted : 'a  (* 1 if modular correction was applied this cycle, valid with ready *)
       }
     [@@deriving sexp_of, hardcaml]
   end
@@ -71,8 +72,9 @@ module ModAdd = struct
         { Comb_add.CombAdd.I.a = adder_a; b = adder_b; subtract = adder_subtract }
     in
 
-    let result_w = Variable.wire ~default:(zero Config.width) in
-    let ready_w  = Variable.wire ~default:gnd in
+    let result_w   = Variable.wire ~default:(zero Config.width) in
+    let ready_w    = Variable.wire ~default:gnd in
+    let adjusted_w = Variable.wire ~default:gnd in
 
     compile [
       sm.switch [
@@ -106,8 +108,9 @@ module ModAdd = struct
 
           when_ adder_ready [
             (* combinatorial: drive result output *)
-            result_w <-- final_result;
-            ready_w  <-- vdd; (* No clear needed, Variable.wire ~default takes care *)
+            result_w   <-- final_result;
+            ready_w    <-- vdd; (* No clear needed, Variable.wire ~default takes care *)
+            adjusted_w <-- mux2 i.subtract sub_needs_adjust add_needs_adjust;
             (* select next state *)
             sm.set_next Add;
           ];
@@ -115,8 +118,9 @@ module ModAdd = struct
       ];
     ];
 
-    { O.result = result_w.value -- "result"
-    ; ready    = ready_w.value -- "ready"
+    { O.result   = result_w.value -- "result"
+    ; ready      = ready_w.value -- "ready"
+    ; adjusted   = adjusted_w.value -- "adjusted"
     }
 end
 

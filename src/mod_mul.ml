@@ -9,18 +9,18 @@ module Config = struct
 end
 
 (* Simple Modular Multiplication
-   
+
    Computes (x * y) mod r where r is the modulus.
-   
-   Uses the standard shift-and-add algorithm with modular reduction at each step. *)
+
+   Uses the standard shift-and-add algorithm with modular reduction at each step.
+   Drives an external mod_add instance for all arithmetic. *)
 module ModMul = struct
   module State = struct
     type t =
       | Idle
       | Init
       | Add
-      | Adjust
-      | Double_adjust
+      | Double
       | Done
     [@@deriving sexp_of, compare, enumerate]
   end
@@ -34,6 +34,8 @@ module ModMul = struct
       ; y : 'a [@bits Config.width]  (* Second multiplicand *)
       ; modulus : 'a [@bits Config.width]  (* Modulus r *)
       ; num_bits : 'a [@bits Config.bit_count_width]  (* Number of bits to process in y (0-256) *)
+      ; mod_add_result : 'a [@bits Config.width]  (* result from external mod_add *)
+      ; mod_add_ready  : 'a                        (* ready from external mod_add *)
       }
     [@@deriving sexp_of, hardcaml]
   end
@@ -42,6 +44,10 @@ module ModMul = struct
     type 'a t =
       { result : 'a [@bits Config.width]  (* (x * y) mod r *)
       ; valid : 'a  (* High when result is valid *)
+      ; mod_add_valid    : 'a
+      ; mod_add_a        : 'a [@bits Config.width]
+      ; mod_add_b        : 'a [@bits Config.width]
+      ; mod_add_subtract : 'a
       }
     [@@deriving sexp_of, hardcaml]
   end
@@ -59,7 +65,6 @@ module ModMul = struct
 
     (* Result accumulator *)
     let result_acc = Variable.reg spec ~width:width in
-    let add_carry = Variable.reg spec ~width:1 in
 
     (* Multiplier (y) and bit counter *)
     let multiplier = Variable.reg spec ~width in
@@ -67,27 +72,18 @@ module ModMul = struct
 
     (* Current value of x (gets doubled each iteration) *)
     let x_current = Variable.reg spec ~width:width in
-    
-    (* Stored modulus *)
-    let modulus_reg = Variable.reg spec ~width:width in
+
     let num_bits_orig = Variable.reg spec ~width:bit_count_width in
 
     (* Output registers *)
     let result = Variable.reg spec ~width in
     let valid = Variable.reg spec ~width:1 in
 
-    (* 256 bit adder instance *)
-    let in_add_state        = sm.is Add in
-    let in_double_adj_state = sm.is Double_adjust in
-    let x_doubled           = sll x_current.value 1 in
-    
-    let comb_add_a    = mux2 ~:in_double_adj_state result_acc.value x_doubled         in
-    let comb_add_b    = mux2   in_add_state        x_current.value  modulus_reg.value in
-    let comb_subtract = mux2   in_add_state        gnd              vdd               in
-    let comb_add_out  =
-      Comb_add.CombAdd.create (Scope.sub_scope scope "comb_add")
-        { Comb_add.CombAdd.I.a = comb_add_a; b = comb_add_b; subtract = comb_subtract }
-    in
+    (* Output wires for driving external mod_add *)
+    let mod_add_valid_w    = Variable.wire ~default:gnd in
+    let mod_add_a_w        = Variable.wire ~default:(zero Config.width) in
+    let mod_add_b_w        = Variable.wire ~default:(zero Config.width) in
+    let mod_add_subtract_w = Variable.wire ~default:gnd in
 
     compile [
       sm.switch [
@@ -109,7 +105,6 @@ module ModMul = struct
               sm.set_next Done;
             ] [
               x_current <-- i.x;
-              modulus_reg <-- i.modulus;
               multiplier <-- i.y;
               num_bits_orig <-- i.num_bits;
               sm.set_next Init;
@@ -125,65 +120,46 @@ module ModMul = struct
         ];
 
         State.Add, [
-          (* Check LSB of multiplier *)
-          let current_bit = lsb multiplier.value in
+          if_ (lsb multiplier.value) [
+            (* Combinatorially drive mod_add *)
+            mod_add_valid_w    <-- vdd;
+            mod_add_a_w        <-- result_acc.value;
+            mod_add_b_w        <-- x_current.value;
+            mod_add_subtract_w <-- gnd;
 
-          (* If bit is set, add current x to result *)
-          let after_add = mux2 current_bit comb_add_out.result result_acc.value in
-
-          proc [
-            valid <-- gnd;
-            result_acc <-- after_add;
-            add_carry  <-- mux2 current_bit comb_add_out.carry_out gnd;
-            sm.set_next Adjust;
+            when_ i.mod_add_ready [
+              result_acc <-- i.mod_add_result;
+              sm.set_next Double;
+            ];
+          ] [
+            sm.set_next Double;  (* LSB = 0: skip addition *)
           ];
         ];
 
-        State.Adjust, [
+        State.Double, [
+          (* Combinatorially drive mod_add: x_current + x_current (double) *)
+          mod_add_valid_w    <-- vdd;
+          mod_add_a_w        <-- x_current.value;
+          mod_add_b_w        <-- x_current.value;
+          mod_add_subtract_w <-- gnd;
 
-          (* Reduce if >= modulus:
-              -- if the addition had overflow (add_carry=1)
-              -- if subtracting the modulus does not underflow (comb_add_out.carry_out=0) *)
-          let add_reduce_needed = add_carry.value |: ~:(comb_add_out.carry_out) in
-          let after_add_reduce = mux2 add_reduce_needed comb_add_out.result result_acc.value in
-          
-          proc [
-            valid <-- gnd;  
-            result_acc <-- after_add_reduce;
-            add_carry  <-- gnd;  (* Clear carry as it is N/A here *)
-            sm.set_next Double_adjust;
-          ];
-        ];
+          when_ i.mod_add_ready [
+            let new_multiplier = srl multiplier.value 1 in
+            let new_bit_count  = bit_count.value +:. 1 in
+            proc [
+              x_current  <-- i.mod_add_result;
+              multiplier <-- new_multiplier;
+              bit_count  <-- new_bit_count;
 
-        State.Double_adjust, [
-
-          (* Double x for next iteration and
-              reduce new x if >= modulus:
-              -- if the doubling caused overflow (MSB=1)
-              -- if subtracting the modulus does not underflow (comb_add_out.carry_out=0) *)
-          let double_reduce_needed = msb x_current.value |: ~:(comb_add_out.carry_out) in
-          let new_x = mux2 double_reduce_needed comb_add_out.result x_doubled in
-          let new_multiplier = srl multiplier.value 1 in
-          let new_bit_count = bit_count.value +:. 1 in
-          
-          proc [
-            valid <-- gnd;
-            x_current <-- new_x;
-            multiplier <-- new_multiplier;
-            bit_count <-- new_bit_count;
-
-            if_ ((new_bit_count ==: num_bits_orig.value) |: (new_multiplier ==:. 0)) [
-              (* Exit when done OR when no more bits to process *)
-              result <-- result_acc.value;
-              valid <-- vdd;
-              sm.set_next Done;
-            ] (* REVISIT is it okay to just skip Add and Adjust if LSB=0? *)
-            @@ elif ( ~:(lsb new_multiplier) ) [
-              (* Skip Add if next bit is 0 *)
-              sm.set_next Double_adjust;
-            ]
-            @@ [
-              sm.set_next Add;
+              if_ ((new_bit_count ==: num_bits_orig.value) |: (new_multiplier ==:. 0)) [
+                result <-- result_acc.value;
+                valid  <-- vdd;
+                sm.set_next Done;
+              ] @@ elif (~:(lsb new_multiplier)) [
+                sm.set_next Double;   (* skip Add when next bit = 0 *)
+              ] @@ [
+                sm.set_next Add;
+              ];
             ];
           ];
         ];
@@ -195,8 +171,11 @@ module ModMul = struct
       ];
     ];
 
-    { O.result = result.value -- "result"
-    ; valid = valid.value -- "valid"
+    { O.result           = result.value -- "result"
+    ; valid              = valid.value -- "valid"
+    ; mod_add_valid      = mod_add_valid_w.value -- "mod_add_valid"
+    ; mod_add_a          = mod_add_a_w.value -- "mod_add_a"
+    ; mod_add_b          = mod_add_b_w.value -- "mod_add_b"
+    ; mod_add_subtract   = mod_add_subtract_w.value -- "mod_add_subtract"
     }
 end
-
