@@ -4,42 +4,42 @@ open Signal
 
 
 (* ECDSA Signature Verification for secp256k1
-   
+
    Verifies ECDSA signatures using the equation:
      R = u1*G + u2*Q
    where:
      u1 = z * s^(-1) mod n
      u2 = r * s^(-1) mod n
-   
+
    Signature is valid if R.x mod n == r
 
     Uses Renes, Costello and Batina's complete addition formula in projective coordinates
 
     Uses the Arith module for modular {add, sub, mul, inv}.
-   
+
    Inputs:
      - z: message hash (256 bits)
      - r, s: signature components (256 bits each)
      - param_a, param_b3: curve parameters (a=0, b3=21 for secp256k1)
-   
+
    Outputs:
      - valid: 1 if signature is valid, 0 otherwise
      - done_: pulses high for one cycle when verification completes
      - busy: high while verification is in progress
      - x, y, z_out: final point coordinates (for debugging)
-   
+
    Hardcoded:
      - G: generator point
      - Q: public key (currently 2G for testing)
      - G+Q: precomputed sum (currently 3G)
-   
+
    State machine:
-     Idle -> Prep_op (3 ops) -> Loop/Load/Run_add (scalar mult) 
+     Idle -> Prep_op (3 ops) -> Loop/Load/Run_add (scalar mult)
           -> Finalize_op (2 ops) -> Compare -> Done -> Idle
-   
+
    Cycle count: ~1.5-2M cycles for typical 256-bit scalars
-   
-   Note: Does not currently reduce x_affine mod n before comparison, 
+
+   Note: Does not currently reduce x_affine mod n before comparison,
    or check that z, s, r are within range.
 
 *)
@@ -48,7 +48,7 @@ module Config = struct
   let width = 256
   let reg_addr_width = 5
   let num_steps = 40
-  
+
   let t0 = 0
   let t1 = 1
   let t2 = 2
@@ -66,24 +66,24 @@ module Config = struct
   let z2 = 14
   let param_a = 15
   let param_b3 = 16
-  
+
   let num_regs = 17
-  
+
   (* Generator point G *)
   let generator_x = Z.of_string "0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"
   let generator_y = Z.of_string "0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8"
   let generator_z = Z.one
-  
+
   (* Public key Q = 2G *)
   let q_x = Z.of_string "0xc6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
   let q_y = Z.of_string "12158399299693830322967808612713398636155367887041628176798871954788371653930"
   let q_z = Z.one
-  
+
   (* Precomputed G + Q = 3G *)
   let gpq_x = Z.of_string "0xf9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"
   let gpq_y = Z.of_string "0x388f7b0f632de8140fe337e62a37f3566500a99934c2231b6cb9fd7584b8e672"
   let gpq_z = Z.one
-  
+
   (* Point at infinity *)
   let infinity_x = Z.zero
   let infinity_y = Z.one
@@ -191,37 +191,37 @@ let create scope (i : _ I.t) =
   let open Always in
   let width = Config.width in
   let addr_width = Config.reg_addr_width in
-  
+
   let spec = Reg_spec.create ~clock:i.clock ~clear:i.clear () in
   let sm = State_machine.create (module State) spec ~enable:vdd in
-  
+
   let reg_file = Array.init Config.num_regs ~f:(fun _ -> Variable.reg spec ~width) in
-  
+
   (* Hardcoded point constants *)
   let const_gx = of_z ~width Config.generator_x in
   let const_gy = of_z ~width Config.generator_y in
   let const_gz = of_z ~width Config.generator_z in
-  
+
   let const_qx = of_z ~width Config.q_x in
   let const_qy = of_z ~width Config.q_y in
   let const_qz = of_z ~width Config.q_z in
-  
+
   let const_gpqx = of_z ~width Config.gpq_x in
   let const_gpqy = of_z ~width Config.gpq_y in
   let const_gpqz = of_z ~width Config.gpq_z in
-  
+
   (* Input registers *)
   let z_reg = Variable.reg spec ~width in
   let r_reg = Variable.reg spec ~width in
   let s_reg = Variable.reg spec ~width in
-  
+
   (* Prep phase registers *)
   let w_reg = Variable.reg spec ~width in      (* s^(-1) mod n *)
   let u1_reg = Variable.reg spec ~width in     (* z * w mod n *)
   let u2_reg = Variable.reg spec ~width in     (* r * w mod n *)
   let prep_step = Variable.reg spec ~width:2 in
   let prep_op_started = Variable.reg spec ~width:1 in
-  
+
   (* Main loop registers *)
   let bit_pos = Variable.reg spec ~width:8 in
   let doubling = Variable.reg spec ~width:1 in
@@ -229,36 +229,36 @@ let create scope (i : _ I.t) =
   let step = Variable.reg spec ~width:6 in
   let load_idx = Variable.reg spec ~width:2 in
   let op_started = Variable.reg spec ~width:1 in
-  
+
   (* Latched second operand registers *)
   let x2_latched = Variable.reg spec ~width in
   let y2_latched = Variable.reg spec ~width in
   let z2_latched = Variable.reg spec ~width in
-  
+
   (* Finalize phase registers *)
   let finalize_step = Variable.reg spec ~width:1 in
   let finalize_op_started = Variable.reg spec ~width:1 in
   let z_inv_reg = Variable.reg spec ~width in
   let x_affine_reg = Variable.reg spec ~width in
-  
+
   (* Output registers *)
   let out_x = Variable.reg spec ~width in
   let out_y = Variable.reg spec ~width in
   let out_z = Variable.reg spec ~width in
   let valid_reg = Variable.reg spec ~width:1 in
   let done_flag = Variable.reg spec ~width:1 in
-  
+
   let current_bit_u = bit_select_dynamic u1_reg.value bit_pos.value in
   let current_bit_v = bit_select_dynamic u2_reg.value bit_pos.value in
-  
+
   (* Check if P is point at infinity (z1 = 0) *)
   let p_is_infinity = reg_file.(Config.z1).value ==:. 0 in
-  
+
   (* Instruction decode for point addition *)
   let default_instr = of_int ~width:addr_width 0 in
   let decode field =
-    mux step.value 
-      (Array.to_list (Array.map program ~f:(fun instr -> 
+    mux step.value
+      (Array.to_list (Array.map program ~f:(fun instr ->
         of_int ~width:addr_width (field instr))))
     |> fun s -> mux2 (step.value >=:. Config.num_steps) default_instr s
   in
@@ -268,19 +268,19 @@ let create scope (i : _ I.t) =
         of_int ~width:2 instr.op)))
     |> fun s -> mux2 (step.value >=:. Config.num_steps) (zero 2) s
   in
-  
+
   let current_dst = decode (fun instr -> instr.dst) in
   let current_src1 = decode (fun instr -> instr.src1) in
   let current_src2 = decode (fun instr -> instr.src2) in
   let current_op_from_program = decode_op in
-  
+
   (* Arith control signals *)
   let arith_start = Variable.wire ~default:gnd in
   let arith_op = Variable.wire ~default:(zero 2) in
   let arith_prime_sel = Variable.wire ~default:gnd in
   let arith_a = Variable.wire ~default:(zero width) in
   let arith_b = Variable.wire ~default:(zero width) in
-  
+
   (* Use latched values for x2/y2/z2 in point addition *)
   let reg_read idx =
     let base_values = Array.to_list (Array.map reg_file ~f:(fun r -> r.value)) in
@@ -289,25 +289,25 @@ let create scope (i : _ I.t) =
       (mux2 (idx ==:. Config.y2) y2_latched.value
         (mux2 (idx ==:. Config.z2) z2_latched.value base))
   in
-  
+
   (* Select arith inputs based on current state *)
   let in_prep_or_finalize = (sm.is Prep_op) |: (sm.is Finalize_op) in
-  
-  let arith_read_data_a = 
+
+  let arith_read_data_a =
     mux2 in_prep_or_finalize arith_a.value (reg_read current_src1)
   in
-  let arith_read_data_b = 
+  let arith_read_data_b =
     mux2 in_prep_or_finalize arith_b.value (reg_read current_src2)
   in
-  
+
   let arith_op_selected =
     mux2 in_prep_or_finalize arith_op.value current_op_from_program
   in
-  
+
   let arith_prime_sel_selected =
     mux2 in_prep_or_finalize arith_prime_sel.value gnd
   in
-  
+
   let arith_out = Arith.create (Scope.sub_scope scope "arith")
     { Arith.I.
       clock = i.clock
@@ -315,17 +315,14 @@ let create scope (i : _ I.t) =
     ; start = arith_start.value
     ; op = arith_op_selected
     ; prime_sel = arith_prime_sel_selected
-    ; addr_a = current_src1
-    ; addr_b = current_src2
-    ; addr_out = current_dst
     ; reg_read_data_a = arith_read_data_a
     ; reg_read_data_b = arith_read_data_b
     }
   in
-  
+
   compile [
     done_flag <-- gnd;
-    
+
     sm.switch [
       State.Idle, [
         when_ i.start [
@@ -339,11 +336,11 @@ let create scope (i : _ I.t) =
           sm.set_next Prep_op;
         ];
       ];
-      
+
       State.Prep_op, [
         (* Set up arith inputs based on prep_step *)
         arith_prime_sel <-- vdd;  (* All prep ops use mod n *)
-        
+
         if_ (prep_step.value ==:. 0) [
           (* w = s^(-1) mod n *)
           arith_op <--. Op.inv;
@@ -360,7 +357,7 @@ let create scope (i : _ I.t) =
           arith_a <-- r_reg.value;
           arith_b <-- w_reg.value;
         ];
-        
+
         if_ (~:(prep_op_started.value)) [
           arith_start <-- vdd;
           prep_op_started <-- vdd;
@@ -374,7 +371,7 @@ let create scope (i : _ I.t) =
             ] [
               u2_reg <-- arith_out.reg_write_data;
             ];
-            
+
             if_ (prep_step.value ==:. 2) [
               (* Initialize for main loop *)
               bit_pos <--. 255;
@@ -393,7 +390,7 @@ let create scope (i : _ I.t) =
           ];
         ];
       ];
-      
+
       State.Loop, [
         if_ last_step.value [
           (* Initialize for finalize phase *)
@@ -415,7 +412,7 @@ let create scope (i : _ I.t) =
           load_idx <-- (current_bit_v @: current_bit_u);
           last_step <-- (bit_pos.value ==:. 0);
           bit_pos <-- bit_pos.value -:. 1;
-          
+
           if_ ((~: current_bit_u) &: (~: current_bit_v)) [
             sm.set_next Loop;
           ] [
@@ -423,7 +420,7 @@ let create scope (i : _ I.t) =
           ];
         ];
       ];
-      
+
       State.Load, [
         if_ (load_idx.value ==:. 0) [
           x2_latched <-- reg_file.(Config.x1).value;
@@ -445,7 +442,7 @@ let create scope (i : _ I.t) =
         step <-- zero 6;
         sm.set_next Run_add;
       ];
-      
+
       State.Run_add, [
         if_ (~:(op_started.value)) [
           arith_start <-- vdd;
@@ -456,7 +453,7 @@ let create scope (i : _ I.t) =
               when_ (current_dst ==:. idx) [
                 reg <-- arith_out.reg_write_data;
               ])));
-            
+
             if_ (step.value ==:. Config.num_steps - 1) [
               op_started <-- gnd;
               sm.set_next Loop;
@@ -467,11 +464,11 @@ let create scope (i : _ I.t) =
           ];
         ];
       ];
-      
+
       State.Finalize_op, [
         (* Set up arith inputs based on finalize_step *)
         arith_prime_sel <-- gnd;  (* Finalize ops use mod p *)
-        
+
         if_ (~:(finalize_step.value)) [
           (* z_inv = Z1^(-1) mod p *)
           arith_op <--. Op.inv;
@@ -483,7 +480,7 @@ let create scope (i : _ I.t) =
           arith_a <-- reg_file.(Config.x1).value;
           arith_b <-- z_inv_reg.value;
         ];
-        
+
         if_ (~:(finalize_op_started.value)) [
           arith_start <-- vdd;
           finalize_op_started <-- vdd;
@@ -495,7 +492,7 @@ let create scope (i : _ I.t) =
             ] [
               x_affine_reg <-- arith_out.reg_write_data;
             ];
-            
+
             if_ finalize_step.value [
               sm.set_next Compare;
             ] [
@@ -505,7 +502,7 @@ let create scope (i : _ I.t) =
           ];
         ];
       ];
-      
+
       State.Compare, [
         (* Compare x_affine with r *)
         valid_reg <-- (x_affine_reg.value ==: r_reg.value);
@@ -514,14 +511,14 @@ let create scope (i : _ I.t) =
         out_z <-- reg_file.(Config.z1).value;
         sm.set_next Done;
       ];
-      
+
       State.Done, [
         done_flag <-- vdd;
         sm.set_next Idle;
       ];
     ];
   ];
-  
+
   { O.
     busy = ~:(sm.is Idle)
   ; done_ = done_flag.value
