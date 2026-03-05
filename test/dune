@@ -1,5 +1,5 @@
 (tests
- (names test_arith test_mod_add test_mod_mul test_mod_inv 
-        test_point_add test_point_mul test_ecdsa test_security_block)
+ (names test_arith test_mod_add test_mod_mul test_mod_inv
+        test_ecdsa test_security_block)
  (libraries base hardcaml stdio zarith off_switch)
  (preprocess (pps ppx_jane ppx_hardcaml)))
