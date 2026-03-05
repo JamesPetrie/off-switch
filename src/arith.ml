@@ -8,26 +8,24 @@ open Signal
    Operands are read from and results written to an external 32×256-bit register file.
 
    Operations (op input):
-     0 = add: r[addr_out] <- r[addr_a] + r[addr_b] mod m
-     1 = sub: r[addr_out] <- r[addr_a] - r[addr_b] mod m
-     2 = mul: r[addr_out] <- r[addr_a] * r[addr_b] mod m
-     3 = inv: r[addr_out] <- r[addr_a]^(-1) mod m  (addr_b ignored)
+     0 = add: f <- a + b  mod m
+     1 = sub: f <- a - b  mod m
+     2 = mul: f <- a * b  mod m
+     3 = inv: f <- a^(-1) mod m  (b ignored)
 
    Modulus selection (prime_sel): 0 = prime_p, 1 = prime_n
 
    Protocol:
-     1. Set addr_a, addr_b, addr_out, op, prime_sel; pulse start
-     2. Provide reg_read_data_a/b in response to reg_read_addr_a/b
-     3. Wait for done_ pulse; result written via reg_write_* signals
-     4. For inv, check inv_exists to confirm inverse was found
+     1. Set a, b, op, prime_sel; pulse start
+     2. Wait for done_ pulse; result written via reg_write_data signal
+     3. For inv, check inv_exists to confirm inverse was found
 
-   State machine: Idle -> Load -> Capture -> Compute -> Write -> Done -> Idle
+   State machine: Idle -> Compute -> Idle
 *)
 
 module Config = struct
   let width = 256
   let num_registers = 32
-  let reg_addr_width = 5
 
   (* secp256k1 field prime: p = 2^256 - 2^32 - 977 *)
   let prime_p = Z.of_string "115792089237316195423570985008687907853269984665640564039457584007908834671663"
@@ -50,11 +48,7 @@ end
 module State = struct
   type t =
     | Idle
-    | Load
-    | Capture
     | Compute
-    | Write
-    | Done
   [@@deriving sexp_of, compare, enumerate]
 end
 
@@ -65,9 +59,6 @@ module I = struct
     ; start : 'a
     ; op : 'a [@bits 2]
     ; prime_sel : 'a
-    ; addr_a : 'a [@bits Config.reg_addr_width]
-    ; addr_b : 'a [@bits Config.reg_addr_width]
-    ; addr_out : 'a [@bits Config.reg_addr_width]
     ; reg_read_data_a : 'a [@bits Config.width]
     ; reg_read_data_b : 'a [@bits Config.width]
     }
@@ -78,11 +69,7 @@ module O = struct
   type 'a t =
     { busy : 'a
     ; done_ : 'a
-    ; reg_write_enable : 'a
-    ; reg_write_addr : 'a [@bits Config.reg_addr_width]
     ; reg_write_data : 'a [@bits Config.width]
-    ; reg_read_addr_a : 'a [@bits Config.reg_addr_width]
-    ; reg_read_addr_b : 'a [@bits Config.reg_addr_width]
     ; inv_exists : 'a
     }
   [@@deriving sexp_of, hardcaml]
@@ -100,9 +87,6 @@ let create scope (i : _ I.t) =
   (* Latched inputs *)
   let op_reg = Variable.reg spec ~width:2 in
   let prime_sel_reg = Variable.reg spec ~width:1 in
-  let addr_a_reg = Variable.reg spec ~width:Config.reg_addr_width in
-  let addr_b_reg = Variable.reg spec ~width:Config.reg_addr_width in
-  let addr_out_reg = Variable.reg spec ~width:Config.reg_addr_width in
 
   (* Captured operands *)
   let operand_a = Variable.reg spec ~width:Config.width in
@@ -119,7 +103,6 @@ let create scope (i : _ I.t) =
   let inv_exists_reg = Variable.reg spec ~width:1 in
 
   (* Output registers *)
-  let reg_write_enable = Variable.reg spec ~width:1 in
   let done_flag = Variable.reg spec ~width:1 in
 
   (* Prime constants *)
@@ -228,7 +211,6 @@ let create scope (i : _ I.t) =
     (* TODO move start_mul, start_inv clear to Compute step as well when updated *)
     start_mul <-- gnd;
     start_inv <-- gnd;
-    reg_write_enable <-- gnd;
     done_flag <-- gnd;
 
     sm.switch [
@@ -237,67 +219,35 @@ let create scope (i : _ I.t) =
           (* Latch all inputs *)
           op_reg <-- i.op;
           prime_sel_reg <-- i.prime_sel;
-          addr_a_reg <-- i.addr_a;
-          addr_b_reg <-- i.addr_b;
-          addr_out_reg <-- i.addr_out;
-          sm.set_next Load;
+          operand_a <-- i.reg_read_data_a;
+          operand_b <-- i.reg_read_data_b;
+
+          (* Start the required operation *)
+          switch i.op [
+            of_int ~width:2 Op.add, [ mod_add_valid <-- vdd ];
+            of_int ~width:2 Op.sub, [ mod_sub_valid <-- vdd ];
+            of_int ~width:2 Op.mul, [ start_mul <-- vdd ];
+            of_int ~width:2 Op.inv, [ start_inv <-- vdd ];
+          ];
+
+          (* Move to next state *)
+          sm.set_next Compute;
         ];
       ];
 
-      State.Load, [
-        (* Wait one cycle for register file to provide data *)
-        sm.set_next Capture;
+      State.Compute, [
+        (* Simply wait for operation to complete *)
+        when_ op_ready [
+          (* Clear valid signals *)
+          mod_add_valid <-- gnd;
+          mod_sub_valid <-- gnd;
+
+          done_flag <-- vdd;
+          result_reg <-- op_result;
+          inv_exists_reg <-- mod_inv_out.exists;
+          sm.set_next Idle;
+        ];
       ];
-
-
-
-State.Capture, [
-  operand_a <-- i.reg_read_data_a;
-  operand_b <-- i.reg_read_data_b;
-
-  switch op_reg.value [
-    of_int ~width:2 Op.add, [ mod_add_valid <-- vdd ];
-    of_int ~width:2 Op.sub, [ mod_sub_valid <-- vdd ];
-    of_int ~width:2 Op.mul, [ start_mul <-- vdd ];
-    of_int ~width:2 Op.inv, [ start_inv <-- vdd ];
-  ];
-
-  sm.set_next Compute;
-];
-
-State.Compute, [
-  (* Simply wait for operation to complete *)
-  when_ op_ready [
-    (* Clear valid signals *)
-    mod_add_valid <-- gnd;
-    mod_sub_valid <-- gnd;
-
-    result_reg <-- op_result;
-    inv_exists_reg <-- mod_inv_out.exists;
-    sm.set_next Write;
-  ];
-];
-
-      State.Write, [
-        (* Write result to register file *)
-        reg_write_enable <-- vdd;
-        sm.set_next Done;
-      ];
-
-State.Done, [
-  done_flag <-- vdd;
-  if_ i.start [
-    (* New operation starting immediately - latch inputs and go to Load *)
-    op_reg <-- i.op;
-    prime_sel_reg <-- i.prime_sel;
-    addr_a_reg <-- i.addr_a;
-    addr_b_reg <-- i.addr_b;
-    addr_out_reg <-- i.addr_out;
-    sm.set_next Load;
-  ] [
-    sm.set_next Idle;
-  ];
-];
     ];
   ];
 
@@ -307,10 +257,6 @@ State.Done, [
   { O.
     busy = busy -- "busy"
   ; done_ = done_flag.value -- "done"
-  ; reg_write_enable = reg_write_enable.value -- "reg_write_enable"
-  ; reg_write_addr = addr_out_reg.value -- "reg_write_addr"
   ; reg_write_data = result_reg.value -- "reg_write_data"
-  ; reg_read_addr_a = addr_a_reg.value -- "reg_read_addr_a"
-  ; reg_read_addr_b = addr_b_reg.value -- "reg_read_addr_b"
   ; inv_exists = inv_exists_reg.value -- "inv_exists"
   }
