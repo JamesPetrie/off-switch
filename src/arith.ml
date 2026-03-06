@@ -56,7 +56,7 @@ module I = struct
   type 'a t =
     { clock : 'a
     ; clear : 'a
-    ; start : 'a
+    ; valid : 'a
     ; op : 'a [@bits 2]
     ; prime_sel : 'a
     ; reg_read_data_a : 'a [@bits Config.width]
@@ -68,7 +68,7 @@ end
 module O = struct
   type 'a t =
     { busy : 'a
-    ; done_ : 'a
+    ; ready : 'a
     ; reg_write_data : 'a [@bits Config.width]
     ; inv_exists : 'a
     }
@@ -97,13 +97,6 @@ let create scope (i : _ I.t) =
   let mod_sub_valid = Variable.reg spec ~width:1 in
   let start_mul = Variable.reg spec ~width:1 in
   let start_inv = Variable.reg spec ~width:1 in
-
-  (* Result capture *)
-  let result_reg = Variable.reg spec ~width:Config.width in
-  let inv_exists_reg = Variable.reg spec ~width:1 in
-
-  (* Output registers *)
-  let done_flag = Variable.reg spec ~width:1 in
 
   (* Prime constants *)
   let prime_p_const = Signal.of_constant (Config.z_to_constant Config.prime_p) in
@@ -211,11 +204,10 @@ let create scope (i : _ I.t) =
     (* TODO move start_mul, start_inv clear to Compute step as well when updated *)
     start_mul <-- gnd;
     start_inv <-- gnd;
-    done_flag <-- gnd;
 
     sm.switch [
       State.Idle, [
-        when_ i.start [
+        when_ i.valid [
           (* Latch all inputs *)
           op_reg <-- i.op;
           prime_sel_reg <-- i.prime_sel;
@@ -242,9 +234,6 @@ let create scope (i : _ I.t) =
           mod_add_valid <-- gnd;
           mod_sub_valid <-- gnd;
 
-          done_flag <-- vdd;
-          result_reg <-- op_result;
-          inv_exists_reg <-- mod_inv_out.exists;
           sm.set_next Idle;
         ];
       ];
@@ -256,7 +245,7 @@ let create scope (i : _ I.t) =
 
   { O.
     busy = busy -- "busy"
-  ; done_ = done_flag.value -- "done"
-  ; reg_write_data = result_reg.value -- "reg_write_data"
-  ; inv_exists = inv_exists_reg.value -- "inv_exists"
+  ; ready = op_ready -- "done"
+  ; reg_write_data = op_result -- "reg_write_data"
+  ; inv_exists = mod_inv_out.exists -- "inv_exists"
   }
