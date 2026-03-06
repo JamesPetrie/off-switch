@@ -9,7 +9,7 @@ let () =
   let sim = Sim.create (Arith.create scope) in
 
   let inputs = Cyclesim.inputs sim in
-  let outputs = Cyclesim.outputs sim in
+  let outputs = Cyclesim.outputs ~clock_edge:Before sim in
 
   (* Simulated register file *)
   let registers = Array.init 32 ~f:(fun _ -> Z.zero) in
@@ -24,7 +24,7 @@ let () =
 
   let reset () =
     inputs.clear := Bits.vdd;
-    inputs.start := Bits.gnd;
+    inputs.valid := Bits.gnd;
     inputs.op := Bits.zero 2;
     inputs.prime_sel := Bits.gnd;
     inputs.reg_read_data_a := Bits.zero 256;
@@ -46,11 +46,10 @@ let () =
     inputs.reg_read_data_b := z_to_bits registers.(addr_b);
 
     (* Start operation *)
-    inputs.start := Bits.vdd;
+    inputs.valid := Bits.vdd;
     inputs.op := Bits.of_int ~width:2 op;
     inputs.prime_sel := if prime_sel then Bits.vdd else Bits.gnd;
     Cyclesim.cycle sim;
-    inputs.start := Bits.gnd;
 
     (* Run until done *)
     let max_cycles = 10_000 in
@@ -59,9 +58,10 @@ let () =
         Stdio.printf "  TIMEOUT after %d cycles\n" max_cycles;
         false
       end else begin
-        let is_done = Bits.to_bool !(outputs.done_) in
+        let is_done = Bits.to_bool !(outputs.ready) in
         if is_done then begin
           registers.(addr_out) <- bits_to_z !(outputs.reg_write_data);
+          inputs.valid := Bits.gnd;
           Cyclesim.cycle sim;   (* let machine return to Idle *)
           true
         end else begin
@@ -916,21 +916,21 @@ let val_d = Z.of_int 22222 in
 
 (* Helper to run op WITHOUT reset *)
 let run_op_no_reset ~op ~data_a ~data_b =
-  inputs.start := Bits.vdd;
+  inputs.valid := Bits.vdd;
   inputs.op := Bits.of_int ~width:2 op;
   inputs.prime_sel := Bits.gnd;
   inputs.reg_read_data_a := z_to_bits data_a;
   inputs.reg_read_data_b := z_to_bits data_b;
   Cyclesim.cycle sim;
-  inputs.start := Bits.gnd;
 
   let max_cycles = 3000 in
   let rec wait n =
     if n >= max_cycles then begin
       Stdio.printf "  TIMEOUT after %d cycles\n" max_cycles;
       None
-    end else if Bits.to_bool !(outputs.done_) then begin
+    end else if Bits.to_bool !(outputs.ready) then begin
       let result = bits_to_z !(outputs.reg_write_data) in
+      inputs.valid := Bits.gnd;
       Cyclesim.cycle sim;    (* let Done -> Idle transition complete *)
       Some result
     end else begin
@@ -1010,11 +1010,10 @@ let run_pm_op ~src1 ~src2 ~dst =
   inputs.reg_read_data_b := z_to_bits pm_registers.(src2);
 
   (* Start multiplication *)
-  inputs.start := Bits.vdd;
+  inputs.valid := Bits.vdd;
   inputs.op := Bits.of_int ~width:2 2;  (* mul *)
   inputs.prime_sel := Bits.gnd;
   Cyclesim.cycle sim;
-  inputs.start := Bits.gnd;
 
   (* Wait for completion *)
   let max_cycles = 300 in
@@ -1023,12 +1022,13 @@ let run_pm_op ~src1 ~src2 ~dst =
       Stdio.printf "    TIMEOUT after %d cycles!\n" max_cycles;
       Stdio.printf "    busy=%d done=%d\n"
         (Bits.to_int !(outputs.busy))
-        (Bits.to_int !(outputs.done_));
+        (Bits.to_int !(outputs.ready));
       None
     end else begin
-      if Bits.to_bool !(outputs.done_) then begin
+      if Bits.to_bool !(outputs.ready) then begin
         let result = bits_to_z !(outputs.reg_write_data) in
         pm_registers.(dst) <- result;
+        inputs.valid := Bits.gnd;
         Cyclesim.cycle sim;               (* let Done -> Idle complete *)
         Stdio.printf "    Completed in %d cycles\n" n;
         Some result
@@ -1106,19 +1106,19 @@ let run_mul_verbose ~a ~b ~label =
 
   inputs.reg_read_data_a := z_to_bits a;
   inputs.reg_read_data_b := z_to_bits b;
-  inputs.start := Bits.vdd;
+  inputs.valid := Bits.vdd;
   inputs.op := Bits.of_int ~width:2 2;  (* mul *)
   inputs.prime_sel := Bits.gnd;
   Cyclesim.cycle sim;
-  inputs.start := Bits.gnd;
 
   for cycle = 1 to 20 do
     let busy = Bits.to_int !(outputs.busy) in
-    let done_ = Bits.to_int !(outputs.done_) in
-    Stdio.printf "  cycle %2d: busy=%d done=%d\n" cycle busy done_;
+    let ready = Bits.to_int !(outputs.ready) in
+    Stdio.printf "  cycle %2d: busy=%d done=%d\n" cycle busy ready;
 
-    if done_ = 1 then begin
+    if ready = 1 then begin
       let result = bits_to_z !(outputs.reg_write_data) in
+      inputs.valid := Bits.gnd;
       Stdio.printf "  Result: %s\n\n" (Z.to_string result);
       (* Cycle once more to clear done state *)
       Cyclesim.cycle sim;
