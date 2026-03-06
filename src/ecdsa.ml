@@ -33,12 +33,6 @@ open Signal
      - Q: public key (currently 2G for testing)
      - G+Q: precomputed sum (currently 3G)
 
-   State machine:
-     Idle -> Prep_op (3 ops) -> Loop/Load/Run_add (scalar mult)
-          -> Finalize_op (2 ops) -> Compare -> Done -> Idle
-
-   Cycle count: ~1.5-2M cycles for typical 256-bit scalars
-
    Note: Does not currently reduce x_affine mod n before comparison,
    or check that z, s, r are within range.
 
@@ -126,19 +120,31 @@ end
 module State = struct
   type t =
     | Idle
-    | Prep_op
+    | Run_prep
+    | Sample_prep (* Separate step to sample the u1, u2 values when visible in the register file *)
     | Loop
-    | Load
-    | Run_add
-    | Finalize_op
-    | Compare
-    | Done
+    | Run_point_add
+    | Run_finalize
+    | Done (* Separate step to sample the result when visible in the register file *)
   [@@deriving sexp_of, compare, enumerate]
 end
 
 type instr = { op : int; src1 : int; src2 : int; dst : int }
 
-let program = [|
+(* Implements:               *)
+(*    w = s^(-1) mod n       *)
+(*    u1 = z * w mod n       *)
+(*    u2 = r * w mod n       *)
+(*                           *)
+(* assumes t0=s, t1=z, t2=r  *)
+(* u1 placed in t1, u2 in t2 *)
+let program_prepare = [|
+  { op = Op.inv; src1 = Config.t0; src2 = Config.t0; dst = Config.t0 };
+  { op = Op.mul; src1 = Config.t1; src2 = Config.t0; dst = Config.t1 };
+  { op = Op.mul; src1 = Config.t2; src2 = Config.t0; dst = Config.t2 };
+|]
+
+let program_point_add = [|
   { op = Op.mul; src1 = Config.x1; src2 = Config.x2; dst = Config.t0 };
   { op = Op.mul; src1 = Config.y1; src2 = Config.y2; dst = Config.t1 };
   { op = Op.mul; src1 = Config.z1; src2 = Config.z2; dst = Config.t2 };
@@ -181,6 +187,30 @@ let program = [|
   { op = Op.add; src1 = Config.z3; src2 = Config.t0; dst = Config.z1 };
 |]
 
+(* Implements:                            *)
+(*    z_inv = Z1^(-1) mod p               *)
+(*    x_affine = X1 * z_inv mod p         *)
+(*    result = x_affine - r mod p         *)
+(*                                        *)
+(* assumes t2=r - consistent with prepare *)
+(* result placed in t0                    *)
+(* if result == 0, then x_affine == r     *)
+let program_finalize = [|
+  { op = Op.inv; src1 = Config.z1; src2 = Config.z1; dst = Config.t0 };
+  { op = Op.mul; src1 = Config.x1; src2 = Config.t0; dst = Config.t0 };
+  { op = Op.sub; src1 = Config.t0; src2 = Config.t2; dst = Config.t0 };
+|]
+
+let program = Array.concat [program_prepare; program_point_add; program_finalize]
+
+(* Segment boundaries — compile-time constants *)
+let prepare_start   = 0
+let prepare_end     = Array.length program_prepare - 1
+let point_add_start = Array.length program_prepare
+let point_add_end   = point_add_start + Array.length program_point_add - 1
+let finalize_start  = point_add_end + 1
+let finalize_end    = finalize_start + Array.length program_finalize - 1
+
 (* Helper to extract a bit from a signal using a signal index *)
 let bit_select_dynamic signal index_signal =
   let width = Signal.width signal in
@@ -190,6 +220,7 @@ let bit_select_dynamic signal index_signal =
 let create scope (i : _ I.t) =
   let open Always in
   let width = Config.width in
+  let bit_cnt_width = Int.ceil_log2 width in
   let addr_width = Config.reg_addr_width in
 
   let spec = Reg_spec.create ~clock:i.clock ~clear:i.clear () in
@@ -210,110 +241,58 @@ let create scope (i : _ I.t) =
   let const_gpqy = of_z ~width Config.gpq_y in
   let const_gpqz = of_z ~width Config.gpq_z in
 
-  (* Input registers *)
-  let z_reg = Variable.reg spec ~width in
+  (* Input register *)
   let r_reg = Variable.reg spec ~width in
-  let s_reg = Variable.reg spec ~width in
 
-  (* Prep phase registers *)
-  let w_reg = Variable.reg spec ~width in      (* s^(-1) mod n *)
-  let u1_reg = Variable.reg spec ~width in     (* z * w mod n *)
-  let u2_reg = Variable.reg spec ~width in     (* r * w mod n *)
-  let prep_step = Variable.reg spec ~width:2 in
-  let prep_op_started = Variable.reg spec ~width:1 in
+  (* Scalar registers — captured at end of Prep_op, read throughout Loop *)
+  let u1_reg = Variable.reg spec ~width in     (* z * s^(-1) mod n *)
+  let u2_reg = Variable.reg spec ~width in     (* r * s^(-1) mod n *)
+
+  (* Unified program counter *)
+  let pc = Variable.reg spec ~width:6 in
 
   (* Main loop registers *)
-  let bit_pos = Variable.reg spec ~width:8 in
+  let bit_pos = Variable.reg spec ~width:bit_cnt_width in
   let doubling = Variable.reg spec ~width:1 in
   let last_step = Variable.reg spec ~width:1 in
-  let step = Variable.reg spec ~width:6 in
-  let load_idx = Variable.reg spec ~width:2 in
-  let op_started = Variable.reg spec ~width:1 in
 
-  (* Latched second operand registers *)
-  let x2_latched = Variable.reg spec ~width in
-  let y2_latched = Variable.reg spec ~width in
-  let z2_latched = Variable.reg spec ~width in
+  (* Output wires *)
+  let done_w  = Variable.wire ~default:gnd in
+  let valid_w = Variable.wire ~default:gnd in
 
-  (* Finalize phase registers *)
-  let finalize_step = Variable.reg spec ~width:1 in
-  let finalize_op_started = Variable.reg spec ~width:1 in
-  let z_inv_reg = Variable.reg spec ~width in
-  let x_affine_reg = Variable.reg spec ~width in
-
-  (* Output registers *)
-  let out_x = Variable.reg spec ~width in
-  let out_y = Variable.reg spec ~width in
-  let out_z = Variable.reg spec ~width in
-  let valid_reg = Variable.reg spec ~width:1 in
-  let done_flag = Variable.reg spec ~width:1 in
-
-  let current_bit_u = bit_select_dynamic u1_reg.value bit_pos.value in
-  let current_bit_v = bit_select_dynamic u2_reg.value bit_pos.value in
+  let current_bit_u1 = bit_select_dynamic u1_reg.value bit_pos.value in
+  let current_bit_u2 = bit_select_dynamic u2_reg.value bit_pos.value in
 
   (* Check if P is point at infinity (z1 = 0) *)
   let p_is_infinity = reg_file.(Config.z1).value ==:. 0 in
 
-  (* Instruction decode for point addition *)
-  let default_instr = of_int ~width:addr_width 0 in
-  let decode field =
-    mux step.value
+  (* Unified instruction decode over full program *)
+  let pc_decode field w =
+    mux pc.value
       (Array.to_list (Array.map program ~f:(fun instr ->
-        of_int ~width:addr_width (field instr))))
-    |> fun s -> mux2 (step.value >=:. Config.num_steps) default_instr s
+         of_int ~width:w (field instr))))
   in
-  let decode_op =
-    mux step.value
-      (Array.to_list (Array.map program ~f:(fun instr ->
-        of_int ~width:2 instr.op)))
-    |> fun s -> mux2 (step.value >=:. Config.num_steps) (zero 2) s
-  in
-
-  let current_dst = decode (fun instr -> instr.dst) in
-  let current_src1 = decode (fun instr -> instr.src1) in
-  let current_src2 = decode (fun instr -> instr.src2) in
-  let current_op_from_program = decode_op in
-
-  (* Arith control signals *)
-  let arith_start = Variable.wire ~default:gnd in
-  let arith_op = Variable.wire ~default:(zero 2) in
-  let arith_prime_sel = Variable.wire ~default:gnd in
-  let arith_a = Variable.wire ~default:(zero width) in
-  let arith_b = Variable.wire ~default:(zero width) in
+  let current_src1 = pc_decode (fun instr -> instr.src1) addr_width in
+  let current_src2 = pc_decode (fun instr -> instr.src2) addr_width in
+  let current_dst  = pc_decode (fun instr -> instr.dst)  addr_width in
+  let current_op   = pc_decode (fun instr -> instr.op)   2 in
 
   (* Use latched values for x2/y2/z2 in point addition *)
   let reg_read idx =
     let base_values = Array.to_list (Array.map reg_file ~f:(fun r -> r.value)) in
-    let base = mux idx base_values in
-    mux2 (idx ==:. Config.x2) x2_latched.value
-      (mux2 (idx ==:. Config.y2) y2_latched.value
-        (mux2 (idx ==:. Config.z2) z2_latched.value base))
+    mux idx base_values
   in
 
-  (* Select arith inputs based on current state *)
-  let in_prep_or_finalize = (sm.is Prep_op) |: (sm.is Finalize_op) in
-
-  let arith_read_data_a =
-    mux2 in_prep_or_finalize arith_a.value (reg_read current_src1)
-  in
-  let arith_read_data_b =
-    mux2 in_prep_or_finalize arith_b.value (reg_read current_src2)
-  in
-
-  let arith_op_selected =
-    mux2 in_prep_or_finalize arith_op.value current_op_from_program
-  in
-
-  let arith_prime_sel_selected =
-    mux2 in_prep_or_finalize arith_prime_sel.value gnd
-  in
+  let arith_prime_sel_selected = (pc.value >=:. prepare_start) &&: (pc.value <=:. prepare_end) in  (* mod n for prepare *)
+  let arith_read_data_a = reg_read current_src1 in
+  let arith_read_data_b = reg_read current_src2 in
 
   let arith_out = Arith.create (Scope.sub_scope scope "arith")
     { Arith.I.
       clock = i.clock
     ; clear = i.clear
-    ; start = arith_start.value
-    ; op = arith_op_selected
+    ; valid = sm.is (State.Run_prep) ||: sm.is State.Run_point_add ||: sm.is State.Run_finalize
+    ; op = current_op
     ; prime_sel = arith_prime_sel_selected
     ; reg_read_data_a = arith_read_data_a
     ; reg_read_data_b = arith_read_data_b
@@ -321,199 +300,127 @@ let create scope (i : _ I.t) =
   in
 
   compile [
-    done_flag <-- gnd;
+    (* default value of output wires, should be redundant with default value specified in the declaration but just in case *)
+    done_w  <-- gnd;
+    valid_w <-- gnd;
+
+    (* in either state, if an arithmetic operation completed, store the result and increment the PC *)
+    when_ arith_out.ready [
+      pc <-- pc.value +:. 1;
+      proc (Array.to_list (Array.mapi reg_file ~f:(fun idx reg ->
+        when_ (current_dst ==:. idx) [
+          reg <-- arith_out.reg_write_data ])));
+    ];
 
     sm.switch [
       State.Idle, [
         when_ i.start [
-          z_reg <-- i.z;
+          (* capture r value to be used in Finalize state *)
           r_reg <-- i.r;
-          s_reg <-- i.s;
-          prep_step <--. 0;
-          prep_op_started <-- gnd;
-          reg_file.(Config.param_a) <-- i.param_a;
+
+          reg_file.(Config.param_a)  <-- i.param_a;
           reg_file.(Config.param_b3) <-- i.param_b3;
-          sm.set_next Prep_op;
+
+          (* Initialize and start the Prepare calculations *)
+          reg_file.(Config.t0) <-- i.s;   (* see program_prepare assumptions *)
+          reg_file.(Config.t1) <-- i.z;   (* see program_prepare assumptions *)
+          reg_file.(Config.t2) <-- i.r;   (* see program_prepare assumptions *)
+          pc <--. prepare_start;
+          sm.set_next Run_prep;
         ];
       ];
 
-      State.Prep_op, [
-        (* Set up arith inputs based on prep_step *)
-        arith_prime_sel <-- vdd;  (* All prep ops use mod n *)
-
-        if_ (prep_step.value ==:. 0) [
-          (* w = s^(-1) mod n *)
-          arith_op <--. Op.inv;
-          arith_a <-- s_reg.value;
-          arith_b <-- zero width;
-        ] @@ elif (prep_step.value ==:. 1) [
-          (* u1 = z * w mod n *)
-          arith_op <--. Op.mul;
-          arith_a <-- z_reg.value;
-          arith_b <-- w_reg.value;
-        ] [
-          (* u2 = r * w mod n *)
-          arith_op <--. Op.mul;
-          arith_a <-- r_reg.value;
-          arith_b <-- w_reg.value;
+      State.Run_prep, [
+        (* wait for program to finish and proceed to next state *)
+        when_ (arith_out.ready &&: (pc.value ==:. prepare_end)) [
+          sm.set_next Sample_prep;
         ];
+      ];
 
-        if_ (~:(prep_op_started.value)) [
-          arith_start <-- vdd;
-          prep_op_started <-- vdd;
-        ] [
-          when_ arith_out.done_ [
-            (* Store result *)
-            if_ (prep_step.value ==:. 0) [
-              w_reg <-- arith_out.reg_write_data;
-            ] @@ elif (prep_step.value ==:. 1) [
-              u1_reg <-- arith_out.reg_write_data;
-            ] [
-              u2_reg <-- arith_out.reg_write_data;
-            ];
+      State.Sample_prep, [
+        (* Capture u1/u2 only AFTER! the program has finished - u2 is not available in the register earlier! *)
+        u1_reg <-- reg_file.(Config.t1).value; (* see program_prepare results handling *)
+        u2_reg <-- reg_file.(Config.t2).value; (* see program_prepare results handling *)
 
-            if_ (prep_step.value ==:. 2) [
-              (* Initialize for main loop *)
-              bit_pos <--. 255;
-              doubling <-- vdd;
-              last_step <-- gnd;
-              step <-- zero 6;
-              op_started <-- gnd;
-              reg_file.(Config.x1) <-- of_z ~width Config.infinity_x;
-              reg_file.(Config.y1) <-- of_z ~width Config.infinity_y;
-              reg_file.(Config.z1) <-- of_z ~width Config.infinity_z;
-              sm.set_next Loop;
-            ] [
-              prep_step <-- prep_step.value +:. 1;
-              prep_op_started <-- gnd;
-            ];
-          ];
-        ];
+        (* Initialize main point multiply calculation and move to next state *)
+        bit_pos   <-- ones bit_cnt_width;
+        doubling  <-- vdd;
+        last_step <-- gnd;
+        reg_file.(Config.x1) <-- of_z ~width Config.infinity_x;
+        reg_file.(Config.y1) <-- of_z ~width Config.infinity_y;
+        reg_file.(Config.z1) <-- of_z ~width Config.infinity_z;
+
+        sm.set_next Loop;
       ];
 
       State.Loop, [
-        if_ last_step.value [
-          (* Initialize for finalize phase *)
-          finalize_step <-- gnd;
-          finalize_op_started <-- gnd;
-          sm.set_next Finalize_op;
-        ] @@ elif doubling.value [
-          (* Doubling phase *)
+        if_ last_step.value [ (* completion condition *)
+          (* Results are stored in x1, y1, z1, finalize will use those *)
+          (* Initialize and start finalize calculations *)
+          reg_file.(Config.t2) <-- r_reg.value;   (* see program_finalize assumptions *)
+          pc <--. finalize_start;
+          sm.set_next Run_finalize;
+        ]
+        @@ elif doubling.value [
+          (* In Doubling phase, next will be Adding *)
           doubling <-- gnd;
-          if_ p_is_infinity [
-            sm.set_next Loop;
+
+          (* only calculate if P != infinity, can be skipped otherwise *)
+          if_ (~:p_is_infinity) [
+            (* Initialize and start point_add program *)
+            reg_file.(Config.x2) <-- reg_file.(Config.x1).value;
+            reg_file.(Config.y2) <-- reg_file.(Config.y1).value;
+            reg_file.(Config.z2) <-- reg_file.(Config.z1).value;
+            pc <--. point_add_start;
+            sm.set_next Run_point_add;
           ] [
-            load_idx <--. 0;
-            sm.set_next Load;
+            sm.set_next Loop;
           ];
-        ] [
-          (* Adding phase *)
+        ]
+        @@ [
+          (* In Adding phase, next will be Doubling *)
           doubling <-- vdd;
-          load_idx <-- (current_bit_v @: current_bit_u);
+
           last_step <-- (bit_pos.value ==:. 0);
           bit_pos <-- bit_pos.value -:. 1;
 
-          if_ ((~: current_bit_u) &: (~: current_bit_v)) [
-            sm.set_next Loop;
+          (* add only needed if either of the current u1 or u2 bits is set, skip otherwise *)
+          if_ (current_bit_u1 ||: current_bit_u2) [
+            (* Initialize and start point_add program         *)
+            (* Shamir's trick: adding G, Q or precomputed G+Q *)
+            (* Reminder: R = u1*G + u2*Q                      *)
+            reg_file.(Config.x2) <-- mux2 ~:current_bit_u2 const_gx (mux2 ~:current_bit_u1 const_qx const_gpqx);
+            reg_file.(Config.y2) <-- mux2 ~:current_bit_u2 const_gy (mux2 ~:current_bit_u1 const_qy const_gpqy);
+            reg_file.(Config.z2) <-- mux2 ~:current_bit_u2 const_gz (mux2 ~:current_bit_u1 const_qz const_gpqz);
+            pc <--. point_add_start;
+            sm.set_next Run_point_add;
           ] [
-            sm.set_next Load;
+            sm.set_next Loop;
           ];
         ];
       ];
 
-      State.Load, [
-        if_ (load_idx.value ==:. 0) [
-          x2_latched <-- reg_file.(Config.x1).value;
-          y2_latched <-- reg_file.(Config.y1).value;
-          z2_latched <-- reg_file.(Config.z1).value;
-        ] @@ elif (load_idx.value ==:. 1) [
-          x2_latched <-- const_gx;
-          y2_latched <-- const_gy;
-          z2_latched <-- const_gz;
-        ] @@ elif (load_idx.value ==:. 2) [
-          x2_latched <-- const_qx;
-          y2_latched <-- const_qy;
-          z2_latched <-- const_qz;
-        ] [
-          x2_latched <-- const_gpqx;
-          y2_latched <-- const_gpqy;
-          z2_latched <-- const_gpqz;
-        ];
-        step <-- zero 6;
-        sm.set_next Run_add;
-      ];
-
-      State.Run_add, [
-        if_ (~:(op_started.value)) [
-          arith_start <-- vdd;
-          op_started <-- vdd;
-        ] [
-          when_ arith_out.done_ [
-            proc (Array.to_list (Array.mapi reg_file ~f:(fun idx reg ->
-              when_ (current_dst ==:. idx) [
-                reg <-- arith_out.reg_write_data;
-              ])));
-
-            if_ (step.value ==:. Config.num_steps - 1) [
-              op_started <-- gnd;
-              sm.set_next Loop;
-            ] [
-              step <-- step.value +:. 1;
-              op_started <-- gnd;
-            ];
-          ];
+      State.Run_point_add, [
+        (* wait for program to finish and proceed to next iteration *)
+        when_ (arith_out.ready &&: (pc.value ==:. point_add_end)) [
+          sm.set_next Loop;
         ];
       ];
 
-      State.Finalize_op, [
-        (* Set up arith inputs based on finalize_step *)
-        arith_prime_sel <-- gnd;  (* Finalize ops use mod p *)
-
-        if_ (~:(finalize_step.value)) [
-          (* z_inv = Z1^(-1) mod p *)
-          arith_op <--. Op.inv;
-          arith_a <-- reg_file.(Config.z1).value;
-          arith_b <-- zero width;
-        ] [
-          (* x_affine = X1 * z_inv mod p *)
-          arith_op <--. Op.mul;
-          arith_a <-- reg_file.(Config.x1).value;
-          arith_b <-- z_inv_reg.value;
+      State.Run_finalize, [
+        (* wait for program to finish and proceed to next state *)
+        when_ (arith_out.ready &&: (pc.value ==:. finalize_end)) [
+          sm.set_next Done;
         ];
-
-        if_ (~:(finalize_op_started.value)) [
-          arith_start <-- vdd;
-          finalize_op_started <-- vdd;
-        ] [
-          when_ arith_out.done_ [
-            (* Store result *)
-            if_ (~:(finalize_step.value)) [
-              z_inv_reg <-- arith_out.reg_write_data;
-            ] [
-              x_affine_reg <-- arith_out.reg_write_data;
-            ];
-
-            if_ finalize_step.value [
-              sm.set_next Compare;
-            ] [
-              finalize_step <-- vdd;
-              finalize_op_started <-- gnd;
-            ];
-          ];
-        ];
-      ];
-
-      State.Compare, [
-        (* Compare x_affine with r *)
-        valid_reg <-- (x_affine_reg.value ==: r_reg.value);
-        out_x <-- reg_file.(Config.x1).value;
-        out_y <-- reg_file.(Config.y1).value;
-        out_z <-- reg_file.(Config.z1).value;
-        sm.set_next Done;
       ];
 
       State.Done, [
-        done_flag <-- vdd;
+        (* Combinationally assign the done and valid outputs *)
+        done_w  <-- vdd;
+        (* Check the result only AFTER! the program has finished - result is not available in the register earlier! *)
+        valid_w <-- (reg_file.(Config.t0).value ==: zero width); (* see program_finalize result handling *)
+
+        (* Set next state *)
         sm.set_next Idle;
       ];
     ];
@@ -521,9 +428,9 @@ let create scope (i : _ I.t) =
 
   { O.
     busy = ~:(sm.is Idle)
-  ; done_ = done_flag.value
-  ; valid = valid_reg.value
-  ; x = out_x.value
-  ; y = out_y.value
-  ; z_out = out_z.value
+  ; done_ = done_w.value
+  ; valid = valid_w.value
+  ; x = reg_file.(Config.x1).value
+  ; y = reg_file.(Config.y1).value
+  ; z_out = reg_file.(Config.z1).value
   }
