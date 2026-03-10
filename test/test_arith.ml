@@ -1194,6 +1194,8 @@ Stdio.printf "=== End Montgomery Debug Test ===\n\n";
     Stdio.printf "╚════██║██║   ██║██║     ██║     ██╔══╝  ╚════██║╚════██║\n";
     Stdio.printf "███████║╚██████╔╝╚██████╗╚██████╗███████╗███████║███████║\n";
     Stdio.printf "╚══════╝ ╚═════╝  ╚═════╝ ╚═════╝╚══════╝╚══════╝╚══════╝\n";
-    Stdio.printf "\nAll Arith unit tests passed! ✓✓✓\n"
-  end else
-    Stdio.printf "\n✗ Some tests failed - review above for details\n"
+    Stdio.printf "\nAll Arith unit tests passed! ✓✓✓\n";
+  end else begin
+    Stdio.printf "\n✗ Some tests failed - review above for details\n";
+    failwith "checks failed";
+  end

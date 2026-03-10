@@ -132,9 +132,11 @@ let test () =
   Stdio.printf "=== Test Summary ===\n";
   Stdio.printf "Passed: %d/%d\n" passed total;
 
-  if passed = total then
-    Stdio.printf "\n✓ All tests passed!\n"
-  else
-    Stdio.printf "\n✗ Some tests failed\n"
+  if passed = total then begin
+    Stdio.printf "\n✓ All tests passed!\n";
+  end else begin
+    Stdio.printf "\n✗ Some tests failed\n";
+    failwith "checks failed";
+  end
 
 let () = test ()

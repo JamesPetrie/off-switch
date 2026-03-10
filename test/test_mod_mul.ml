@@ -181,8 +181,10 @@ let test () =
     Stdio.printf "╚════██║██║   ██║██║     ██║     ██╔══╝  ╚════██║╚════██║\n";
     Stdio.printf "███████║╚██████╔╝╚██████╗╚██████╗███████╗███████║███████║\n";
     Stdio.printf "╚══════╝ ╚═════╝  ╚═════╝ ╚═════╝╚══════╝╚══════╝╚══════╝\n";
-    Stdio.printf "\nAll tests passed! ✓✓✓\n"
-  end else
-    Stdio.printf "Some tests failed ✗\n"
+    Stdio.printf "\nAll tests passed! ✓✓✓\n";
+  end else begin
+    Stdio.printf "Some tests failed ✗\n";
+    failwith "checks failed";
+  end
 
 let () = test ()
