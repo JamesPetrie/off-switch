@@ -3,6 +3,8 @@
 open Base
 open Hardcaml
 
+module State = Security_block.State
+
 let () =
   Stdio.printf "=== Security Block Test ===\n\n";
 
@@ -143,24 +145,14 @@ let () =
   in
 
   let get_state () =
-    Bits.to_int !(outputs.state_debug)
+    List.nth_exn State.all (Bits.to_int !(outputs.state_debug))
   in
 
   let get_licenses_accepted () =
     Bits.to_int !(outputs.licenses_accepted)
   in
 
-  let state_name state =
-    match state with
-    | 0 -> "Init_delay"
-    | 1 -> "Request_nonce"
-    | 2 -> "Wait_nonce"
-    | 3 -> "Publish"
-    | 4 -> "Verify_start"
-    | 5 -> "Verify_wait"
-    | 6 -> "Update"
-    | _ -> "Unknown"
-  in
+  let state_to_string s = Sexp.to_string (State.sexp_of_t s) in
 
   let wait_for_nonce_ready ~max_cycles =
     let rec loop n =
@@ -194,7 +186,7 @@ let () =
         None
       end else begin
         let current_state = get_state () in
-        if last_state = 6 && current_state <> 6 then begin
+        if (State.equal last_state Verify_wait) && not (State.equal current_state Verify_wait) then begin
           Stdio.printf "    Verification completed in %d cycles\n" n;
           Some current_state
         end else begin
@@ -275,7 +267,7 @@ let () =
       record false
   | Some nonce ->
       Stdio.printf "  Nonce = %s\n" (Z.to_string nonce);
-      Stdio.printf "  State = %s\n" (state_name (get_state ()));
+      Stdio.printf "  State = %s\n" (state_to_string (get_state ()));
       let pass = get_nonce_ready () in
       Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
       record pass);
@@ -321,11 +313,11 @@ let () =
               Stdio.printf "  Allowance before = %Ld\n" allowance_before;
               Stdio.printf "  Allowance after = %Ld\n" allowance_after;
               Stdio.printf "  Licenses accepted: %d -> %d\n" accepted_before accepted_after;
-              Stdio.printf "  New state = %s (expected Request_nonce)\n" (state_name new_state);
+              Stdio.printf "  New state = %s (expected Request_nonce)\n" (state_to_string new_state);
 
               let pass = Int64.(>) allowance_after allowance_before
                         && (accepted_after = accepted_before + 1)
-                        && (new_state = 1) in
+                        && (State.equal new_state Request_nonce) in
               Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
               record pass)));
 
@@ -407,11 +399,11 @@ let () =
 
           Stdio.printf "  Allowance before = %Ld\n" allowance_before;
           Stdio.printf "  Allowance after = %Ld\n" allowance_after;
-          Stdio.printf "  New state = %s (expected Publish)\n" (state_name new_state);
+          Stdio.printf "  New state = %s (expected Publish)\n" (state_to_string new_state);
           Stdio.printf "  Nonce unchanged = %b\n" (Z.equal nonce_before nonce_after);
 
           let pass = Int64.(=) allowance_after allowance_before
-                    && (new_state = 3)
+                    && (State.equal new_state Publish)
                     && Z.equal nonce_before nonce_after in
           Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
           record pass));
@@ -588,10 +580,10 @@ let () =
 
               Stdio.printf "  Allowance before = %Ld\n" allowance_before;
               Stdio.printf "  Allowance after = %Ld\n" allowance_after;
-              Stdio.printf "  New state = %s (expected Publish)\n" (state_name new_state);
+              Stdio.printf "  New state = %s (expected Publish)\n" (state_to_string new_state);
 
               let pass = Int64.(<=) allowance_after allowance_before
-                        && (new_state = 3) in
+                        && (State.equal new_state Publish) in
               Stdio.printf "  Allowance not incremented = %b (expected true)\n" pass;
               Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
               record pass)));
@@ -644,11 +636,11 @@ let () =
 
                       Stdio.printf "  Second submission: accepted = %b\n"
                         (accepted_after_second > accepted_after_first);
-                      Stdio.printf "  New state = %s\n" (state_name new_state);
+                      Stdio.printf "  New state = %s\n" (state_to_string new_state);
 
                       let pass = (accepted_after_first = accepted_before + 1)
                                 && (accepted_after_second = accepted_after_first)
-                                && (new_state = 3) in
+                                && (State.equal new_state Publish) in
                       Stdio.printf "  Replay rejected = %b (expected true)\n" pass;
                       Stdio.printf "  %s\n\n" (if pass then "PASS ✓" else "FAIL ✗");
                       record pass)))));

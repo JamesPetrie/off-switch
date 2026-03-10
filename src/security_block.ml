@@ -1,23 +1,23 @@
 (* security_block.ml - Top-level security block integration
-   
+
    Implements the embedded off-switch architecture from Petrie's paper.
-   
+
    Components:
    - TRNG submodule for nonce generation
    - ECDSA submodule for license verification
    - Inline usage allowance counter
    - Inline workload with output gating
-   
+
    State machine:
    - Requests nonce from TRNG at initialization
    - Publishes nonce for external license generation
    - Verifies received licenses via ECDSA
    - Increments allowance on valid license, then generates new nonce
    - On invalid license, returns to Publish with same nonce
-   
+
    Workload output is gated by ANDing each bit with (allowance > 0).
    Allowance decrements every clock cycle (time-based authorization).
-   
+
    Note: The Int8 Add workload is an example. In production, this would be
    replaced with actual essential chip operations (e.g., matrix multiply units,
    data routing logic).
@@ -83,18 +83,17 @@ module State = struct
     | Publish
     | Verify_start
     | Verify_wait
-    | Update
-  [@@deriving sexp_of, compare, enumerate]
+  [@@deriving sexp_of, compare, equal, enumerate]
 end
 
 let create scope (i : _ I.t) =
   let open Always in
   let spec = Reg_spec.create ~clock:i.clock ~clear:i.clear () in
   let sm = State_machine.create (module State) spec ~enable:vdd in
-  
+
   (* === TRNG Submodule === *)
   let trng_request_new = Variable.wire ~default:gnd in
-  
+
   let trng = Trng.create (Scope.sub_scope scope "trng")
     { Trng.I.
       clock = i.clock
@@ -105,15 +104,15 @@ let create scope (i : _ I.t) =
     ; load_seed = i.trng_load_seed
     }
   in
-  
+
   (* === Nonce Register === *)
   let current_nonce = Variable.reg spec ~width:Config.nonce_width in
-  
+
   (* === ECDSA Submodule === *)
   let ecdsa_start = Variable.wire ~default:gnd in
   let license_r_reg = Variable.reg spec ~width:Config.signature_width in
   let license_s_reg = Variable.reg spec ~width:Config.signature_width in
-  
+
   let ecdsa = Ecdsa.create (Scope.sub_scope scope "ecdsa")
     { Ecdsa.I.
       clock = i.clock
@@ -126,28 +125,28 @@ let create scope (i : _ I.t) =
     ; param_b3 = i.param_b3
     }
   in
-  
+
   (* === Usage Allowance (inline) === *)
   let allowance = Variable.reg spec ~width:Config.allowance_width in
   let increment_allowance = Variable.wire ~default:gnd in
-  
+
   let enabled = allowance.value >:. 0 in
-  
+
   (* Allowance update: increment takes priority, otherwise decrement each cycle *)
   let increment_amount = of_int ~width:Config.allowance_width Config.allowance_increment in
-  let incremented_allowance = 
+  let incremented_allowance =
     let sum = allowance.value +: increment_amount in
     (* Saturate on overflow *)
     mux2 (sum <: allowance.value) (ones Config.allowance_width) sum
   in
   let decremented_allowance = allowance.value -:. 1 in
-  
+
   (* === Statistics === *)
   let licenses_accepted = Variable.reg spec ~width:16 in
-  
+
   (* === Init Delay Counter === *)
   let delay_counter = Variable.reg spec ~width:16 in
-  
+
   (* === State Machine === *)
   compile [
     (* Allowance update logic - runs every cycle independent of state machine *)
@@ -157,7 +156,7 @@ let create scope (i : _ I.t) =
     ] @@ elif (allowance.value >:. 0) [
       allowance <-- decremented_allowance;
     ] [];
-    
+
     (* State machine *)
     sm.switch [
       State.Init_delay, [
@@ -166,19 +165,19 @@ let create scope (i : _ I.t) =
           sm.set_next Request_nonce;
         ];
       ];
-      
+
       State.Request_nonce, [
         trng_request_new <-- vdd;
         sm.set_next Wait_nonce;
       ];
-      
+
       State.Wait_nonce, [
         when_ trng.nonce_valid [
           current_nonce <-- trng.nonce;
           sm.set_next Publish;
         ];
       ];
-      
+
       State.Publish, [
         (* Nonce is stable, wait for license submission *)
         when_ i.license_submit [
@@ -187,59 +186,55 @@ let create scope (i : _ I.t) =
           sm.set_next Verify_start;
         ];
       ];
-      
+
       State.Verify_start, [
         when_ (~:(ecdsa.busy)) [
           ecdsa_start <-- vdd;
           sm.set_next Verify_wait;
         ];
       ];
-      
+
       State.Verify_wait, [
         when_ ecdsa.done_ [
-          sm.set_next Update;
-        ];
-      ];
-      
-      State.Update, [
-        if_ ecdsa.valid [
-          (* Valid license: increment allowance, get new nonce *)
-          increment_allowance <-- vdd;
-          licenses_accepted <-- licenses_accepted.value +:. 1;
-          sm.set_next Request_nonce;
-        ] [
-          (* Invalid license: return to Publish with same nonce *)
-          sm.set_next Publish;
+          if_ ecdsa.valid [
+            (* Valid license: increment allowance, get new nonce *)
+            increment_allowance <-- vdd;
+            licenses_accepted <-- licenses_accepted.value +:. 1;
+            sm.set_next Request_nonce;
+          ] [
+            (* Invalid license: return to Publish with same nonce *)
+            sm.set_next Publish;
+          ];
         ];
       ];
     ];
   ];
-  
+
   (* === Workload: Signed Int8 Addition with AND-based Output Gating === *)
-  let int8_sum = 
+  let int8_sum =
     let a_signed = i.int8_a in
     let b_signed = i.int8_b in
     (a_signed +: b_signed).:[(7, 0)]  (* Wrapping addition *)
   in
-  
+
   (* SECURITY GATE: AND each output bit with enabled signal *)
   let enabled_mask = repeat enabled 8 in
   let gated_result = int8_sum &: enabled_mask in
-  
+
   (* Pipeline register for workload output *)
   let result_reg = Variable.reg spec ~width:8 in
   let result_valid_reg = Variable.reg spec ~width:1 in
-  
+
   compile [
     result_valid_reg <-- i.workload_valid;
     result_reg <-- gated_result;
   ];
-  
+
   (* === State Encoding for Debug === *)
-  let state_encoding = 
+  let state_encoding =
     uresize (sm.current) 4
   in
-  
+
   { O.
     nonce = current_nonce.value
   ; nonce_ready = sm.is Publish
