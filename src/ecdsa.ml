@@ -78,7 +78,7 @@ module Config = struct
   let gpq_y = Z.of_string "0x388f7b0f632de8140fe337e62a37f3566500a99934c2231b6cb9fd7584b8e672"
   let gpq_z = Z.one
 
-  (* Point at infinity *)
+  (* Point at infinity (z = 0) *)
   let infinity_x = Z.zero
   let infinity_y = Z.one
   let infinity_z = Z.zero
@@ -229,6 +229,10 @@ let create scope (i : _ I.t) =
   let reg_file = Array.init Config.num_regs ~f:(fun _ -> Variable.reg spec ~width) in
 
   (* Hardcoded point constants *)
+  let const_infx = of_z ~width Config.infinity_x in
+  let const_infy = of_z ~width Config.infinity_y in
+  let const_infz = of_z ~width Config.infinity_z in
+
   let const_gx = of_z ~width Config.generator_x in
   let const_gy = of_z ~width Config.generator_y in
   let const_gz = of_z ~width Config.generator_z in
@@ -262,9 +266,6 @@ let create scope (i : _ I.t) =
 
   let current_bit_u1 = bit_select_dynamic u1_reg.value bit_pos.value in
   let current_bit_u2 = bit_select_dynamic u2_reg.value bit_pos.value in
-
-  (* Check if P is point at infinity (z1 = 0) *)
-  let p_is_infinity = reg_file.(Config.z1).value ==:. 0 in
 
   (* Unified instruction decode over full program *)
   let pc_decode field w =
@@ -346,9 +347,9 @@ let create scope (i : _ I.t) =
         bit_pos   <-- ones bit_cnt_width;
         doubling  <-- vdd;
         last_step <-- gnd;
-        reg_file.(Config.x1) <-- of_z ~width Config.infinity_x;
-        reg_file.(Config.y1) <-- of_z ~width Config.infinity_y;
-        reg_file.(Config.z1) <-- of_z ~width Config.infinity_z;
+        reg_file.(Config.x1) <-- const_infx;
+        reg_file.(Config.y1) <-- const_infy;
+        reg_file.(Config.z1) <-- const_infz;
 
         sm.set_next Loop;
       ];
@@ -365,17 +366,13 @@ let create scope (i : _ I.t) =
           (* In Doubling phase, next will be Adding *)
           doubling <-- gnd;
 
-          (* only calculate if P != infinity, can be skipped otherwise *)
-          if_ (~:p_is_infinity) [
-            (* Initialize and start point_add program *)
-            reg_file.(Config.x2) <-- reg_file.(Config.x1).value;
-            reg_file.(Config.y2) <-- reg_file.(Config.y1).value;
-            reg_file.(Config.z2) <-- reg_file.(Config.z1).value;
-            pc <--. point_add_start;
-            sm.set_next Run_point_add;
-          ] [
-            sm.set_next Loop;
-          ];
+          (* could skip the doubling if P is infinity, but do it anyway for side-channel resistance *)
+          (* Initialize and start point_add program *)
+          reg_file.(Config.x2) <-- reg_file.(Config.x1).value;
+          reg_file.(Config.y2) <-- reg_file.(Config.y1).value;
+          reg_file.(Config.z2) <-- reg_file.(Config.z1).value;
+          pc <--. point_add_start;
+          sm.set_next Run_point_add;
         ]
         @@ [
           (* In Adding phase, next will be Doubling *)
@@ -384,19 +381,15 @@ let create scope (i : _ I.t) =
           last_step <-- (bit_pos.value ==:. 0);
           bit_pos <-- bit_pos.value -:. 1;
 
-          (* add only needed if either of the current u1 or u2 bits is set, skip otherwise *)
-          if_ (current_bit_u1 ||: current_bit_u2) [
-            (* Initialize and start point_add program         *)
-            (* Shamir's trick: adding G, Q or precomputed G+Q *)
-            (* Reminder: R = u1*G + u2*Q                      *)
-            reg_file.(Config.x2) <-- mux2 ~:current_bit_u2 const_gx (mux2 ~:current_bit_u1 const_qx const_gpqx);
-            reg_file.(Config.y2) <-- mux2 ~:current_bit_u2 const_gy (mux2 ~:current_bit_u1 const_qy const_gpqy);
-            reg_file.(Config.z2) <-- mux2 ~:current_bit_u2 const_gz (mux2 ~:current_bit_u1 const_qz const_gpqz);
-            pc <--. point_add_start;
-            sm.set_next Run_point_add;
-          ] [
-            sm.set_next Loop;
-          ];
+          (* could skip the add if both bits are zero, but do it anyway for side-channel resistance *)
+          (* Initialize and start point_add program         *)
+          (* Shamir's trick: adding G, Q or precomputed G+Q *)
+          (* Reminder: R = u1*G + u2*Q                      *)
+          reg_file.(Config.x2) <-- mux2 ~:current_bit_u2 (mux2 ~:current_bit_u1 const_infx const_gx) (mux2 ~:current_bit_u1 const_qx const_gpqx);
+          reg_file.(Config.y2) <-- mux2 ~:current_bit_u2 (mux2 ~:current_bit_u1 const_infy const_gy) (mux2 ~:current_bit_u1 const_qy const_gpqy);
+          reg_file.(Config.z2) <-- mux2 ~:current_bit_u2 (mux2 ~:current_bit_u1 const_infz const_gz) (mux2 ~:current_bit_u1 const_qz const_gpqz);
+          pc <--. point_add_start;
+          sm.set_next Run_point_add;
         ];
       ];
 
