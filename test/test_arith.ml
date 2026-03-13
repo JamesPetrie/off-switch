@@ -8,6 +8,10 @@ let () =
   let module Sim = Cyclesim.With_interface(Arith.I)(Arith.O) in
   let sim = Sim.create (Arith.create scope) in
 
+  let vcd_file = "./test_arith.vcd" in
+  let oc = Stdio.Out_channel.create vcd_file in
+  let sim = Vcd.wrap oc sim in
+
   let inputs = Cyclesim.inputs sim in
   let outputs = Cyclesim.outputs ~clock_edge:Before sim in
 
@@ -1185,6 +1189,9 @@ Stdio.printf "=== End Montgomery Debug Test ===\n\n";
 
   Stdio.printf "=== Test Summary ===\n";
   Stdio.printf "Passed: %d/%d\n" passed total;
+
+  Stdio.Out_channel.close oc;
+  Stdio.printf "Saved waveform to %s\n" vcd_file;
 
   if passed = total then begin
     Stdio.printf "\n";

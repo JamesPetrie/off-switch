@@ -8,6 +8,10 @@ let () =
   let module Sim = Cyclesim.With_interface(Ecdsa.I)(Ecdsa.O) in
   let sim = Sim.create (Ecdsa.create scope) in
 
+  let vcd_file = "./test_ecdsa.vcd" in
+  let oc = Stdio.Out_channel.create vcd_file in
+  let sim = Vcd.wrap oc sim in
+
   let inputs = Cyclesim.inputs sim in
   let outputs = Cyclesim.outputs sim in
 
@@ -337,6 +341,9 @@ let () =
 
   Stdio.printf "=== Test Summary ===\n";
   Stdio.printf "Passed: %d/%d\n" passed total;
+
+  Stdio.Out_channel.close oc;
+  Stdio.printf "Saved waveform to %s\n" vcd_file;
 
   if passed = total then begin
     Stdio.printf "\n";
