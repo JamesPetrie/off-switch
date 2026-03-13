@@ -12,8 +12,12 @@ let () =
   let module Sim = Cyclesim.With_interface(Security_block.I)(Security_block.O) in
   let sim = Sim.create (Security_block.create scope) in
 
+  let vcd_file = "./test_security_block.vcd" in
+  let oc = Stdio.Out_channel.create vcd_file in
+  let sim = Vcd.wrap oc sim in
+
   let inputs = Cyclesim.inputs sim in
-  let outputs = Cyclesim.outputs sim in
+  let outputs = Cyclesim.outputs ~clock_edge:Before sim in
 
   let prime_n = Arith.Config.prime_n in
 
@@ -199,11 +203,21 @@ let () =
   in
 
   let do_workload ~a ~b =
+    (* Drive inputs *)
     inputs.workload_valid := Bits.vdd;
     inputs.int8_a := int8_to_bits a;
     inputs.int8_b := int8_to_bits b;
+
+    (* wait for input sampling (1st cycle) *)
     Cyclesim.cycle sim;
+
+    (* deassert valid *)
     inputs.workload_valid := Bits.gnd;
+
+    (* wait for output generation (2nd cycle) *)
+    Cyclesim.cycle sim;
+
+    (* sample and return the outputs *)
     let result = bits_to_int8 !(outputs.int8_result) in
     let valid = Bits.to_bool !(outputs.result_valid) in
     (result, valid)
@@ -655,6 +669,9 @@ let () =
 
   Stdio.printf "=== Test Summary ===\n";
   Stdio.printf "Passed: %d/%d\n" passed total;
+
+  Stdio.Out_channel.close oc;
+  Stdio.printf "Saved waveform to %s\n" vcd_file;
 
   if passed = total then begin
     Stdio.printf "\n";
