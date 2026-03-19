@@ -8,13 +8,17 @@ module State = Security_block.State
 let () =
   Stdio.printf "=== Security Block Test ===\n\n";
 
+  (* Disable vcd generation by dafault here as it's >1GB *)
+  let save_vcd = false in
+  (* use /dev/null to create a dummy channel when no vcd needed *)
+  let vcd_file = if save_vcd then "./test_ecdsa.vcd" else "/dev/null" in
+
   let scope = Scope.create ~flatten_design:true () in
   let module Sim = Cyclesim.With_interface(Security_block.I)(Security_block.O) in
-  let sim = Sim.create (Security_block.create scope) in
 
-  let vcd_file = "./test_security_block.vcd" in
   let oc = Stdio.Out_channel.create vcd_file in
-  let sim = Vcd.wrap oc sim in
+  let sim = Sim.create (Security_block.create scope) in
+  let sim = if save_vcd then Vcd.wrap oc sim else sim in
 
   let inputs = Cyclesim.inputs sim in
   let outputs = Cyclesim.outputs ~clock_edge:Before sim in
@@ -670,8 +674,10 @@ let () =
   Stdio.printf "=== Test Summary ===\n";
   Stdio.printf "Passed: %d/%d\n" passed total;
 
-  Stdio.Out_channel.close oc;
-  Stdio.printf "Saved waveform to %s\n" vcd_file;
+  if save_vcd then (
+    Stdio.Out_channel.close oc;
+    Stdio.printf "Saved waveform to %s\n" vcd_file;
+  );
 
   if passed = total then begin
     Stdio.printf "\n";
