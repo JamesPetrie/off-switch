@@ -1,28 +1,19 @@
-# REVISIT is license below okay to reuse?
-# ---------------------------------------------------------------------------
-# This file ONLY is placed under the Creative Commons Public Domain
-# SPDX-FileCopyrightText: 2020 Wilson Snyder
-# SPDX-License-Identifier: CC0-1.0
-#
-# ---------------------------------------------------------------------------
-# Check for sanity to avoid later confusion
-
-ifneq ($(words $(CURDIR)),1)
-  $(error Unsupported: GNU Make cannot build in directories containing spaces, build elsewhere: '$(CURDIR)')
-endif
-
 # ---------------------------------------------------------------------------
 # Makefile configuration — edit these for your run
 # ---------------------------------------------------------------------------
 
 TOOL ?= verilator
+TB   ?= mod_add
+GUI  ?= 0
 
 # ---------------------------------------------------------------------------
 # Constant variables
 # ---------------------------------------------------------------------------
 
-RTL       := rtl/top.sv
-BUILD_DIR := build
+RTL_VC     := rtl/design.vc
+TB_FILE    := tb/tb_$(TB).sv
+BUILD_DIR  := build
+TOP_MODULE := tb
 
 # ---------------------------------------------------------------------------
 # Simulation
@@ -30,24 +21,37 @@ BUILD_DIR := build
 
 .PHONY: sim
 sim:
+ifeq ($(TOOL),verilator)
 	@echo "-- VERILATE & BUILD --------"
-	verilator -cc --exe --build -j $(RTL) tb/sim_main.cpp --Mdir $(BUILD_DIR)
+	verilator -cc --exe --build -j --timing --trace -F $(RTL_VC) $(TB_FILE) --top-module $(TOP_MODULE) tb/sim_main.cpp --Mdir $(BUILD_DIR)
 	@echo "-- RUN ---------------------"
-	$(BUILD_DIR)/Vtop
+	$(BUILD_DIR)/V$(TOP_MODULE)
 	@echo "-- DONE --------------------"
+ifeq ($(GUI),1)
+	@echo "-- OPENING GUI -------------"
+	gtkwave dump.vcd
+endif
+else
+	$(error Unknown sim tool '$(TOOL)'. See 'make help' for valid options)
+endif
 
 # ---------------------------------------------------------------------------
 # Lint
 # ---------------------------------------------------------------------------
 .PHONY: lint
 lint:
+ifeq ($(GUI),1)
+	$(error Lint GUI '$(GUI)' not supported. See 'make help' for valid options)
+endif
 ifeq ($(TOOL),verilator)
-	@echo "-- RUN VERILATOR LINT ----------"
-	verilator --lint-only -Wall $(RTL)
+	@echo "-- RUN VERILATOR LINT -------"
+	verilator --lint-only -Wall -F $(RTL_VC)
 	@echo "-- DONE --------------------"
 else ifeq ($(TOOL),verible)
-	@echo "-- RUN VERIBLE LINT ----------"
-	verible-verilog-lint $(RTL)
+	@echo "-- RUN VERIBLE LINT --------"
+	cd $(dir $(RTL_VC)) &&                          \
+	verible-verilog-lint  $(shell cat $(RTL_VC)) && \
+	cd -
 	@echo "-- DONE --------------------"
 else
 	$(error Unknown lint tool '$(TOOL)'. See 'make help' for valid options)
@@ -68,8 +72,8 @@ help:
 	@echo ""
 	@echo "RTL Makefile — available targets"
 	@echo "────────────────────────────────────────────────────────"
-	@echo "  sim      Run simulation"
-	@echo "  lint     Run linter (TOOL=verilator|verible)"
+	@echo "  sim      Run simulation (TOOL=verilator TB=mod_add GUI=0|1)"
+	@echo "  lint     Run linter (TOOL=verilator|verible GUI=0)"
 	@echo "  clean    Remove all generated build artefacts"
 	@echo "  help     Print this message"
 
