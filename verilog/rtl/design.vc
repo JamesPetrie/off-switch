@@ -1,2 +1,5 @@
 ./comb_add.sv
 ./mod_add.sv
+./mod_mul.sv
+./mod_inv.sv
+./arith.sv

@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
     tb->rst_n = 1;
 
     // Run the test
-    for (int i = 0; i < 1000; i++) {
+    for (int i = 0; i < 10000; i++) {
         tb->clk = 1; tb->eval(); ctx->timeInc(1); vcd->dump(ctx->time());
         tb->clk = 0; tb->eval(); ctx->timeInc(1); vcd->dump(ctx->time());
     }
