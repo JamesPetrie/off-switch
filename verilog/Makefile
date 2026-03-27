@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------
 
 TOOL ?= verilator
-TB   ?= mod_add
+TB   ?= arith
 GUI  ?= 0
 
 # ---------------------------------------------------------------------------
@@ -38,6 +38,9 @@ endif
 # ---------------------------------------------------------------------------
 # Lint
 # ---------------------------------------------------------------------------
+# ALL_CAPS | CamelCase
+VERIBLE_RULES_FLAG := --rules="parameter-name-style=localparam_style_regex:([A-Z][A-Z0-9]*(_[A-Z0-9]+)*|([A-Z][a-z0-9]*)+(_[0-9]+)?)"
+
 .PHONY: lint
 lint:
 ifeq ($(GUI),1)
@@ -50,7 +53,7 @@ ifeq ($(TOOL),verilator)
 else ifeq ($(TOOL),verible)
 	@echo "-- RUN VERIBLE LINT --------"
 	cd $(dir $(RTL_VC)) &&                          \
-	verible-verilog-lint  $(shell cat $(RTL_VC)) && \
+	verible-verilog-lint $(VERIBLE_RULES_FLAG)  $(shell cat $(RTL_VC)) && \
 	cd -
 	@echo "-- DONE --------------------"
 else
@@ -72,7 +75,7 @@ help:
 	@echo ""
 	@echo "RTL Makefile — available targets"
 	@echo "────────────────────────────────────────────────────────"
-	@echo "  sim      Run simulation (TOOL=verilator TB=mod_add GUI=0|1)"
+	@echo "  sim      Run simulation (TOOL=verilator TB=arith GUI=0|1)"
 	@echo "  lint     Run linter (TOOL=verilator|verible GUI=0)"
 	@echo "  clean    Remove all generated build artefacts"
 	@echo "  help     Print this message"
