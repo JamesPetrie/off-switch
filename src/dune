@@ -2,6 +2,6 @@
  (name off_switch)
  (public_name off_switch)
  (wrapped false)
- (modules trng security_block ecdsa arith mod_add mod_mul mod_inv comb_add)
+ (modules trng security_block ecdsa arith mod_add mod_mul mod_inv comb_add sha256_k_constants sha256_w_mem sha256_core)
  (libraries base hardcaml zarith)
  (preprocess (pps ppx_jane ppx_hardcaml)))
