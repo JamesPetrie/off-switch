@@ -13,9 +13,9 @@
 //
 // State machine: StIdle -> StAdd/StDouble <-> StDouble -> StDone -> StIdle
 
-module mod_mul #(
-    localparam int unsigned WIDTH = 256
-) (
+module mod_mul
+    import arith_pkg::*; // import in module header to be used in port list
+(
     input  logic             clk,
     input  logic             rst_n,
     // Control

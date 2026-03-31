@@ -1,6 +1,6 @@
-module comb_add #(
-    localparam int unsigned WIDTH = 256
-) (
+module comb_add
+    import arith_pkg::*; // import in module header to be used in port list
+(
     input  wire [WIDTH-1:0] a,
     input  wire [WIDTH-1:0] b,
     input  wire             subtract,

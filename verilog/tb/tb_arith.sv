@@ -232,6 +232,16 @@ module tb (
                 end
             end
 
+            // All tests complete
+            if (curr_rsp_ptr == NumTests) begin
+                $display("");
+                if (fail_count == 0)
+                    $display("All %0d arith tests passed.", pass_count);
+                else
+                    $display("arith: %0d passed, %0d failed.", pass_count, fail_count);
+                $finish;
+            end
+
         end
     end
 

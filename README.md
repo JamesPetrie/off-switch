@@ -47,7 +47,7 @@ opam init
 eval $(opam env)
 
 # Install dependencies
-opam install hardcaml hardcaml_waveterm ppx_hardcaml zarith 
+opam install hardcaml hardcaml_waveterm ppx_hardcaml zarith
 
 # Clone and build
 git clone https://github.com/JamesPetrie/off-switch
@@ -218,8 +218,6 @@ The paper's Section 4 discusses attack vectors against these assumptions in deta
 | `workload_valid` | 1 | Workload input data valid |
 | `int8_a` | 8 | Signed 8-bit operand A |
 | `int8_b` | 8 | Signed 8-bit operand B |
-| `param_a` | 256 | ECDSA curve parameter a (0 for secp256k1) |
-| `param_b3` | 256 | ECDSA curve parameter 3b (21 for secp256k1) |
 | `trng_seed` | 256 | Seed value for TRNG (testing only) |
 | `trng_load_seed` | 1 | Load seed into TRNG (testing only) |
 
@@ -260,8 +258,6 @@ The paper's Section 4 discusses attack vectors against these assumptions in deta
 | Input | `z` | 256 | Message hash (= nonce) |
 | Input | `r` | 256 | Signature r component |
 | Input | `s` | 256 | Signature s component |
-| Input | `param_a` | 256 | Curve parameter a |
-| Input | `param_b3` | 256 | Curve parameter 3b |
 | Output | `done_` | 1 | Verification complete (pulse) |
 | Output | `valid` | 1 | Signature is valid |
 | Output | `busy` | 1 | Verification in progress |
@@ -439,7 +435,7 @@ let program = [|
 |]
 ```
 
-The formula uses 6 temporary registers (`t0`–`t5`) plus input/output point coordinates and curve parameters, for a total of 17 registers.
+The formula uses 6 temporary registers (`t0`–`t5`) plus input/output point coordinates, for a total of 15 registers.
 
 ### Modular Arithmetic Unit
 
@@ -498,6 +494,8 @@ The prototype hardcodes:
 - Point at infinity `(0, 1, 0)` in projective coordinates
 - Field prime `p = 2²⁵⁶ - 2³² - 977`
 - Curve order `n = 2²⁵⁶ - 432420386565659656852420866394968145599`
+- Curve parameter `a = 0` (from y² = x³ + ax + b)
+- Curve parameter `b = 7` (from y² = x³ + ax + b)
 
 In production, `Q` would be unique per chip (or per batch) and stored in Mask ROM, as recommended in the paper. The other constants are fixed by the secp256k1 specification.
 

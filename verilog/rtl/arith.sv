@@ -15,13 +15,13 @@
 //   1. Set data_a, data_b, op, prime_sel; pulse valid high and hold until ready
 //   2. ready pulses high for one cycle when the result is available
 
-module arith #(
-    localparam int unsigned WIDTH = 256
-) (
+module arith
+    import arith_pkg::*; // import in module header to be used in port list
+(
     input  logic             clk,
     input  logic             rst_n,
     input  logic             valid,
-    input  logic [1:0]       op,
+    input  op_e              op,
     input  logic             prime_sel,
     input  logic [WIDTH-1:0] data_a,
     input  logic [WIDTH-1:0] data_b,
@@ -36,12 +36,6 @@ module arith #(
     // secp256k1 curve order n
     localparam logic [WIDTH-1:0] PRIME_N =
         256'hFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141;
-
-    // Operation codes
-    localparam logic [1:0] OP_ADD = 2'd0;
-    localparam logic [1:0] OP_SUB = 2'd1;
-    localparam logic [1:0] OP_MUL = 2'd2;
-    localparam logic [1:0] OP_INV = 2'd3;
 
     // ---------------------------------------------------------------------------
     // Prime selection (direct from input)
