@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------
 
 TOOL ?= verilator
-TB   ?= arith
+TB   ?= ecdsa
 GUI  ?= 0
 
 # ---------------------------------------------------------------------------
@@ -19,17 +19,24 @@ TOP_MODULE := tb
 # Simulation
 # ---------------------------------------------------------------------------
 
+VFLAGS := -cc --exe --build -j --timing
+ifeq ($(GUI),1)
+	# using FST instead of VCD as the ECDSA simulation dump is in GBs range
+	# FST is 5-20x smaller in general
+	VFLAGS += --trace-fst
+endif
+
 .PHONY: sim
 sim:
 ifeq ($(TOOL),verilator)
 	@echo "-- VERILATE & BUILD --------"
-	verilator -cc --exe --build -j --timing --trace -F $(RTL_VC) $(TB_FILE) --top-module $(TOP_MODULE) tb/sim_main.cpp --Mdir $(BUILD_DIR)
+	verilator $(VFLAGS) -F $(RTL_VC) $(TB_FILE) --top-module $(TOP_MODULE) tb/sim_main.cpp --Mdir $(BUILD_DIR)
 	@echo "-- RUN ---------------------"
 	$(BUILD_DIR)/V$(TOP_MODULE)
 	@echo "-- DONE --------------------"
 ifeq ($(GUI),1)
 	@echo "-- OPENING GUI -------------"
-	gtkwave dump.vcd
+	gtkwave dump.fst
 endif
 else
 	$(error Unknown sim tool '$(TOOL)'. See 'make help' for valid options)
@@ -68,7 +75,7 @@ endif
 
 .PHONY: clean
 clean:
-	rm -rf $(BUILD_DIR) *.vcd *.vpd *.wlf *.log simv csrc
+	rm -rf $(BUILD_DIR) *.vcd *.fst *.vpd *.wlf *.log simv csrc
 
 .PHONY: help
 help:

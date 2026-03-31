@@ -19,9 +19,9 @@
 //                     → StSubRems → StSubRemsRev → StSubCoeffs → StOpSel (loop)
 //                     → StDone → StIdle
 
-module mod_inv #(
-    localparam int unsigned WIDTH = 256
-) (
+module mod_inv
+    import arith_pkg::*; // import in module header to be used in port list
+(
     input  logic             clk,
     input  logic             rst_n,
     // Control

@@ -1,6 +1,6 @@
-module mod_add #(
-    localparam int unsigned WIDTH = 256
-) (
+module mod_add
+    import arith_pkg::*; // import in module header to be used in port list
+(
     input  logic             clk,
     input  logic             rst_n,
     input  logic             valid,
