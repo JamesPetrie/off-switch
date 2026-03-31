@@ -44,6 +44,8 @@ module I = struct
     (* Signature streaming interface *)
     ; sig_element : 'a [@bits 256]  (* one chain value at a time *)
     ; sig_element_valid : 'a        (* pulse: sig_element is ready *)
+    (* Flow control: HSS orchestrator acknowledges pk_candidate consumption *)
+    ; pk_ack : 'a                   (* pulse: pk_candidate has been consumed *)
     }
   [@@deriving sexp_of, hardcaml]
 end
@@ -56,6 +58,9 @@ module O = struct
     (* Request next signature element *)
     ; request_sig_element : 'a
     ; chain_index : 'a [@bits 6]  (* which chain we need *)
+    (* pk candidate output for Kc computation *)
+    ; pk_candidate : 'a [@bits 256]
+    ; pk_candidate_valid : 'a
     }
   [@@deriving sexp_of, hardcaml]
 end
@@ -123,6 +128,7 @@ let create scope (i : _ I.t) =
   (* Request/done signals *)
   let request_sig = Variable.wire ~default:gnd in
   let done_signal = Variable.wire ~default:gnd in
+  let pk_valid = Variable.wire ~default:gnd in
 
   (* Current digit value - mux from digit registers *)
   let current_digit = mux chain_idx.value
@@ -211,15 +217,15 @@ let create scope (i : _ I.t) =
 
       State.Next_chain, [
         (* chain_value now holds pk_candidate[chain_idx] *)
-        (* We need to accumulate it for the Kc computation *)
-        (* For now, just advance to next chain *)
-        (* TODO: feed into incremental Kc hash *)
-        if_ (chain_idx.value >=:. (Config.p - 1)) [
-          (* All chains done, compute Kc *)
-          sm.set_next Compare;
-        ] [
-          chain_idx <-- chain_idx.value +:. 1;
-          sm.set_next Request_sig;
+        (* Hold pk_valid high until acknowledged *)
+        pk_valid <-- vdd;
+        when_ i.pk_ack [
+          if_ (chain_idx.value >=:. (Config.p - 1)) [
+            sm.set_next Compare;
+          ] [
+            chain_idx <-- chain_idx.value +:. 1;
+            sm.set_next Request_sig;
+          ];
         ];
       ];
 
@@ -261,4 +267,6 @@ let create scope (i : _ I.t) =
   ; valid = result_valid.value
   ; request_sig_element = request_sig.value
   ; chain_index = chain_idx.value
+  ; pk_candidate = chain_value.value
+  ; pk_candidate_valid = pk_valid.value
   }
