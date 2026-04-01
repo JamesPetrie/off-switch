@@ -6,3 +6,4 @@
 ./arith.sv
 ./trng.sv
 ./ecdsa.sv
+./security_block.sv
