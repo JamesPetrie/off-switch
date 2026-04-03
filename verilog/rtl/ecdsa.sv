@@ -20,10 +20,18 @@
 //   3. When ready, check verif_passed: 1 = signature verification passed, 0 = signature verification failed
 //
 // FSM:
-//   StIdle -> StPrepare -> StAdd -> StDouble -> (repeat Add+Double) -> StAdd -> StFinalize -> StIdle
+//
+//   StIdle -> StPrepare -> StAdd -> StDouble -> StAdd -> StFinalize -> StIdle
+//                                      ^          |
+//                                      |__________|
+//
+// Note: could do the same skip StAdd optimization as in mod_mul but
+// PC loading does not currently support re-running the same state (StDouble after StDouble)
+
 
 module ecdsa
     import arith_pkg::*; // import in module header to be used in port list
+    import secp256k1_pkg::*;
 (
     input  logic             clk,
     input  logic             rst_n,
@@ -40,41 +48,32 @@ module ecdsa
     // Types and Constants
     // -------------------------------------------------------------------------
 
-    typedef logic [4:0]          reg_addr_t;
-    typedef logic [PC_WIDTH-1:0] pc_t;
+    typedef logic [4:0] all_addr_t;
 
     // Register file indices
-    typedef enum reg_addr_t {
+    typedef enum all_addr_t {
         T0, T1, T2, T3, T4, T5,
         X3, Y3, Z3,
         X1, Y1, Z1,
         X2, Y2, Z2,
         A1, B3,   // constants, not actual registers
-        NUM_ADDRS // last element to contain the total number of registers
-    } reg_addr_e;
+        NUM_ADDRS // last element to contain the total number of addresses
+    } all_addr_e;
 
-    localparam int NUM_REGS = int'(NUM_ADDRS) - 2;
-    localparam int REG_FILE_IDX_BITS = $clog2(NUM_REGS);
+    localparam int NUM_CONSTS = 2;
+    localparam int NUM_REGS   = int'(NUM_ADDRS) - NUM_CONSTS; // number of actual registers
 
-    localparam int DBCW  = $clog2(WIDTH); // Data Bit Counter Width
+    typedef logic [$clog2(NUM_REGS)-1:0] reg_addr_t;
 
-    // Constants derived from secp256k1 curve parameters: y² = x³ + ax + b, a=0, b=7
-    localparam logic [WIDTH-1:0] CURVE_A1 = 1 * 0;  // 1*a
-    localparam logic [WIDTH-1:0] CURVE_B3 = 3 * 7;  // 3*b
+    localparam int BITCNT_W = $clog2(WIDTH); // Bit Counter Width
 
-    // Generator point G
-    localparam logic [WIDTH-1:0]
-    G_X = 256'h79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,
-    G_Y = 256'h483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8,
-    G_Z = 1;
-
-    // Public key Q = 2G
+    // Public key Q (derived from G and Private key d)
     localparam logic [WIDTH-1:0]
     Q_X = 256'hc6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5,
     Q_Y = 256'h1ae168fea63dc339a3c58419466ceaeef7f632653266d0e1236431a950cfe52a,
     Q_Z = 1;
 
-    // Precomputed G + Q = 3G
+    // Precomputed G + Q (assumed to be computed together with Q, so not implementing the addition here)
     localparam logic [WIDTH-1:0]
     GPQ_X = 256'hf9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9,
     GPQ_Y = 256'h388f7b0f632de8140fe337e62a37f3566500a99934c2231b6cb9fd7584b8e672,
@@ -92,21 +91,27 @@ module ecdsa
 
     typedef struct packed {
         op_e        op;
-        reg_addr_t  src1;
-        reg_addr_t  src2;
-        reg_addr_t  dst;
+        all_addr_t  src1;
+        all_addr_t  src2;
+        all_addr_t  dst;
+        // Note: dst can only be register (not constant) so reg_addr_t could also work,
+        //       but the reg enums are using all_addr_t, so using that avoids casting
     } instr_t;
 
     // Segment lengths and PC width
+    // Note: tried assigning the programs to separate arrays to qurry lengths
+    //       but verilator had issues with concatenating those
     localparam int PREPARE_LEN   = 3;
     localparam int POINT_ADD_LEN = 40;
     localparam int FINALIZE_LEN  = 3;
     localparam int ROM_SIZE      = PREPARE_LEN + POINT_ADD_LEN + FINALIZE_LEN;
     localparam int PC_WIDTH      = $clog2(ROM_SIZE);
 
+    typedef logic [PC_WIDTH-1:0] pc_t;
+
     localparam instr_t PROGRAM [ROM_SIZE] = '{
 
-        // --- Prepare (prime_sel = 1, mod n) ---
+        // --- Prepare (mod n) ---
         // w = s^(-1) mod n;  u1 = z*w mod n;  u2 = r*w mod n
         // Assumes t0=s, t1=z, t2=r
         /* 1 */ '{op: OP_INV, src1: T0, src2: T0, dst: T0},   // t0 = inv(t0)
@@ -155,7 +160,7 @@ module ecdsa
         /* 39 */ '{op: OP_MUL, src1: T5, src2: Z3, dst: Z3},   // z3 = t5*z3
         /* 40 */ '{op: OP_ADD, src1: Z3, src2: T0, dst: Z1},   // z1 = z3+t0
 
-        // --- Finalize (prime_sel = 0, mod p) ---
+        // --- Finalize (mod p) ---
         // z_inv = z1^(-1) mod p;  x_affine = x1*z_inv;  result = x_affine - r
         // Assumes t2=r (restored from r input before entering finalize)
         /* 1 */ '{op: OP_INV, src1: Z1, src2: Z1, dst: T0},   // t0 = inv(z1)
@@ -172,6 +177,7 @@ module ecdsa
     localparam int FINALIZE_START  = POINT_ADD_END   + 1;
     localparam int FINALIZE_END    = FINALIZE_START  + FINALIZE_LEN  - 1;
 
+    // Array to collect the PC values where execution should automatically stop
     localparam int PROGRAM_ENDS [3] = '{PREPARE_END, POINT_ADD_END, FINALIZE_END};
 
     // -------------------------------------------------------------------------
@@ -191,17 +197,17 @@ module ecdsa
     // -------------------------------------------------------------------------
 
     // FSM state
-    state_e                 state_q, state_d;
+    state_e state_q, state_d;
 
     // Register file
-    logic [WIDTH-1:0]       reg_file_q [NUM_REGS];
-    logic [WIDTH-1:0]       reg_file_d [NUM_REGS];
+    logic [WIDTH-1:0] reg_file_q [NUM_REGS];
+    logic [WIDTH-1:0] reg_file_d [NUM_REGS];
 
     // Other registers
-    logic [WIDTH-1:0]       u1_q,           u1_d;
-    logic [WIDTH-1:0]       u2_q,           u2_d;
-    pc_t                    pc_q,           pc_d;
-    logic [DBCW-1:0]        bit_pos_q,      bit_pos_d;
+    pc_t                  pc_q,       pc_d;
+    logic [WIDTH-1:0]     u1_q,       u1_d;
+    logic [WIDTH-1:0]     u2_q,       u2_d;
+    logic [BITCNT_W-1:0]  bit_pos_q,  bit_pos_d;
 
     // -------------------------------------------------------------------------
     // Instruction decode
@@ -209,28 +215,32 @@ module ecdsa
 
     instr_t current_instr;
     assign current_instr = PROGRAM[pc_q];
-    wire prime_sel       = int'(pc_q) <= PREPARE_END; // only Prepare requires prime 1
+
+    // only Prepare requires PRIME_N
+    wire [WIDTH-1:0] modulus = (int'(pc_q) <= PREPARE_END) ? PRIME_N : PRIME_P;
 
     // -------------------------------------------------------------------------
     // Register file access helpers
     // -------------------------------------------------------------------------
 
-    function automatic logic [WIDTH-1:0] reg_read(input reg_addr_t addr);
+    function automatic logic [WIDTH-1:0] reg_read(input all_addr_t addr);
         case (addr)
+            // A1 and B3 are constants, not part of the actual register file
             A1      : return CURVE_A1;
             B3      : return CURVE_B3;
             // casting might be needed if the actual register file array requires less bit(s) for indexing
-            default : return reg_file_q[REG_FILE_IDX_BITS'(addr)];
+            default : return reg_file_q[reg_addr_t'(addr)];
         endcase
     endfunction
 
-    function automatic void reg_write(input reg_addr_t addr, input logic [WIDTH-1:0] val);
+    function automatic void reg_write(input all_addr_t addr, input logic [WIDTH-1:0] val);
         // Making it explicit to lint that discarding MSB is fine when the widths differ
-        if ( addr[REG_FILE_IDX_BITS] ||
-            !addr[REG_FILE_IDX_BITS]) begin
+        // (The addresses of the constants should not be used for reg_write)
+        if ( addr[$size(all_addr_t)-1] ||
+            !addr[$size(all_addr_t)-1]) begin
 
             // casting might be needed if the actual register file array requires less bit(s) for indexing
-            reg_file_d[REG_FILE_IDX_BITS'(addr)] = val;
+            reg_file_d[reg_addr_t'(addr)] = val;
         end
     endfunction
 
@@ -250,9 +260,9 @@ module ecdsa
         .rst_n     (rst_n),
         .valid     (arith_valid_q),
         .op        (current_instr.op),
-        .prime_sel (prime_sel),
-        .data_a    (reg_read(current_instr.src1)),
-        .data_b    (reg_read(current_instr.src2)),
+        .a         (reg_read(current_instr.src1)),
+        .b         (reg_read(current_instr.src2)),
+        .modulus   (modulus),
         .ready     (arith_ready),
         .result    (arith_result)
     );
@@ -264,12 +274,13 @@ module ecdsa
     logic [WIDTH-1:0] sel_x, sel_y, sel_z;
 
     always_comb begin
-        case ({u2_q[bit_pos_q], u1_q[bit_pos_q]})
+        // REVISIT - shift register approach to access u1 and u2 bits could be much less gates
+        unique case ({u2_q[bit_pos_q], u1_q[bit_pos_q]})
             2'b00:   begin sel_x = INF_X; sel_y = INF_Y; sel_z = INF_Z; end
             2'b01:   begin sel_x = G_X;   sel_y = G_Y;   sel_z = G_Z;   end
             2'b10:   begin sel_x = Q_X;   sel_y = Q_Y;   sel_z = Q_Z;   end
             2'b11:   begin sel_x = GPQ_X; sel_y = GPQ_Y; sel_z = GPQ_Z; end
-            default: begin sel_x = INF_X; sel_y = INF_Y; sel_z = INF_Z; end
+            default: ;
         endcase
     end
 
@@ -280,13 +291,11 @@ module ecdsa
         // hold by default
         pc_d           = pc_q;
 
-        // Increment whenever arithmetic block ready
         if (arith_ready) begin
+            // Increment whenever arithmetic block ready
             pc_d = pc_q + 1;
-        end
-
-        // Load new value when FSM state changes (should not coincide with arith_ready)
-        if (state_d != state_q) begin
+        end else if (state_d != state_q) begin
+            // Load new value when FSM state changes (should not coincide with arith_ready)
             case (state_d)
                 StPrepare:  pc_d = pc_t'(PREPARE_START);
                 StAdd:      pc_d = pc_t'(POINT_ADD_START);
@@ -339,9 +348,6 @@ module ecdsa
                     reg_write(Y1, INF_Y);
                     reg_write(Z1, INF_Z);
 
-                    // Initialize loop counter
-                    bit_pos_d = DBCW'(WIDTH-1);
-
                     // Move to next state
                     state_d = StPrepare;
                 end
@@ -364,10 +370,11 @@ module ecdsa
 
                 // Nothing to do here when the program running, it's handled outside the case statement
 
-                // When program finished, store the results and move to next state
+                // When program finished, store the u1, u2 results, initialize loop counter and move to next state
                 if (!arith_valid_q && int'(pc_q) != PREPARE_START) begin
-                    u1_d = reg_read(T1);
-                    u2_d = reg_read(T2);
+                    u1_d      = reg_read(T1);
+                    u2_d      = reg_read(T2);
+                    bit_pos_d = BITCNT_W'(WIDTH-1);
 
                     state_d = StAdd;
                 end
@@ -416,8 +423,10 @@ module ecdsa
 
                 // When program finished, move back to add state and decrement bit counter (results already in the P1 accumulator)
                 if (!arith_valid_q && int'(pc_q) != POINT_ADD_START) begin
-                    state_d = StAdd;
                     bit_pos_d = bit_pos_q - 1;
+                    // Note: could do the same skip StAdd optimization as in mod_mul but
+                    // PC loading does not currently support re-running the same state (StDouble after StDouble)
+                    state_d = StAdd;
                 end
             end
 
@@ -428,6 +437,7 @@ module ecdsa
 
                 // If program not started yet, load the inputs and start the program
                 if (!arith_valid_q && int'(pc_q) == FINALIZE_START) begin
+                    // X1, Y1, Z1 are already in the corresponding registers
                     reg_write(T2, r);
 
                     arith_valid_d = 1'b1;
@@ -452,30 +462,47 @@ module ecdsa
     // Sequential: register updates, asynchronous active-low reset
     // -------------------------------------------------------------------------
 
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) state_q <= StIdle;
-        else        state_q <= state_d;
-    end
-
+    // Register file registers
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             for (int i = 0; i < NUM_REGS; i++) begin
                 reg_file_q[i] <= '0;
             end
-            u1_q           <= '0;
-            u2_q           <= '0;
-            pc_q           <= '0;
-            bit_pos_q      <= '0;
-            arith_valid_q  <= 1'b0;
         end else begin
             for (int i = 0; i < NUM_REGS; i++) begin
                 reg_file_q[i] <= reg_file_d[i];
             end
+        end
+    end
+
+    // FSM state register
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) state_q <= StIdle;
+        else        state_q <= state_d;
+    end
+
+    // PC register
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) pc_q <= '0;
+        else        pc_q <= pc_d;
+    end
+
+    // arith_valid register
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) arith_valid_q <= 1'b0;
+        else        arith_valid_q <= arith_valid_d;
+    end
+
+    // u1, u2, and bit_pos registers
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            u1_q           <= '0;
+            u2_q           <= '0;
+            bit_pos_q      <= '0;
+        end else begin
             u1_q           <= u1_d;
             u2_q           <= u2_d;
-            pc_q           <= pc_d;
             bit_pos_q      <= bit_pos_d;
-            arith_valid_q  <= arith_valid_d;
         end
     end
 

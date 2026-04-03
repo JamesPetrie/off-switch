@@ -147,8 +147,8 @@ module tb (
     logic         valid     = 1'b0;
     logic [1:0]   op        = '0;
     logic         prime_sel = 1'b0;
-    logic [255:0] data_a    = '0;
-    logic [255:0] data_b    = '0;
+    logic [255:0] a         = '0;
+    logic [255:0] b         = '0;
 
     logic         ready;
     logic [255:0] result;
@@ -158,9 +158,9 @@ module tb (
         .rst_n     (rst_n),
         .valid     (valid),
         .op        (op),
-        .prime_sel (prime_sel),
-        .data_a    (data_a),
-        .data_b    (data_b),
+        .modulus   (prime_sel ? N : P),
+        .a         (a),
+        .b         (b),
         .ready     (ready),
         .result    (result)
     );
@@ -184,8 +184,8 @@ module tb (
             valid     <= 1'b0;
             op        <= '0;
             prime_sel <= 1'b0;
-            data_a    <= '0;
-            data_b    <= '0;
+            a         <= '0;
+            b         <= '0;
 
         end else if (reset_done) begin
 
@@ -196,8 +196,8 @@ module tb (
                     cycles       <= 1;
                     op           <= TESTS[next_req_ptr].op;
                     prime_sel    <= TESTS[next_req_ptr].prime_sel;
-                    data_a       <= TESTS[next_req_ptr].a;
-                    data_b       <= TESTS[next_req_ptr].b;
+                    a            <= TESTS[next_req_ptr].a;
+                    b            <= TESTS[next_req_ptr].b;
                     next_req_ptr <= next_req_ptr + 1;
                 end else begin
                     valid  <= 1'b0;

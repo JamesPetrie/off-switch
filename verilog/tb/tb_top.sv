@@ -23,14 +23,14 @@ module tb (
     logic [WIDTH-1:0] license_r      = '0;
     logic [WIDTH-1:0] license_s      = '0;
     logic             workload_valid = 1'b0;
-    logic [7:0]       int8_a         = '0;
-    logic [7:0]       int8_b         = '0;
+    logic [7:0]       workload_a     = '0;
+    logic [7:0]       workload_b     = '0;
     logic [WIDTH-1:0] trng_seed      = '0;
     logic             trng_load_seed = 1'b0;
 
     logic [WIDTH-1:0] nonce;
     logic             nonce_ready;
-    logic [7:0]       int8_result;
+    logic [7:0]       workload_result;
     logic             result_valid;
     logic [63:0]      allowance;
     logic             enabled;
@@ -43,13 +43,13 @@ module tb (
         .license_r      (license_r),
         .license_s      (license_s),
         .workload_valid (workload_valid),
-        .int8_a         (int8_a),
-        .int8_b         (int8_b),
+        .workload_a     (workload_a),
+        .workload_b     (workload_b),
         .trng_seed      (trng_seed),
         .trng_load_seed (trng_load_seed),
         .nonce          (nonce),
         .nonce_ready    (nonce_ready),
-        .int8_result    (int8_result),
+        .workload_result(workload_result),
         .result_valid   (result_valid),
         .allowance      (allowance),
         .enabled        (enabled)
@@ -140,8 +140,8 @@ module tb (
             license_r      <= '0;
             license_s      <= '0;
             workload_valid <= 1'b0;
-            int8_a         <= '0;
-            int8_b         <= '0;
+            workload_a     <= '0;
+            workload_b     <= '0;
             pass_count     <= 0;
             fail_count     <= 0;
         end else if (reset_done) begin
@@ -174,9 +174,9 @@ module tb (
                 // -------------------------------------------------------
                 PH_T2_DRIVE: begin
                     workload_valid <= 1'b1;
-                    int8_a         <= 8'd10;
-                    int8_b         <= 8'd20;
-                    phase        <= PH_T2_CHECK;
+                    workload_a     <= 8'd10;
+                    workload_b     <= 8'd20;
+                    phase          <= PH_T2_CHECK;
                 end
 
                 PH_T2_CHECK: begin
@@ -184,12 +184,12 @@ module tb (
                     if (result_valid) begin
 
                         // Check
-                        if (int8_result == 8'd0) begin
+                        if (workload_result == 8'd0) begin
                             $display("PASS  [T2  workload blocked] result=0");
                             pass_count <= pass_count + 1;
                         end else begin
                             $display("FAIL  [T2  workload blocked] result=%0d (expected 0)",
-                                    int8_result);
+                                    workload_result);
                             fail_count <= fail_count + 1;
                         end
 
@@ -264,8 +264,8 @@ module tb (
                     assert(enabled   ==  1) else $fatal("Expected enabled=1 before driving T5, got %0d", enabled);
 
                     workload_valid <= 1'b1;
-                    int8_a         <= 8'd50;
-                    int8_b         <= 8'd30;
+                    workload_a     <= 8'd50;
+                    workload_b     <= 8'd30;
                     phase          <= PH_T5_CHECK;
                 end
 
@@ -275,12 +275,12 @@ module tb (
                     if (result_valid) begin
 
                         // Check
-                        if (int8_result == 8'd80) begin
-                            $display("PASS  [T5  workload unblocked] 50+30=%0d", int8_result);
+                        if (workload_result == 8'd80) begin
+                            $display("PASS  [T5  workload unblocked] 50+30=%0d", workload_result);
                             pass_count <= pass_count + 1;
                         end else begin
                             $display("FAIL  [T5  workload unblocked] expected 80 got %0d",
-                                    int8_result);
+                                    workload_result);
                             fail_count <= fail_count + 1;
                         end
 
@@ -335,8 +335,8 @@ module tb (
                 // -------------------------------------------------------
                 PH_T7_DRIVE: begin
                     workload_valid <= 1'b1;
-                    int8_a         <= 8'd50;
-                    int8_b         <= 8'd30;
+                    workload_a     <= 8'd50;
+                    workload_b     <= 8'd30;
                     phase          <= PH_T7_CHECK;
                 end
 
@@ -346,11 +346,11 @@ module tb (
                     if (result_valid) begin
 
                         // Check
-                        if (int8_result == 8'd80) begin
-                            $display("PASS  [T7  50+30] result=%0d", int8_result);
+                        if (workload_result == 8'd80) begin
+                            $display("PASS  [T7  50+30] result=%0d", workload_result);
                             pass_count <= pass_count + 1;
                         end else begin
-                            $display("FAIL  [T7  50+30] expected 80 got %0d", int8_result);
+                            $display("FAIL  [T7  50+30] expected 80 got %0d", workload_result);
                             fail_count <= fail_count + 1;
                         end
 
@@ -364,8 +364,8 @@ module tb (
                 // -------------------------------------------------------
                 PH_T8_DRIVE: begin
                     workload_valid <= 1'b1;
-                    int8_a         <= 8'hF6;   // -10
-                    int8_b         <= 8'hEC;   // -20
+                    workload_a     <= 8'hF6;   // -10
+                    workload_b     <= 8'hEC;   // -20
                     phase          <= PH_T8_CHECK;
                 end
 
@@ -375,11 +375,11 @@ module tb (
                     if (result_valid) begin
 
                         // Check
-                        if (int8_result == 8'hE2) begin  // -30
-                            $display("PASS  [T8  -10+-20] result=0x%h", int8_result);
+                        if (workload_result == 8'hE2) begin  // -30
+                            $display("PASS  [T8  -10+-20] result=0x%h", workload_result);
                             pass_count <= pass_count + 1;
                         end else begin
-                            $display("FAIL  [T8  -10+-20] expected 0xE2 got 0x%h", int8_result);
+                            $display("FAIL  [T8  -10+-20] expected 0xE2 got 0x%h", workload_result);
                             fail_count <= fail_count + 1;
                         end
 
@@ -393,8 +393,8 @@ module tb (
                 // -------------------------------------------------------
                 PH_T9_DRIVE: begin
                     workload_valid <= 1'b1;
-                    int8_a         <= 8'd100;
-                    int8_b         <= 8'hE2;   // -30
+                    workload_a     <= 8'd100;
+                    workload_b     <= 8'hE2;   // -30
                     phase          <= PH_T9_CHECK;
                 end
 
@@ -404,11 +404,11 @@ module tb (
                     if (result_valid) begin
 
                         // Check
-                        if (int8_result == 8'd70) begin
-                            $display("PASS  [T9  100+-30] result=%0d", int8_result);
+                        if (workload_result == 8'd70) begin
+                            $display("PASS  [T9  100+-30] result=%0d", workload_result);
                             pass_count <= pass_count + 1;
                         end else begin
-                            $display("FAIL  [T9  100+-30] expected 70 got %0d", int8_result);
+                            $display("FAIL  [T9  100+-30] expected 70 got %0d", workload_result);
                             fail_count <= fail_count + 1;
                         end
 
@@ -422,8 +422,8 @@ module tb (
                 // -------------------------------------------------------
                 PH_T10_DRIVE: begin
                     workload_valid <= 1'b1;
-                    int8_a         <= 8'd127;
-                    int8_b         <= 8'd1;
+                    workload_a     <= 8'd127;
+                    workload_b     <= 8'd1;
                     phase          <= PH_T10_CHECK;
                 end
 
@@ -433,11 +433,11 @@ module tb (
                     if (result_valid) begin
 
                         // Check
-                        if (int8_result == 8'h80) begin  // -128
-                            $display("PASS  [T10 127+1 overflow] result=0x%h", int8_result);
+                        if (workload_result == 8'h80) begin  // -128
+                            $display("PASS  [T10 127+1 overflow] result=0x%h", workload_result);
                             pass_count <= pass_count + 1;
                         end else begin
-                            $display("FAIL  [T10 127+1 overflow] expected 0x80 got 0x%h", int8_result);
+                            $display("FAIL  [T10 127+1 overflow] expected 0x80 got 0x%h", workload_result);
                             fail_count <= fail_count + 1;
                         end
 

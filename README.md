@@ -35,11 +35,35 @@ The paper proposes embedding thousands of these security blocks throughout an AI
 
 ## Quickstart
 
-### Prerequisites
+### REVISIT Verilog (SystemVerilog + Verilator)
+
+#### Prerequisites
+
+- **Verilator** (5.x+)
+
+#### Run Tests
+
+```bash
+cd verilog
+
+# Run the full security block test suite (14 tests)
+make sim TB=top
+
+# Run individual test benches
+make sim TB=ecdsa
+make sim TB=arith
+
+# Lint
+make lint
+```
+
+### HardCaml (OCaml reference model)
+
+#### Prerequisites
 
 - **OCaml** (4.14+) and **opam**
 
-### Installation
+#### Installation
 
 ```bash
 # Install opam if needed (macOS: brew install opam, Ubuntu: apt install opam)
@@ -55,7 +79,7 @@ cd off-switch
 dune build
 ```
 
-### Run Tests
+#### Run Tests
 
 ```bash
 # Run security block test suite
@@ -90,9 +114,9 @@ flowchart TB
         end
 
         SL -->|request_new| TRNG
-        TRNG -->|"nonce, valid"| SL
-        SL -->|start| ECDSA
-        ECDSA -->|"done, valid"| SL
+        TRNG -->|"nonce_valid, nonce"| SL
+        SL -->|valid| ECDSA
+        ECDSA -->|"ready, verif_passed"| SL
         SL -->|increment| ALLOW
         ALLOW -->|enabled| AND
         ADDER --> AND
@@ -104,9 +128,9 @@ flowchart TB
         WOUT["Workload<br/>Output"]:::external
     end
 
-    AUTH <-->|"license_submit, r, s<br/>nonce, ready"| SL
-    WIN --> ADDER
-    AND --> WOUT
+    AUTH <-->|"license_valid, r, s<br/>nonce_ready, nonce,  license_ready"| SL
+    WIN -->|"workload_valid, workload_a, workload_b"| ADDER
+    AND -->|"result_valid, workload_result"| WOUT
 
     classDef external fill:#fff,stroke:#333,stroke-dasharray: 5 5
     classDef security fill:#cce5ff,stroke:#004085
@@ -122,9 +146,9 @@ flowchart TB
 
 | Module | Type | Purpose |
 |--------|------|---------|
-| `Trng` | Submodule | Nonce generation (256-bit counter in prototype; ring oscillator in production) |
-| `Ecdsa` | Submodule | Signature verification using secp256k1 curve |
-| Security Logic | Inline | State machine orchestration (7 states) |
+| `trng` | Submodule | Nonce generation (256-bit counter in prototype; ring oscillator in production) |
+| `ecdsa` | Submodule | Signature verification using secp256k1 curve |
+| Security Logic | Inline | State machine orchestration (5 states) |
 | Usage Allowance | Inline | 64-bit authorization counter |
 | Workload | Inline | Gated essential operation (Int8 Add example) |
 
@@ -139,7 +163,7 @@ The authorization protocol follows Section 2 of the paper (see Figure 2):
 1. TRNG generates nonce (at initialization or after valid license)
 2. Security Logic latches and publishes nonce (`nonce_ready` = 1)
 3. External authority reads nonce, signs it with private key
-4. Authority submits license (r, s) via `license_submit` pulse
+4. Authority submits license (r, s) via valid-ready handshake (`license_valid`/`license_ready`)
 5. ECDSA verifies signature against nonce and hardcoded public key
 6. **If valid:**
    - Allowance incremented
@@ -151,7 +175,7 @@ The authorization protocol follows Section 2 of the paper (see Figure 2):
 
 ### Workload Flow
 
-1. Workload inputs (`int8_a`, `int8_b`) arrive with `workload_valid` = 1
+1. Workload inputs (`workload_a`, `workload_b`) arrive with `workload_valid` = 1
 2. Computation performed (Int8 addition, wrapping on overflow)
 3. Output gating: each result bit ANDed with `enabled` signal
    - If `allowance > 0`: `enabled` = 1, result passes through
@@ -210,41 +234,39 @@ The paper's Section 4 discusses attack vectors against these assumptions in deta
 
 | Signal | Width | Description |
 |--------|-------|-------------|
-| `clock` | 1 | System clock |
-| `clear` | 1 | Synchronous reset (active high) |
-| `license_submit` | 1 | Pulse high for one cycle to submit license |
+| `clk` | 1 | System clock |
+| `rst_n` | 1 | Asynchronous reset (active low) |
+| `license_valid` | 1 | License submission request (hold until `license_ready`) |
 | `license_r` | 256 | ECDSA signature r component |
 | `license_s` | 256 | ECDSA signature s component |
 | `workload_valid` | 1 | Workload input data valid |
-| `int8_a` | 8 | Signed 8-bit operand A |
-| `int8_b` | 8 | Signed 8-bit operand B |
-| `trng_seed` | 256 | Seed value for TRNG (testing only) |
+| `workload_a` | 8 | Workload operand A |
+| `workload_b` | 8 | Workload operand B |
 | `trng_load_seed` | 1 | Load seed into TRNG (testing only) |
+| `trng_seed` | 256 | Seed value for TRNG (testing only) |
 
 ### Top-Level Outputs
 
 | Signal | Width | Description |
 |--------|-------|-------------|
+| `license_ready` | 1 | License verification complete (pulse) |
 | `nonce` | 256 | Current nonce value |
 | `nonce_ready` | 1 | Nonce is stable and ready for signing |
-| `int8_result` | 8 | Gated workload output |
+| `workload_result` | 8 | Gated workload output |
 | `result_valid` | 1 | Result output is valid |
 | `allowance` | 64 | Current allowance counter value |
 | `enabled` | 1 | Allowance > 0 |
-| `state_debug` | 4 | Current state machine state (debug) |
-| `licenses_accepted` | 16 | Count of valid licenses processed (debug) |
-| `ecdsa_busy` | 1 | ECDSA verification in progress (debug) |
 
 ### TRNG Submodule Interface
 
 | Direction | Signal | Width | Description |
 |-----------|--------|-------|-------------|
-| Input | `clock` | 1 | System clock |
-| Input | `clear` | 1 | Synchronous reset |
+| Input | `clk` | 1 | System clock |
+| Input | `rst_n` | 1 | Asynchronous reset (active low) |
 | Input | `enable` | 1 | Enable entropy counter |
 | Input | `request_new` | 1 | Pulse to latch new nonce |
-| Input | `seed` | 256 | Seed value (testing only) |
 | Input | `load_seed` | 1 | Load seed (testing only) |
+| Input | `seed` | 256 | Seed value (testing only) |
 | Output | `nonce` | 256 | Latched nonce value |
 | Output | `nonce_valid` | 1 | Nonce has been latched |
 
@@ -252,15 +274,14 @@ The paper's Section 4 discusses attack vectors against these assumptions in deta
 
 | Direction | Signal | Width | Description |
 |-----------|--------|-------|-------------|
-| Input | `clock` | 1 | System clock |
-| Input | `clear` | 1 | Synchronous reset |
-| Input | `start` | 1 | Pulse to begin verification |
+| Input | `clk` | 1 | System clock |
+| Input | `rst_n` | 1 | Asynchronous reset (active low) |
+| Input | `valid` | 1 | Start verification (hold until `ready`) |
 | Input | `z` | 256 | Message hash (= nonce) |
 | Input | `r` | 256 | Signature r component |
 | Input | `s` | 256 | Signature s component |
-| Output | `done_` | 1 | Verification complete (pulse) |
-| Output | `valid` | 1 | Signature is valid |
-| Output | `busy` | 1 | Verification in progress |
+| Output | `ready` | 1 | Verification complete (pulse) |
+| Output | `verif_passed` | 1 | Signature is valid |
 
 ---
 
@@ -270,32 +291,24 @@ The paper's Section 4 discusses attack vectors against these assumptions in deta
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Init_delay
-    Init_delay --> Request_nonce: counter ≥ 100
-    Request_nonce --> Wait_nonce: immediate
-    Wait_nonce --> Publish: nonce_valid
-    Publish --> Verify_start: license_submit
-    Verify_start --> Verify_wait: !ecdsa.busy
-    Verify_wait --> Update: ecdsa.done_
-    Update --> Request_nonce: valid
-    Update --> Publish: invalid
+    [*] --> StInitDelay
+    StInitDelay --> StRequestNonce: counter ≥ 100
+    StRequestNonce --> StWaitNonce: immediate
+    StWaitNonce --> StPublishAndWait: nonce_valid
+    StPublishAndWait --> StWaitVerify: license_valid
+    StWaitVerify --> StRequestNonce: verif passed
+    StWaitVerify --> StPublishAndWait: verif failed
 ```
 
 ### State Descriptions
 
 | State | Entry Condition | Actions | Exit Condition |
 |-------|-----------------|---------|----------------|
-| `Init_delay` | Reset | Increment delay counter | Counter ≥ 100 |
-| `Request_nonce` | From Init_delay or Update (valid) | Assert `request_new` to TRNG | Immediate |
-| `Wait_nonce` | From Request_nonce | Wait for TRNG | `nonce_valid` |
-| `Publish` | From Wait_nonce or Update (invalid) | Latch nonce; `nonce_ready` = 1 | `license_submit` |
-| `Verify_start` | From Publish | Latch r, s; assert `ecdsa_start` | `!ecdsa.busy` |
-| `Verify_wait` | From Verify_start | Wait for ECDSA | `ecdsa.done_` |
-| `Update` | From Verify_wait | If valid: increment allowance | Immediate |
-
----
-
-Here's an expanded section on the ECDSA and modular arithmetic architecture to add to the README:
+| `StInitDelay` | Reset | Increment delay counter | Counter ≥ 100 |
+| `StRequestNonce` | From StInitDelay or StWaitVerify (valid) | Pulse `request_new` to TRNG | Immediate |
+| `StWaitNonce` | From StRequestNonce | Wait for TRNG | `nonce_valid` |
+| `StPublishAndWait` | From StWaitNonce or StWaitVerify (invalid) | `nonce_ready` = 1; wait for license | `license_valid` |
+| `StWaitVerify` | From StPublishAndWait | Wait for ECDSA; if valid: increment allowance | `ecdsa_ready` |
 
 ---
 
@@ -311,21 +324,18 @@ flowchart TB
 
             subgraph SM["State Machine"]
                 direction TB
-                SM_PREP["Prep Phase<br/>u1, u2 computation"]
+                SM_PREP["Prepare<br/>u1, u2 computation"]
                 SM_LOOP["Scalar Mult Loop<br/>256 iterations"]
-                SM_FIN["Finalize<br/>projective to affine"]
-                SM_CMP["Compare<br/>x_affine == r ?"]
+                SM_FIN["Finalize<br/>projective → affine<br/>compare x == r"]
 
                 SM_PREP --> SM_LOOP
                 SM_LOOP --> SM_FIN
-                SM_FIN --> SM_CMP
             end
 
-            subgraph REGS["Register File --- 17 x 256-bit"]
+            subgraph REGS["Register File --- 15 x 256-bit"]
                 direction LR
                 R_PT["Point Coords<br/>X1 Y1 Z1<br/>X2 Y2 Z2<br/>X3 Y3 Z3"]
                 R_TMP["Temps<br/>t0 - t5"]
-                R_PRM["Params<br/>a, b3"]
             end
         end
 
@@ -335,19 +345,17 @@ flowchart TB
             subgraph ARITH["Modular Arithmetic Unit"]
                 direction TB
 
-                subgraph INV["Inverse<br/>Ext Euclidean"]
+                subgraph INV["Inverse<br/>Binary Ext GCD"]
                     direction TB
                 end
 
-                subgraph MUL["Multiply<br/>shift-and-add"]
+                subgraph MUL["Multiply<br/>Shift-and-Add"]
                     direction TB
                 end
 
                 subgraph ADDSUB["Add - Sub"]
                     direction TB
-                    MOD["Modulus Select<br/>prime p or order n"]
                     ADD256["256-bit Adder"]
-                    MOD --> ADD256
                 end
 
                 INV --> ADDSUB
@@ -355,12 +363,12 @@ flowchart TB
             end
         end
 
-        SM <-->|"start, op<br/>done"| ARITH
+        SM <-->|"valid, op<br/>ready"| ARITH
         REGS <-->|"read A B<br/>write result"| ARITH
     end
 
     EXT_IN["Inputs:<br/>z, r, s"] --> ECDSA
-    ECDSA --> EXT_OUT["Output:<br/>valid"]
+    ECDSA --> EXT_OUT["Output:<br/>verif_passed"]
 
     classDef outer fill:#f0f7ff,stroke:#2563eb,stroke-width:2px,color:#1e40af
     classDef arithbox fill:#fef9e7,stroke:#b7950b,stroke-width:2px,color:#7d6608
@@ -375,11 +383,11 @@ flowchart TB
     class ECDSA outer
     class ARITH arithbox
     class SM smbox
-    class SM_PREP,SM_LOOP,SM_FIN,SM_CMP smnode
+    class SM_PREP,SM_LOOP,SM_FIN smnode
     class REGS regsbox
     class R_PT,R_TMP,R_PRM regsnode
     class INV,MUL,ADDSUB subunit
-    class shared,MOD,ADD256 sharedbox
+    class shared,ADD256 sharedbox
     class EXT_IN,EXT_OUT external
 ```
 
@@ -410,7 +418,7 @@ Computing `u₁·G + u₂·Q` naively would require two separate scalar multipli
 For each bit position `i` from 255 down to 0:
 1. **Double** the accumulator point `P`
 2. **Add** a precomputed point based on the bit pair `(u₁[i], u₂[i])`:
-   - `(0,0)`: add nothing (skip)
+   - `(0,0)`: add nothing
    - `(1,0)`: add `G`
    - `(0,1)`: add `Q`
    - `(1,1)`: add `G+Q` (precomputed)
@@ -424,18 +432,19 @@ Point addition uses the complete addition formulas from Renes, Costello, and Bat
 - Avoid branching on point values, which simplifies the state machine and improves side-channel resistance
 - Require only field operations (add, subtract, multiply) with no inversions during the main loop
 
-Each point addition/doubling executes a fixed sequence of 40 field operations, implemented as a microcode program:
+Each point addition/doubling executes a fixed sequence of 40 field operations, implemented as a microcode ROM:
 
-```ocaml
-let program = [|
-  { op = Op.mul; src1 = Config.x1; src2 = Config.x2; dst = Config.t0 };  (* t0 = X1·X2 *)
-  { op = Op.mul; src1 = Config.y1; src2 = Config.y2; dst = Config.t1 };  (* t1 = Y1·Y2 *)
-  { op = Op.mul; src1 = Config.z1; src2 = Config.z2; dst = Config.t2 };  (* t2 = Z1·Z2 *)
-  (* ... 37 more operations ... *)
-|]
+```systemverilog
+localparam instr_t PROGRAM [ROM_SIZE] = '{
+    // ... Point addition (Renes-Costello-Batina, 40 steps) ...
+    '{op: OP_MUL, src1: X1, src2: X2, dst: T0},   // t0 = X1·X2
+    '{op: OP_MUL, src1: Y1, src2: Y2, dst: T1},   // t1 = Y1·Y2
+    '{op: OP_MUL, src1: Z1, src2: Z2, dst: T2},   // t2 = Z1·Z2
+    // ... 37 more operations ...
+};
 ```
 
-The formula uses 6 temporary registers (`t0`–`t5`) plus input/output point coordinates, for a total of 15 registers.
+The formula uses 6 temporary registers (`t0`–`t5`) plus input/output point coordinates (`X1`–`Z3`), for a total of 15 registers. Curve constants `a` and `3b` are addressed as pseudo-registers but are hardcoded, not stored.
 
 ### Modular Arithmetic Unit
 
@@ -445,41 +454,36 @@ The `Arith` module provides the four operations needed for elliptic curve arithm
 |-----------|-------------|-----------|
 | `add` | `(a + b) mod m` | Add with conditional subtraction |
 | `sub` | `(a - b) mod m` | Subtract with conditional addition |
-| `mul` | `(a · b) mod m` | Montgomery multiplication (256 iterations) |
-| `inv` | `a⁻¹ mod m` | Extended Euclidean algorithm |
+| `mul` | `(a · b) mod m` | Binary shift-and-add (256 iterations) |
+| `inv` | `a⁻¹ mod m` | Binary Extended GCD |
 
 All operations work over 256-bit operands and can use either the field prime `p` or curve order `n` as the modulus:
 - Point arithmetic (during scalar multiplication) uses `mod p`
 - Scalar preparation (`u₁`, `u₂` computation) and final comparison use `mod n`
 
-The arithmetic unit interfaces with a 17-register file. Operations are started with a pulse and signal completion via `done_`. Typical cycle counts:
+The arithmetic unit interfaces with the register file. Operations are started by asserting `valid` and signal completion via `ready`. Typical cycle counts:
 - Add/Sub: 2–3 cycles
-- Mul: ~500-1000 cycles (bit-serial, varies with y input)
+- Mul: ~500-1000 cycles (bit-serial, varies with b input)
 - Inv: ~2000–3000 cycles (varies with input)
 
 ### State Machine Overview
 
 The ECDSA verification state machine proceeds through these phases:
 
-```
-Idle → Prep_op → Loop ⟷ Load → Run_add → Finalize_op → Compare → Done
-         ↑__________________|
-```
-
-**Prep_op** (3 operations, using `mod n`):
+**StPrepare** (3 operations, using `mod n`):
 1. `w = s⁻¹ mod n`
 2. `u₁ = z · w mod n`
 3. `u₂ = r · w mod n`
 
-**Loop/Load/Run_add** (256 bit positions × ~40 ops each):
-- For each bit position, double the accumulator and conditionally add `G`, `Q`, or `G+Q`
+**StAdd/StDouble** (2 × 256 bit positions × 40 ops each):
+- For each bit position (MSB to LSB), add a selected point then double the accumulator
+- Point selection via Shamir's trick: `G`, `Q`, `G+Q`, or infinity based on `(u₁[i], u₂[i])`
 - Point at infinity handled via projective coordinates (`Z = 0`)
 
-**Finalize_op** (2 operations, using `mod p`):
+**StFinalize** (3 operations, using `mod p`):
 1. `z_inv = Z⁻¹ mod p` (convert from projective to affine)
 2. `x_affine = X · z_inv mod p`
-
-**Compare**: Check if `x_affine == r`
+3. `diff = x_affine - r mod p` (valid if `diff == 0`)
 
 ### Cycle Count
 
@@ -487,15 +491,14 @@ Total verification takes approximately 5 million cycles, dominated by the ~256 p
 
 ### Hardcoded Constants
 
-The prototype hardcodes:
+The prototype hardcodes the following secp256k1 constants:
 - Generator point `G` (from secp256k1 specification)
-- Public key `Q = 2G` (would be chip-specific in production)
-- Precomputed sum `G + Q = 3G`
+- Public key `Q = d · G`, where d is the Private Key (using 2G for testing, would be chip-specific in production)
+- Precomputed sum `GPQ = G + Q`
 - Point at infinity `(0, 1, 0)` in projective coordinates
-- Field prime `p = 2²⁵⁶ - 2³² - 977`
-- Curve order `n = 2²⁵⁶ - 432420386565659656852420866394968145599`
-- Curve parameter `a = 0` (from y² = x³ + ax + b)
-- Curve parameter `b = 7` (from y² = x³ + ax + b)
+- Field prime `p = 2²⁵⁶ - 2³² - 977` (from secp256k1 specification)
+- Curve order `n = 2²⁵⁶ - 432420386565659656852420866394968145599` (from secp256k1 specification)
+- Curve parameters `a = 0`, `b = 7` (y² = x³ + ax + b, from secp256k1 specification)
 
 In production, `Q` would be unique per chip (or per batch) and stored in Mask ROM, as recommended in the paper. The other constants are fixed by the secp256k1 specification.
 
@@ -519,11 +522,11 @@ This implementation omits several features needed for production:
 
 | Operation | Cycles | Notes |
 |-----------|--------|-------|
-| Initialization delay | 100 | Configurable via `Config.init_delay_cycles` |
+| Initialization delay | 100 | Configurable via `INIT_DELAY_CYCLES` |
 | Nonce generation | 2 | Request + latch |
-| License verification | ~10⁶ | ECDSA scalar multiplication dominates |
+| License verification | ~5×10⁶ | ECDSA scalar multiplication dominates |
 | Workload operation | 1 | Combinational add + output register |
-| Allowance per license | 10¹² | Configurable via `Config.allowance_increment` |
+| Allowance per license | 10¹² | Configurable via `ALLOWANCE_INCREMENT` |
 
 ### Allowance Calculation
 
@@ -595,26 +598,27 @@ This is a proof-of-concept implementation. The paper discusses broader limitatio
 
 ## Configuration Parameters
 
-```ocaml
-module Config = struct
-  let nonce_width = 256
-  let signature_width = 256
-  let allowance_width = 64
-  let init_delay_cycles = 100
-  let allowance_increment = 1_000_000_000_000  (* ~17 min at 1GHz *)
-end
+```systemverilog
+// arith_pkg.sv
+localparam int WIDTH = 256;              // nonce, signature, and field element width
+
+// security_block.sv
+localparam int unsigned ALLOW_W            = 64;                    // allowance counter width
+localparam int          INIT_DELAY_CYCLES  = 100;                   // cycles before first nonce
+localparam logic [ALLOW_W-1:0] ALLOWANCE_INCREMENT = 64'd1_000_000_000_000;  // ~17 min at 1 GHz
 ```
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| `nonce_width` | 256 | Width of nonce in bits (matches ECDSA message size) |
-| `signature_width` | 256 | Width of signature components r and s |
-| `allowance_width` | 64 | Width of allowance counter (supports ~584 years at 1 GHz) |
-| `init_delay_cycles` | 100 | Cycles to wait after reset before requesting first nonce |
-| `allowance_increment` | 10¹² | Cycles added to allowance per valid license (~17 min at 1 GHz) |
+| `WIDTH` | 256 | Width of nonce, signature components, and field elements |
+| `ALLOW_W` | 64 | Width of allowance counter (supports ~584 years at 1 GHz) |
+| `INIT_DELAY_CYCLES` | 100 | Cycles to wait after reset before requesting first nonce |
+| `ALLOWANCE_INCREMENT` | 10¹² | Cycles added to allowance per valid license (~17 min at 1 GHz) |
 
 ---
 
 ## References
 
 Petrie, J. (2025). Embedded Off-Switches for AI Compute. *arXiv preprint* arXiv:2509.07637. https://arxiv.org/abs/2509.07637
+
+[1]: https://www.secg.org/sec2-v2.pdf

@@ -1,17 +1,19 @@
-// Mod_mul - Modular multiplication via right-to-left binary shift-and-add
+// Mod_mul - Modular multiplication via binary shift-and-add (using modular add and double)
 //
-// Computes (x * y) mod modulus.
+// Computes (a * b) mod modulus.
 // Drives an external mod_add instance for all additions; the caller wires
 // mod_add_{valid,a,b,subtract} to the mod_add inputs and feeds
 // mod_add_{result,ready} back as inputs to this module.
 //
 // Protocol:
-//   1. Assert valid and hold x, y stable until ready pulses
+//   1. Assert valid and hold a, b stable until ready pulses
 //   2. Wire the external mod_add as directed by mod_add_valid/a/b/subtract
 //   3. Feed mod_add_result and mod_add_ready back as inputs
 //   4. ready pulses high for one cycle when result is available
 //
-// State machine: StIdle -> StAdd/StDouble <-> StDouble -> StDone -> StIdle
+// State machine: StIdle -> StAdd (conditional) -> StDone -> StIdle
+//                            ^            |
+//                            |__StDouble__|
 
 module mod_mul
     import arith_pkg::*; // import in module header to be used in port list
@@ -21,8 +23,8 @@ module mod_mul
     // Control
     input  logic             valid,
     // Operands (held stable throughout computation)
-    input  logic [WIDTH-1:0] x,
-    input  logic [WIDTH-1:0] y,
+    input  logic [WIDTH-1:0] a,
+    input  logic [WIDTH-1:0] b,
     // input  logic [WIDTH-1:0] modulus, // feeding the modulus to mod_add is taken care of in the arith block
 
     // External mod_add resp
@@ -37,7 +39,7 @@ module mod_mul
     output logic             mod_add_valid,
     output logic [WIDTH-1:0] mod_add_a,
     output logic [WIDTH-1:0] mod_add_b,
-    output logic             mod_add_subtract
+    output logic             mod_add_subtract // always 0 for mod_mul (add and double)
 );
 
     // FSM states
@@ -55,9 +57,15 @@ module mod_mul
     // FSM state
     state_e           state_q,             state_d;
 
-    // Accumulator and shift registers
+    // REVISIT - could use MSB first shift-and-add to avoid having a register for the multiplicand
+    // multiplicand "left-shifted", actually doubled via modular self-add (no real shifting happens)
     logic [WIDTH-1:0] multiplicand_lsh_q,  multiplicand_lsh_d;
+
+    // REVISIT - could also use a mux to index the multiplier bits (though that is also significant gate count)
+    // multiplier right-shifted, here we do real shifting and always check the LSB only
     logic [WIDTH-1:0] multiplier_rsh_q,    multiplier_rsh_d;
+
+    // Accumulates the result after each addition step; holds the final result at the end
     logic [WIDTH-1:0] result_acc_q,        result_acc_d;
 
     // ---------------------------------------------------------------------------
@@ -84,32 +92,32 @@ module mod_mul
         unique case (state_q)
             StIdle: begin
                 if (valid) begin
-                    multiplicand_lsh_d  = x;
-                    multiplier_rsh_d    = y;
+                    multiplicand_lsh_d  = a;
+                    multiplier_rsh_d    = b;
                     result_acc_d        = '0;
-                    // Determine starting state based on multiplier value
-                    // Note: Using register input! Dependency on the assignment above
-                    state_d = multiplier_rsh_d[0]    ? StAdd    :
-                              multiplier_rsh_d != '0 ? StDouble :
-                                                       StDone;
+                    state_d             = StAdd;
                 end
             end
 
             StAdd: begin
-                // Only entered when multiplier_rsh_q[0] = 1
+                // Drive mod_add: acc + multiplicand_lsh
                 mod_add_valid    = 1'b1;
                 mod_add_a        = result_acc_q;
                 mod_add_b        = multiplicand_lsh_q;
                 mod_add_subtract = 1'b0;
 
                 if (mod_add_ready) begin
-                    result_acc_d = mod_add_result;
-                    state_d      = StDouble;
+                    if (multiplier_rsh_q[0]) begin
+                        result_acc_d = mod_add_result;
+                    end
+
+                    // Check stop condition (are all other multiplier bits zero?)
+                    state_d = (multiplier_rsh_q[WIDTH-1:1] != '0) ? StDouble : StDone;
                 end
             end
 
             StDouble: begin
-                // Drive mod_add: curr_multiplicand * 2 (via self-add)
+                // Drive mod_add: multiplicand_lsh * 2 (via self-add)
                 mod_add_valid    = 1'b1;
                 mod_add_a        = multiplicand_lsh_q;
                 mod_add_b        = multiplicand_lsh_q;
@@ -119,11 +127,9 @@ module mod_mul
                     multiplicand_lsh_d = mod_add_result;
                     multiplier_rsh_d   = multiplier_rsh_q >> 1;
 
-                    // Determine starting state based on new multiplier value
-                    // Note: Using register input! Dependency on the assignment above
-                    state_d = multiplier_rsh_d[0]    ? StAdd    :
-                              multiplier_rsh_d != '0 ? StDouble :
-                                                       StDone;
+                    // Optimization: skip StAdd when next LSB=0
+                    // Simulation time and run cycles saving might be significant
+                    state_d = multiplier_rsh_q[1] ? StAdd : StDouble;
                 end
             end
 
@@ -142,19 +148,34 @@ module mod_mul
     // ---------------------------------------------------------------------------
 
     always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) state_q <= StIdle;
-        else        state_q <= state_d;
+        if (!rst_n) begin
+            state_q <= StIdle;
+        end else begin
+            state_q <= state_d;
+        end
     end
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             multiplicand_lsh_q <= '0;
-            multiplier_rsh_q   <= '0;
-            result_acc_q       <= '0;
         end else begin
             multiplicand_lsh_q <= multiplicand_lsh_d;
-            multiplier_rsh_q   <= multiplier_rsh_d;
-            result_acc_q       <= result_acc_d;
+        end
+    end
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            multiplier_rsh_q <= '0;
+        end else begin
+            multiplier_rsh_q <= multiplier_rsh_d;
+        end
+    end
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            result_acc_q <= '0;
+        end else begin
+            result_acc_q <= result_acc_d;
         end
     end
 
