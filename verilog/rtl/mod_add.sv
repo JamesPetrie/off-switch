@@ -1,3 +1,12 @@
+// Mod_add - Simple modular addition / subtraction
+//
+// Computes (x ± y) mod modulus, where the subtract signal determines the sense of the operation.
+//
+// State machine: StAdd -> StAdjust -> StAdd ...
+// Processing one modular operation in each StAdd -> StAdjust cycle.
+// If there is no new request, the FSM remains in StAdd until a new request arrives.
+
+
 module mod_add
     import arith_pkg::*; // import in module header to be used in port list
 (
@@ -46,8 +55,8 @@ module mod_add
     logic             adder_subtract;
 
     // Adder outputs
-    logic [WIDTH-1:0] comb_result;
-    logic             comb_carry_out;
+    logic [WIDTH-1:0] adder_result;
+    logic             adder_carry_out;
 
     // Additional adder_ready signal considered in the FSM to support sequential adders as well
     // adder_ready is always 1 (comb_add has no latency)
@@ -57,8 +66,8 @@ module mod_add
         .a         (adder_a),
         .b         (adder_b),
         .subtract  (adder_subtract),
-        .result    (comb_result),
-        .carry_out (comb_carry_out)
+        .result    (adder_result),
+        .carry_out (adder_carry_out)
     );
 
     // ---------------------------------------------------------------------------
@@ -79,8 +88,8 @@ module mod_add
 
         // Module outputs (masked when inactive)
         ready          = 1'b0;
-        adjust         = 1'b0;
         result         = '0;
+        adjust         = 1'b0;
 
         // Data registers (maintain by default)
         result_ab_d    = result_ab_q;
@@ -96,8 +105,8 @@ module mod_add
 
                 // sample adder results and move to next state when inputs are valid and adder is ready
                 if (valid && adder_ready) begin
-                    result_ab_d = comb_result;
-                    carry_ab_d  = comb_carry_out;
+                    result_ab_d = adder_result;
+                    carry_ab_d  = adder_carry_out;
                     state_d     = StAdjust;
                 end
             end
@@ -114,11 +123,11 @@ module mod_add
                     // assign adjust first and then reuse for result
                     adjust   = // when a-b is negative (carry_ab=1)
                                ( subtract && carry_ab_q) ||
-                               // when a+b overflowed (carry_ab=1), can't rely on comb_carry_out
+                               // when a+b overflowed (carry_ab=1), can't rely on adder_carry_out
                                (!subtract && carry_ab_q) ||
                                // when a+b did not overflow but subtracting m does not make it negative
-                               (!subtract && ~comb_carry_out);
-                    result   = adjust ? comb_result : result_ab_q;
+                               (!subtract && ~adder_carry_out);
+                    result   = adjust ? adder_result : result_ab_q;
 
                     state_d  = StAdd;
                 end

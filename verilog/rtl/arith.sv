@@ -9,10 +9,8 @@
 //   2 = mul: f <- a * b  mod m
 //   3 = inv: f <- a^(-1) mod m  (b ignored)
 //
-// Modulus selection (prime_sel): 0 = prime_p, 1 = prime_n
-//
 // Protocol:
-//   1. Set data_a, data_b, op, prime_sel; pulse valid high and hold until ready
+//   1. Set a, b, modulus, op; pulse valid high and hold until ready
 //   2. ready pulses high for one cycle when the result is available
 
 module arith
@@ -22,26 +20,13 @@ module arith
     input  logic             rst_n,
     input  logic             valid,
     input  op_e              op,
-    input  logic             prime_sel,
-    input  logic [WIDTH-1:0] data_a,
-    input  logic [WIDTH-1:0] data_b,
+    input  logic [WIDTH-1:0] a,
+    input  logic [WIDTH-1:0] b,
+    input  logic [WIDTH-1:0] modulus,
 
     output logic             ready,
     output logic [WIDTH-1:0] result
 );
-
-    // secp256k1 field prime: p = 2^256 - 2^32 - 977
-    localparam logic [WIDTH-1:0] PRIME_P =
-        256'hFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F;
-    // secp256k1 curve order n
-    localparam logic [WIDTH-1:0] PRIME_N =
-        256'hFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141;
-
-    // ---------------------------------------------------------------------------
-    // Prime selection (direct from input)
-    // ---------------------------------------------------------------------------
-
-    wire [WIDTH-1:0] selected_prime = prime_sel ? PRIME_N : PRIME_P;
 
     // ---------------------------------------------------------------------------
     // Shared mod_add — instance
@@ -63,7 +48,7 @@ module arith
         .valid    (mod_add_valid),
         .a        (mod_add_a),
         .b        (mod_add_b),
-        .modulus  (selected_prime),
+        .modulus  (modulus),
         .subtract (mod_add_subtract),
         .ready    (mod_add_ready),
         .result   (mod_add_result),
@@ -95,8 +80,8 @@ module arith
         .clk             (clk),
         .rst_n           (rst_n),
         .valid           (mod_mul_valid),
-        .x               (data_a),
-        .y               (data_b),
+        .a               (a),
+        .b               (b),
         .mod_add_ready   (mod_mul_add_ready),
         .mod_add_result  (mod_mul_add_result),
         .ready           (mod_mul_ready),
@@ -134,8 +119,8 @@ module arith
         .clk             (clk),
         .rst_n           (rst_n),
         .valid           (mod_inv_valid),
-        .x               (data_a),
-        .modulus         (selected_prime),
+        .a               (a),
+        .modulus         (modulus),
         .mod_add_ready   (mod_inv_add_ready),
         .mod_add_result  (mod_inv_add_result),
         .mod_add_adjust  (mod_inv_add_adjust),
@@ -161,14 +146,14 @@ module arith
         unique case(op)
             OP_ADD: begin
                 mod_add_valid    = valid;
-                mod_add_a        = data_a;
-                mod_add_b        = data_b;
+                mod_add_a        = a;
+                mod_add_b        = b;
                 mod_add_subtract = 1'b0;
             end
             OP_SUB: begin
                 mod_add_valid    = valid;
-                mod_add_a        = data_a;
-                mod_add_b        = data_b;
+                mod_add_a        = a;
+                mod_add_b        = b;
                 mod_add_subtract = 1'b1;
             end
             OP_MUL: begin

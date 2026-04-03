@@ -4,7 +4,7 @@
 // counter, and a gated workload unit.
 //
 // Protocol:
-//   1. On startup, waits INIT_DELAY_CYCLES then generates an initial nonce
+//   1. On startup, waits INIT_DELAY then generates an initial nonce
 //   2. nonce_ready pulses when a fresh nonce is available in nonce[]
 //   3. Submit a license via valid-ready handshake: assert license_valid with
 //      (license_r, license_s); transfer completes when license_ready is high.
@@ -17,7 +17,8 @@
 module security_block
     import arith_pkg::*;
 # (
-    localparam int unsigned ALLOW_W = 64
+    localparam int unsigned ALLOW_W  = 64,
+    localparam int unsigned WORKLD_W =  8
 )(
     input  logic             clk,
     input  logic             rst_n,
@@ -29,9 +30,9 @@ module security_block
     input  logic [WIDTH-1:0] license_s,
 
     // Workload interface
-    input  logic             workload_valid,
-    input  logic [7:0]       int8_a,
-    input  logic [7:0]       int8_b,
+    input  logic                workload_valid,
+    input  logic [WORKLD_W-1:0] workload_a,
+    input  logic [WORKLD_W-1:0] workload_b,
 
     // TRNG seed (for simulation)
     input  logic [WIDTH-1:0] trng_seed,
@@ -40,7 +41,7 @@ module security_block
     // Outputs
     output logic [WIDTH-1:0]    nonce,
     output logic                nonce_ready,
-    output logic [7:0]          int8_result,
+    output logic [WORKLD_W-1:0] workload_result,
     output logic                result_valid,
     output logic [ALLOW_W-1:0]  allowance,
     output logic                enabled
@@ -50,7 +51,9 @@ module security_block
     // Constants
     // -------------------------------------------------------------------------
 
-    localparam int                  INIT_DELAY_CYCLES  = 100;
+    localparam int INIT_DELAY = 100;
+    localparam int DELAYCNT_W = $clog2(INIT_DELAY); // delay counter width
+
     localparam logic [ALLOW_W-1:0]  ALLOWANCE_INCREMENT = 64'd1_000_000_000_000;
 
     // -------------------------------------------------------------------------
@@ -60,7 +63,6 @@ module security_block
     typedef enum logic [2:0] {
         StInitDelay,
         StRequestNonce,
-        StWaitNonce,
         StPublishAndWait,
         StWaitVerify
     } state_e;
@@ -69,11 +71,12 @@ module security_block
     // Registers
     // -------------------------------------------------------------------------
 
-    state_e             state_q,      state_d;
-    logic [ALLOW_W-1:0] allowance_q,  allowance_d;
-    logic [6:0]         delay_cnt_q,  delay_cnt_d;  // counts to 100
-    logic               result_valid_q, result_valid_d;
-    logic [7:0]         int8_result_q,  int8_result_d;
+    state_e                 state_q,            state_d;
+    logic [ALLOW_W-1:0]     allowance_q,        allowance_d;
+    logic                   result_valid_q,     result_valid_d;
+    logic [WORKLD_W-1:0]    workload_result_q,  workload_result_d;
+    logic [DELAYCNT_W-1:0]  delay_cnt_q,        delay_cnt_d;  // counts init delay
+
 
     // -------------------------------------------------------------------------
     // TRNG instance
@@ -98,11 +101,12 @@ module security_block
     // ECDSA instance
     // -------------------------------------------------------------------------
 
+    // Input valid to be driven from the FSM
     logic             ecdsa_valid;
+
+    // Outputs
     logic             ecdsa_ready;
     logic             ecdsa_verif_passed;
-
-    assign ecdsa_valid = (state_q == StPublishAndWait) && license_valid;
 
     ecdsa u_ecdsa (
         .clk          (clk),
@@ -119,8 +123,10 @@ module security_block
     // Allowance — combinational next value
     // -------------------------------------------------------------------------
 
-    logic             increment_allowance;
-    wire [ALLOW_W:0]  allowance_sum       = {1'b0, allowance_q} + {1'b0, ALLOWANCE_INCREMENT}; // one bit wider for overflow check
+    logic increment_allowance;
+
+    // one bit wider for overflow check
+    wire [ALLOW_W:0]  allowance_sum = {1'b0, allowance_q} + {1'b0, ALLOWANCE_INCREMENT};
 
     always_comb begin
         if (increment_allowance)
@@ -135,51 +141,53 @@ module security_block
     // Workload — combinational, pipelined one cycle
     // -------------------------------------------------------------------------
 
-    always_comb begin
-        logic [7:0] sum;
-        sum              = int8_a + int8_b;
-        int8_result_d    = sum & {8{enabled}};
-        result_valid_d   = workload_valid;
-    end
+    assign workload_result_d = {WORKLD_W{enabled}} & (workload_a + workload_b);
+    assign result_valid_d    = workload_valid;
 
     // -------------------------------------------------------------------------
     // FSM — combinational
     // -------------------------------------------------------------------------
 
     always_comb begin
-        // Defaults
+        // Register input defaults
         state_d             = state_q;
-        nonce_ready         = 1'b0;
-        increment_allowance = 1'b0;
         delay_cnt_d         = delay_cnt_q;
+
+        // Combinational signal defaults
         trng_request_new    = 1'b0;
+        nonce_ready         = 1'b0;
+        nonce               =   '0;
+        ecdsa_valid         = 1'b0;
+        license_ready       = 1'b0;
+        increment_allowance = 1'b0;
 
         unique case (state_q)
 
             StInitDelay: begin
                 delay_cnt_d = delay_cnt_q + 1;
-                if (delay_cnt_q >= 7'(INIT_DELAY_CYCLES - 1))
+                if (int'(delay_cnt_q) >= INIT_DELAY)
                     state_d = StRequestNonce;
             end
 
             StRequestNonce: begin
                 trng_request_new = 1'b1;
-                state_d          = StWaitNonce;
-            end
-
-            StWaitNonce: begin
-                if (trng_nonce_valid)
-                    state_d = StPublishAndWait;
+                state_d          = StPublishAndWait;
             end
 
             StPublishAndWait: begin
-                nonce_ready = 1;
-                if (license_valid)
-                    state_d = StWaitVerify;
+                if (trng_nonce_valid) begin
+                    nonce_ready = 1;
+                    nonce       = trng_nonce;
+                    if (license_valid) begin
+                        state_d = StWaitVerify;
+                    end
+                end
             end
 
             StWaitVerify: begin
+                ecdsa_valid = 1'b1;
                 if (ecdsa_ready) begin
+                    license_ready = 1'b1;
                     if (ecdsa_verif_passed) begin
                         increment_allowance = 1'b1;
                         state_d             = StRequestNonce;
@@ -194,15 +202,14 @@ module security_block
     end
 
     // -------------------------------------------------------------------------
-    // Output assignments
+    // Assign register based outputs
     // -------------------------------------------------------------------------
 
-    assign nonce         = trng_nonce;
-    assign license_ready = ecdsa_ready;
-    assign allowance     = allowance_q;
-    assign enabled       = (allowance_q != 0);
-    assign int8_result   = int8_result_q;
-    assign result_valid  = result_valid_q;
+    assign allowance = allowance_q;
+    assign enabled   = (allowance_q != 0) ? 1'b1 : 1'b0;
+
+    assign workload_result = workload_result_q;
+    assign result_valid    = result_valid_q;
 
     // -------------------------------------------------------------------------
     // Sequential
@@ -230,13 +237,12 @@ module security_block
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             result_valid_q <= 1'b0;
-            int8_result_q  <= '0;
+            workload_result_q  <= '0;
         end else begin
             result_valid_q <= result_valid_d;
-            int8_result_q  <= int8_result_d;
+            workload_result_q  <= workload_result_d;
         end
     end
-
 
     // Init delay counter
     always_ff @(posedge clk or negedge rst_n) begin
