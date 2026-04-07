@@ -131,12 +131,14 @@ module security_block
     wire [ALLOW_W:0]  allowance_sum = {1'b0, allowance_q} + {1'b0, ALLOWANCE_INCREMENT};
 
     always_comb begin
-        if (increment_allowance)
-            allowance_d = !allowance_sum[ALLOW_W] ? allowance_sum[ALLOW_W-1:0] : '1; // sum if no overflow, else max value (all 1s)
-        else if (allowance_q != 0)
+        if (increment_allowance) begin
+            // sum if no overflow, else max value (all 1s)
+            allowance_d = !allowance_sum[ALLOW_W] ? allowance_sum[ALLOW_W-1:0] : '1;
+        end else if (allowance_q != 0) begin
             allowance_d = allowance_q - 1;
-        else
+        end else begin
             allowance_d = '0;
+        end
     end
 
     // -------------------------------------------------------------------------

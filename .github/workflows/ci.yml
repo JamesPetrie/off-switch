@@ -6,20 +6,31 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up OCaml + opam
-        uses: ocaml/setup-ocaml@v3
+      - name: Install Verilator
+        uses: veryl-lang/setup-verilator@v1
         with:
-          ocaml-compiler: 5
+          version: 5.044 # REVISIT: 5.046 used locally is not yet available on GitHub
 
-      - name: Install deps
-        run: opam install . --deps-only --with-test
+      - name: Install Verible
+        run: |
+          VERIBLE_VERSION=v0.0-3946-g851d3ff4
+          wget https://github.com/chipsalliance/verible/releases/download/${VERIBLE_VERSION}/verible-${VERIBLE_VERSION}-linux-static-x86_64.tar.gz
+          tar xzf verible-${VERIBLE_VERSION}-linux-static-x86_64.tar.gz
+          sudo cp verible-${VERIBLE_VERSION}/bin/* /usr/local/bin/
 
-      - name: Build
-        run: opam exec -- dune build
+      - name: Lint Verilator
+        run: make lint TOOL=verilator
+        working-directory: verilog
 
-      - name: Test
-        run: opam exec -- dune runtest
+      - name: Lint Verible
+        run: make lint TOOL=verible
+        working-directory: verilog
+
+      - name: Simulate
+        run: make sim TB=top
+        working-directory: verilog
