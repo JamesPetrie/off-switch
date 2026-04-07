@@ -18,7 +18,9 @@ module security_block
     import arith_pkg::*;
 # (
     localparam int unsigned ALLOW_W  = 64,
-    localparam int unsigned WORKLD_W =  8
+    localparam int unsigned WORKLD_W =  8,
+
+    parameter logic [ALLOW_W-1:0] ALLOWANCE_INCREMENT = 64'd1_000_000_000_000
 )(
     input  logic             clk,
     input  logic             rst_n,
@@ -54,7 +56,7 @@ module security_block
     localparam int INIT_DELAY = 100;
     localparam int DELAYCNT_W = $clog2(INIT_DELAY); // delay counter width
 
-    localparam logic [ALLOW_W-1:0]  ALLOWANCE_INCREMENT = 64'd1_000_000_000_000;
+
 
     // -------------------------------------------------------------------------
     // FSM states
