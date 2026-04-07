@@ -35,55 +35,28 @@ The paper proposes embedding thousands of these security blocks throughout an AI
 
 ## Quickstart
 
-### REVISIT Verilog (SystemVerilog + Verilator)
-
 #### Prerequisites
 
 - **Verilator** (5.x+)
+
+#### Installation
+
+```bash
+# Install verilator if needed (macOS: brew install verilator, Ubuntu: apt install verilator)
+# Note: apt install gets older version, build a newer from source if needed
+
+# Clone the repo
+git clone https://github.com/JamesPetrie/off-switch
+cd off-switch
+```
 
 #### Run Tests
 
 ```bash
 cd verilog
 
-# Run the full security block test suite (14 tests)
-make sim TB=top
-
-# Run individual test benches
-make sim TB=ecdsa
-make sim TB=arith
-
-# Lint
-make lint
-```
-
-### HardCaml (OCaml reference model)
-
-#### Prerequisites
-
-- **OCaml** (4.14+) and **opam**
-
-#### Installation
-
-```bash
-# Install opam if needed (macOS: brew install opam, Ubuntu: apt install opam)
-opam init
-eval $(opam env)
-
-# Install dependencies
-opam install hardcaml hardcaml_waveterm ppx_hardcaml zarith
-
-# Clone and build
-git clone https://github.com/JamesPetrie/off-switch
-cd off-switch
-dune build
-```
-
-#### Run Tests
-
-```bash
 # Run security block test suite
-dune exec ./test/test_security_block.exe
+make sim TB=top
 ```
 
 ---

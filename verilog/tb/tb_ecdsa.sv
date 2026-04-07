@@ -170,11 +170,13 @@ module tb (
             // All tests complete
             if (curr_rsp_ptr == NumTests) begin
                 $display("");
-                if (fail_count == 0)
+                if (fail_count == 0) begin
                     $display("All %0d ECDSA tests passed.", pass_count);
-                else
+                    $finish;
+                end else begin
                     $display("ECDSA: %0d passed, %0d failed.", pass_count, fail_count);
-                $finish;
+                    $fatal;
+                end
             end
 
         end

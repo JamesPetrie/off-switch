@@ -619,11 +619,13 @@ module tb (
                 // -------------------------------------------------------
                 PH_DONE: begin
                     $display("");
-                    if (fail_count == 0)
+                    if (fail_count == 0) begin
                         $display("All %0d security_block tests passed.", pass_count);
-                    else
+                        $finish;
+                    end else begin
                         $display("security_block: %0d passed, %0d FAILED.", pass_count, fail_count);
-                    $finish;
+                        $fatal;
+                    end
                 end
 
                 default: ;
