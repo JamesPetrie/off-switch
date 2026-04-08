@@ -16,6 +16,7 @@ module tb (
     input logic rst_n
 );
     import arith_pkg::*;
+    import ecdsa_pkg::*;
     import tb_math_pkg::*;
 
     // -------------------------------------------------------------------------
@@ -24,8 +25,7 @@ module tb (
 
     logic             license_valid  = 1'b0;
     logic             license_ready;
-    logic [WIDTH-1:0] license_r      = '0;
-    logic [WIDTH-1:0] license_s      = '0;
+    license_t         license        = '0;
     logic             workload_valid;
     logic [7:0]       workload_a;
     logic [7:0]       workload_b;
@@ -52,8 +52,7 @@ module tb (
         .rst_n          (rst_n),
         .license_valid  (license_valid),
         .license_ready  (license_ready),
-        .license_r      (license_r),
-        .license_s      (license_s),
+        .license        (license),
         .workload_valid (workload_valid),
         .workload_a     (workload_a),
         .workload_b     (workload_b),
@@ -170,8 +169,8 @@ module tb (
             trng_seed      <= TRNG_SEED;
             trng_load_seed <= 1'b1;
             license_valid  <= 1'b0;
-            license_r      <= '0;
-            license_s      <= '0;
+            license.r     <= '0;
+            license.s     <= '0;
             pass_count     <= 0;
             fail_count     <= 0;
         end else if (reset_done) begin
@@ -208,8 +207,8 @@ module tb (
                         ecdsa_sig_t sig;
                         sig = ecdsa_sign(nonce, PRIV_KEY, SIGN_K);
                         license_valid <= 1'b1;
-                        license_r     <= sig.r;
-                        license_s     <= sig.s;
+                        license.r    <= sig.r;
+                        license.s    <= sig.s;
                         phase         <= PH_ACCEPT1;
                     end
                 end
@@ -217,8 +216,8 @@ module tb (
                 PH_ACCEPT1: begin
                     if (license_ready) begin
                         license_valid <= 1'b0;
-                        license_r     <= '0;
-                        license_s     <= '0;
+                        license.r    <= '0;
+                        license.s    <= '0;
                     end
 
                     if (!license_valid) begin
@@ -255,8 +254,8 @@ module tb (
                         ecdsa_sig_t sig;
                         sig = ecdsa_sign(nonce, PRIV_KEY, SIGN_K);
                         license_valid <= 1'b1;
-                        license_r     <= sig.r;
-                        license_s     <= sig.s;
+                        license.r    <= sig.r;
+                        license.s    <= sig.s;
                         phase         <= PH_ACCEPT2;
                     end
                 end
@@ -264,8 +263,8 @@ module tb (
                 PH_ACCEPT2: begin
                     if (license_ready) begin
                         license_valid <= 1'b0;
-                        license_r     <= '0;
-                        license_s     <= '0;
+                        license.r    <= '0;
+                        license.s    <= '0;
                     end
 
                     if (!license_valid) begin

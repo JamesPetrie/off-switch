@@ -1,13 +1,14 @@
 // Security Block
 //
-// Manages ECDSA-based license validation, a TRNG nonce source, an allowance
+// Manages crypto-based license validation, a TRNG nonce source, an allowance
 // counter, and a gated workload unit.
+// CRYPTO_TYPE selects the verification engine: 0 = ECDSA, 1 = HSS-LMS.
 //
 // Protocol:
 //   1. On startup, waits INIT_DELAY then generates an initial nonce
 //   2. nonce_ready pulses when a fresh nonce is available in nonce[]
 //   3. Submit a license via valid-ready handshake: assert license_valid with
-//      (license_r, license_s); transfer completes when license_ready is high.
+//      license; transfer completes when license_ready is high.
 //      The signature must be over the current nonce as the message hash.
 //   4. On valid license: allowance += ALLOWANCE_INCREMENT (saturating), new nonce
 //      On invalid license: same nonce retained, can retry
@@ -17,8 +18,14 @@
 module security_block
     import arith_pkg::*;
 # (
-    localparam int unsigned ALLOW_W  = 64,
-    localparam int unsigned WORKLD_W =  8,
+    parameter bit CRYPTO_TYPE = 0,  // 1 = HSS-LMS, 0 = ECDSA
+
+    // License width depends on crypto type
+    localparam int unsigned LICENSE_W = CRYPTO_TYPE ? 1 // TODO: HSS-LMS license width
+                                                    : $bits(ecdsa_pkg::license_t),
+    localparam int unsigned ALLOW_W   = 64,
+    localparam int unsigned WORKLD_W  =  8,
+
 
     parameter logic [ALLOW_W-1:0] ALLOWANCE_INCREMENT = 64'd1_000_000_000_000
 )(
@@ -26,10 +33,9 @@ module security_block
     input  logic             rst_n,
 
     // License interface (valid-ready)
-    input  logic             license_valid,
-    output logic             license_ready,
-    input  logic [WIDTH-1:0] license_r,
-    input  logic [WIDTH-1:0] license_s,
+    input  logic                  license_valid,
+    output logic                  license_ready,
+    input  logic [LICENSE_W-1:0]  license,
 
     // Workload interface
     input  logic                workload_valid,
@@ -100,26 +106,35 @@ module security_block
     );
 
     // -------------------------------------------------------------------------
-    // ECDSA instance
+    // Crypto verification engine
     // -------------------------------------------------------------------------
 
     // Input valid to be driven from the FSM
-    logic             ecdsa_valid;
+    logic             crypto_valid;
 
     // Outputs
-    logic             ecdsa_ready;
-    logic             ecdsa_verif_passed;
+    logic             crypto_ready;
+    logic             crypto_verif_passed;
 
-    ecdsa u_ecdsa (
-        .clk          (clk),
-        .rst_n        (rst_n),
-        .valid        (ecdsa_valid),
-        .z            (trng_nonce),
-        .r            (license_r),
-        .s            (license_s),
-        .ready        (ecdsa_ready),
-        .verif_passed (ecdsa_verif_passed)
-    );
+    generate
+        if (CRYPTO_TYPE == 0) begin : g_ecdsa
+            ecdsa_pkg::license_t ecdsa_license;
+            assign ecdsa_license = license;
+
+            ecdsa u_ecdsa (
+                .clk          (clk),
+                .rst_n        (rst_n),
+                .valid        (crypto_valid),
+                .z            (trng_nonce),
+                .r            (ecdsa_license.r),
+                .s            (ecdsa_license.s),
+                .ready        (crypto_ready),
+                .verif_passed (crypto_verif_passed)
+            );
+        end else begin : g_hss_lms
+            // TODO: HSS-LMS verification instance
+        end
+    endgenerate;
 
     // -------------------------------------------------------------------------
     // Allowance — combinational next value
@@ -161,7 +176,7 @@ module security_block
         trng_request_new    = 1'b0;
         nonce_ready         = 1'b0;
         nonce               =   '0;
-        ecdsa_valid         = 1'b0;
+        crypto_valid        = 1'b0;
         license_ready       = 1'b0;
         increment_allowance = 1'b0;
 
@@ -189,10 +204,10 @@ module security_block
             end
 
             StWaitVerify: begin
-                ecdsa_valid = 1'b1;
-                if (ecdsa_ready) begin
+                crypto_valid = 1'b1;
+                if (crypto_ready) begin
                     license_ready = 1'b1;
-                    if (ecdsa_verif_passed) begin
+                    if (crypto_verif_passed) begin
                         increment_allowance = 1'b1;
                         state_d             = StRequestNonce;
                     end else begin
