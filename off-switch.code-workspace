@@ -1,0 +1,13 @@
+{
+  "folders": [
+    { "path": "." }
+  ],
+  "settings": {
+    "window.title": "${rootName} — ${activeEditorShort}",
+    "files.trimTrailingWhitespace": true,
+    "files.trimFinalNewlines": true,
+    "files.insertFinalNewline": true,
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true
+  }
+}

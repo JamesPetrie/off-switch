@@ -1,0 +1,10 @@
+./arith_pkg.sv
+./comb_add.sv
+./mod_add.sv
+./mod_mul.sv
+./mod_inv.sv
+./arith.sv
+./trng.sv
+./secp256k1_pkg.sv
+./ecdsa.sv
+./security_block.sv
