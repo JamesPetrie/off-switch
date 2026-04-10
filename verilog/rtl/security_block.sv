@@ -21,7 +21,7 @@ module security_block
     parameter bit CRYPTO_TYPE = 0,  // 1 = HSS-LMS, 0 = ECDSA
 
     // License width depends on crypto type
-    localparam int unsigned LICENSE_W = CRYPTO_TYPE ? 1 // TODO: HSS-LMS license width
+    localparam int unsigned LICENSE_W = CRYPTO_TYPE ? $bits(hss_pkg::license_t)
                                                     : $bits(ecdsa_pkg::license_t),
     localparam int unsigned ALLOW_W   = 64,
     localparam int unsigned WORKLD_W  =  8,
@@ -132,7 +132,18 @@ module security_block
                 .verif_passed (crypto_verif_passed)
             );
         end else begin : g_hss_lms
-            // TODO: HSS-LMS verification instance
+            hss_pkg::license_t hss_license;
+            assign hss_license = license;
+
+            hss_verify u_hss (
+                .clk          (clk),
+                .rst_n        (rst_n),
+                .valid        (crypto_valid),
+                .message      (trng_nonce),
+                .license      (hss_license),
+                .ready        (crypto_ready),
+                .verif_passed (crypto_verif_passed)
+            );
         end
     endgenerate;
 

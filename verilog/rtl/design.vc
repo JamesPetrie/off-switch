@@ -1,10 +1,4 @@
-./arith_pkg.sv
-./comb_add.sv
-./mod_add.sv
-./mod_mul.sv
-./mod_inv.sv
-./arith.sv
-./trng.sv
-./ecdsa_pkg.sv
-./ecdsa.sv
-./security_block.sv
+./sha256/sha256_k_constants.v
+./sha256/sha256_w_mem.v
+./sha256/sha256_core.v
+-F own_files.vc

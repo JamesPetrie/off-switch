@@ -11,6 +11,7 @@ GUI  ?= 0
 # ---------------------------------------------------------------------------
 
 RTL_VC     := rtl/design.vc
+OWN_FILES  := rtl/own_files.vc # list of all files owned by this project, used for linting
 TB_DIR     := tb
 TB_FILE    := $(TB_DIR)/tb_$(TB).sv
 BUILD_DIR  := build
@@ -60,8 +61,8 @@ ifeq ($(TOOL),verilator)
 	@echo "-- DONE --------------------"
 else ifeq ($(TOOL),verible)
 	@echo "-- RUN VERIBLE LINT --------"
-	cd $(dir $(RTL_VC)) &&                          \
-	verible-verilog-lint $(VERIBLE_RULES_FLAG)  $(shell cat $(RTL_VC)) && \
+	cd $(dir $(OWN_FILES)) &&                          \
+	verible-verilog-lint $(VERIBLE_RULES_FLAG)  $(shell cat $(OWN_FILES)) && \
 	cd -
 	@echo "-- DONE --------------------"
 else
@@ -83,7 +84,7 @@ help:
 	@echo ""
 	@echo "RTL Makefile — available targets"
 	@echo "────────────────────────────────────────────────────────"
-	@echo "  sim      Run simulation (TOOL=verilator TB=demo|top|ecdsa|arith GUI=0|1)"
+	@echo "  sim      Run simulation (TOOL=verilator TB=demo|top|ecdsa|arith|hss GUI=0|1)"
 	@echo "  lint     Run linter (TOOL=verilator|verible GUI=0)"
 	@echo "  clean    Remove all generated build artefacts"
 	@echo "  help     Print this message"
