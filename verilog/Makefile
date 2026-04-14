@@ -16,6 +16,7 @@ TB_DIR     := tb
 TB_FILE    := $(TB_DIR)/tb_$(TB).sv
 BUILD_DIR  := build
 TOP_MODULE := tb
+DPI_FILE    := $(TB_DIR)/dpi_sha256.cpp
 
 # ---------------------------------------------------------------------------
 # Simulation
@@ -32,7 +33,7 @@ endif
 sim:
 ifeq ($(TOOL),verilator)
 	@echo "-- VERILATE & BUILD --------"
-	verilator $(VFLAGS) -F $(RTL_VC) +incdir+$(TB_DIR) $(TB_FILE) --top-module $(TOP_MODULE) tb/sim_main.cpp --Mdir $(BUILD_DIR)
+	verilator $(VFLAGS) -F $(RTL_VC) +incdir+$(TB_DIR) $(TB_FILE) $(DPI_FILE) --top-module $(TOP_MODULE) tb/sim_main.cpp --Mdir $(BUILD_DIR)
 	@echo "-- RUN ---------------------"
 	$(BUILD_DIR)/V$(TOP_MODULE)
 	@echo "-- DONE --------------------"
@@ -84,7 +85,7 @@ help:
 	@echo ""
 	@echo "RTL Makefile — available targets"
 	@echo "────────────────────────────────────────────────────────"
-	@echo "  sim      Run simulation (TOOL=verilator TB=demo|top|ecdsa|arith|hss GUI=0|1)"
+	@echo "  sim      Run simulation (TOOL=verilator TB=demo|top|top_hss|ecdsa|arith|hss GUI=0|1)"
 	@echo "  lint     Run linter (TOOL=verilator|verible GUI=0)"
 	@echo "  clean    Remove all generated build artefacts"
 	@echo "  help     Print this message"
