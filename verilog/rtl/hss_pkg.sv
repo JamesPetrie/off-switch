@@ -42,7 +42,7 @@ package hss_pkg;
 
     // Derived from the private key used in the testbench
     localparam logic [WIDTH-1:0] ROOT_PUB_KEY =
-        256'hae247eab7668d68995dfd7ad9c8fa2fc9c3ab078ea2a68b5e3013346ed394a37;
+        256'h1c2e06bc6fe6bc3f7c6e7fc998277f82fd8fa2f79aa26eb1d3c66999083d4ce5;
 
     // Arbitrary value <= MAX_HEIGHT
     localparam int unsigned TREE_HEIGHT = 4;

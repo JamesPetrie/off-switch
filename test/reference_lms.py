@@ -61,11 +61,15 @@ def chain(x: bytes, i_val: int, identifier: bytes, q: int, chain_idx: int, start
 
 
 def wots_keygen(identifier: bytes, q: int, seed: bytes):
-    """Generate WOTS+ keypair."""
-    # Derive private key elements from seed
+    """Generate WOTS+ keypair.
+
+    Per RFC 8554 Appendix A, private key elements are:
+        x_q[i] = H(I || u32str(q) || u16str(i) || u8str(0xff) || SEED)
+    """
     sk = []
     for i in range(P):
-        sk_i = sha256(seed + struct.pack(">H", i))
+        sk_i = sha256(identifier + struct.pack(">I", q) + struct.pack(">H", i)
+                       + struct.pack(">B", 0xff) + seed)
         sk.append(sk_i)
 
     # Compute public key elements: chain each sk element MAX_COEF times
@@ -200,13 +204,11 @@ def generate_test_vectors():
     assert wots_verify(Q, sig, identifier, q, Kc), "Self-verification failed!"
 
     # Build Merkle tree (small, height=4, 16 leaves)
-    # Generate all 16 leaf keys
+    # All leaves use the same master seed; wots_keygen derives per-leaf keys via RFC 8554 Appendix A
     all_Kc = []
     for leaf_q in range(1 << height):
-        _, _, leaf_Kc = wots_keygen(identifier, leaf_q, sha256(seed + struct.pack(">I", leaf_q)))
+        _, _, leaf_Kc = wots_keygen(identifier, leaf_q, seed)
         all_Kc.append(leaf_Kc)
-    # Override leaf q with our actual Kc
-    all_Kc[q] = Kc
 
     # Compute leaf hashes
     leaf_hashes = [merkle_leaf_hash(identifier, i, all_Kc[i]) for i in range(1 << height)]
