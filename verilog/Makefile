@@ -85,7 +85,7 @@ help:
 	@echo ""
 	@echo "RTL Makefile — available targets"
 	@echo "────────────────────────────────────────────────────────"
-	@echo "  sim      Run simulation (TOOL=verilator TB=demo|top|top_hss|ecdsa|arith|hss GUI=0|1)"
+	@echo "  sim      Run simulation (TOOL=verilator TB=demo|top_ecdsa|top_hss|ecdsa|arith|hss GUI=0|1)"
 	@echo "  lint     Run linter (TOOL=verilator|verible GUI=0)"
 	@echo "  clean    Remove all generated build artefacts"
 	@echo "  help     Print this message"
