@@ -2,6 +2,7 @@ module tb (
     input logic clk,
     input logic rst_n
 );
+    import ecdsa_pkg::*;
 
     // -------------------------------------------------------------------------
     // Test vector type
@@ -102,6 +103,10 @@ module tb (
         .z         (dut_z),
         .r         (dut_r),
         .s         (dut_s),
+        .q_x       (PUBKEYS[0].q_x),
+        .q_y       (PUBKEYS[0].q_y),
+        .gpq_x     (PUBKEYS[0].gpq_x),
+        .gpq_y     (PUBKEYS[0].gpq_y),
         .ready     (ready),
         .verif_passed (verif_passed)
     );

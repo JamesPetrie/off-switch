@@ -36,9 +36,14 @@ module ecdsa
     input  logic             clk,
     input  logic             rst_n,
     input  logic             valid,
-    input  logic [WIDTH-1:0] z,
-    input  logic [WIDTH-1:0] r,
-    input  logic [WIDTH-1:0] s,
+    input  logic [WIDTH-1:0] z,     // message
+    input  logic [WIDTH-1:0] r,     // signature r
+    input  logic [WIDTH-1:0] s,     // signature s
+    // z coordinates are fixed 1 on affine -> projective so skip those here
+    input  logic [WIDTH-1:0] q_x,   // public key Q_X
+    input  logic [WIDTH-1:0] q_y,   // public key Q_Y
+    input  logic [WIDTH-1:0] gpq_x, // G + Q point X coordinate, precomputed
+    input  logic [WIDTH-1:0] gpq_y, // G + Q point Y coordinate, precomputed
 
     output logic             ready,
     output logic             verif_passed
@@ -66,18 +71,6 @@ module ecdsa
     typedef logic [$clog2(NUM_REGS)-1:0] reg_addr_t;
 
     localparam int BITCNT_W = $clog2(WIDTH); // Bit Counter Width
-
-    // Public key Q (derived from G and Private key d)
-    localparam logic [WIDTH-1:0]
-    Q_X = 256'hc6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5,
-    Q_Y = 256'h1ae168fea63dc339a3c58419466ceaeef7f632653266d0e1236431a950cfe52a,
-    Q_Z = 1;
-
-    // Precomputed G + Q (assumed to be computed together with Q, so not implementing the addition here)
-    localparam logic [WIDTH-1:0]
-    GPQ_X = 256'hf9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9,
-    GPQ_Y = 256'h388f7b0f632de8140fe337e62a37f3566500a99934c2231b6cb9fd7584b8e672,
-    GPQ_Z = 1;
 
     // Point at infinity (z = 0)
     localparam logic [WIDTH-1:0]
@@ -276,10 +269,10 @@ module ecdsa
     always_comb begin
         // REVISIT - shift register approach to access u1 and u2 bits could be much less gates
         unique case ({u2_q[bit_pos_q], u1_q[bit_pos_q]})
-            2'b00:   begin sel_x = INF_X; sel_y = INF_Y; sel_z = INF_Z; end
-            2'b01:   begin sel_x = G_X;   sel_y = G_Y;   sel_z = G_Z;   end
-            2'b10:   begin sel_x = Q_X;   sel_y = Q_Y;   sel_z = Q_Z;   end
-            2'b11:   begin sel_x = GPQ_X; sel_y = GPQ_Y; sel_z = GPQ_Z; end
+            2'b00:   begin sel_x = INF_X; sel_y = INF_Y; sel_z = INF_Z;     end
+            2'b01:   begin sel_x = G_X;   sel_y = G_Y;   sel_z = G_Z;       end
+            2'b10:   begin sel_x = q_x;   sel_y = q_y;   sel_z = AFFINE_Z;  end
+            2'b11:   begin sel_x = gpq_x; sel_y = gpq_y; sel_z = AFFINE_Z;  end
             default: ;
         endcase
     end
