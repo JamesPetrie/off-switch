@@ -28,14 +28,17 @@ module hss_verify
     import arith_pkg::*;
     import hss_pkg::*;
 (
-    input  logic             clk,
-    input  logic             rst_n,
-    input  logic             valid,
-    input  logic [WIDTH-1:0] message,
-    input  license_t         license,
+    input  logic               clk,
+    input  logic               rst_n,
+    input  logic               valid,
+    input  logic [WIDTH-1:0]   message,
+    input  license_t           license,
+    // TODO replace individual public key inputs with the struct
+    input  logic [IDENT_W-1:0] identifier,   // tree identifier
+    input  logic [WIDTH-1:0]   root_pub_key,
 
-    output logic             ready,
-    output logic             verif_passed
+    output logic               ready,
+    output logic               verif_passed
 );
 
     // -------------------------------------------------------------------------
@@ -124,7 +127,7 @@ module hss_verify
 
     // Top-tree identifier is the package constant; lower trees carry theirs
     // in the license as sub_I[lv] (≥1). sub_I[0] is unused for the top layer.
-    wire [127:0] cur_I = is_pk_layer  ? TOP_IDENTIFIER
+    wire [127:0] cur_I = is_pk_layer  ? identifier
                                       : license.sub_I[layer_q];
 
     // -------------------------------------------------------------------------
@@ -618,7 +621,7 @@ module hss_verify
 
             StDone: begin
                 ready        = 1'b1;
-                verif_passed = (hash_reg_q == ROOT_PUB_KEY);
+                verif_passed = (hash_reg_q == root_pub_key);
                 seq_d        = StIdle;
             end
 

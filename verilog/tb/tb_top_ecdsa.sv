@@ -61,7 +61,7 @@ module tb (
     localparam logic [WIDTH-1:0] TRNG_SEED = 256'd12345;
 
     // ECDSA signing: private keys matching PUBKEYS[0] (d=2) and PUBKEYS[1] (d=3)
-    localparam logic [WIDTH-1:0] PRIV_KEYS [NUM_SIGNERS] = '{256'd2, 256'd3};
+    localparam logic [WIDTH-1:0] PRIV_KEYS [base_pkg::NUM_SIGNERS] = '{256'd2, 256'd3};
     localparam logic [WIDTH-1:0] SIGN_K                  = 256'd7;
 
     localparam int VERIFY_TIMEOUT = 15_000_000;

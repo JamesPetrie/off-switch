@@ -46,9 +46,7 @@ package ecdsa_pkg;
         logic [WIDTH-1:0] gpq_z;
     } pubkey_t;
 
-    parameter int NUM_SIGNERS = 2;
-
-    parameter pubkey_t PUBKEYS [NUM_SIGNERS] = '{
+    parameter pubkey_t PUBKEYS [2] = '{
         // Signer 0 (d=2)
         0: '{q_x:    256'hc6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5,
              q_y:    256'h1ae168fea63dc339a3c58419466ceaeef7f632653266d0e1236431a950cfe52a,

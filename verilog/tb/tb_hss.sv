@@ -35,6 +35,8 @@ module tb (
         .valid        (dut_valid),
         .message      (MESSAGE),
         .license      (dut_license),
+        .identifier   (hss_pkg::PUBKEYS[0].identifier),
+        .root_pub_key (hss_pkg::PUBKEYS[0].root_pub_key),
         .ready        (dut_ready),
         .verif_passed (dut_verif_passed)
     );
@@ -67,7 +69,7 @@ module tb (
                 PH_INIT: begin
                     $display("=== HSS-LMS Verification Test (L=%0d) ===", HSS_LEVELS);
                     init_leaves();
-                    dut_license <= hss_sign(MESSAGE);
+                    dut_license <= hss_sign(MESSAGE, 0);
                     phase       <= PH_START;
                 end
 

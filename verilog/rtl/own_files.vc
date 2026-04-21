@@ -5,6 +5,7 @@
 ./mod_inv.sv
 ./arith.sv
 ./trng.sv
+./base_pkg.sv
 ./ecdsa_pkg.sv
 ./ecdsa.sv
 ./hss_pkg.sv
