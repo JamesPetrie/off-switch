@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
     tb->rst_n = 1;
 
     // Run the test
-    for (int i = 0; i < 50000000 && !ctx->gotFinish(); i++) {
+    for (int i = 0; i < int(1e8) && !ctx->gotFinish(); i++) {
         tb->clk = 1; tb->eval(); ctx->timeInc(1); WAVE_DUMP(ctx->time());
         tb->clk = 0; tb->eval(); ctx->timeInc(1); WAVE_DUMP(ctx->time());
     }

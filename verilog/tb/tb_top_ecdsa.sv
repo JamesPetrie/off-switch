@@ -60,9 +60,9 @@ module tb (
 
     localparam logic [WIDTH-1:0] TRNG_SEED = 256'd12345;
 
-    // ECDSA signing: d=3 (Q=3G, matches PUBKEYS[1]), k=7
-    localparam logic [WIDTH-1:0] PRIV_KEY = 256'd3;
-    localparam logic [WIDTH-1:0] SIGN_K   = 256'd7;
+    // ECDSA signing: private keys matching PUBKEYS[0] (d=2) and PUBKEYS[1] (d=3)
+    localparam logic [WIDTH-1:0] PRIV_KEYS [NUM_SIGNERS] = '{256'd2, 256'd3};
+    localparam logic [WIDTH-1:0] SIGN_K                  = 256'd7;
 
     localparam int VERIFY_TIMEOUT = 15_000_000;
     localparam int NONCE_TIMEOUT  = 300;
@@ -71,22 +71,26 @@ module tb (
     // TB state machine
     // -------------------------------------------------------------------------
 
-    typedef enum logic [4:0] {
+    typedef enum logic [5:0] {
         PH_INIT,
         PH_T1_CHECK,
-        PH_T2_DRIVE,   PH_T2_CHECK,
+        PH_T2_DRIVE,    PH_T2_CHECK,
         PH_T3_CHECK,
-        PH_T4_SUBMIT,  PH_T4_CHECK,
-        PH_T5_DRIVE,   PH_T5_CHECK,
-        PH_T6_SUBMIT,  PH_T6_CHECK,
-        PH_T7_DRIVE,   PH_T7_CHECK,
-        PH_T8_DRIVE,   PH_T8_CHECK,
-        PH_T9_DRIVE,   PH_T9_CHECK,
-        PH_T10_DRIVE,  PH_T10_CHECK,
-        PH_T11_WAIT,   PH_T11_CHECK,
-        PH_T12_SUBMIT, PH_T12_CHECK,
-        PH_T13_SUBMIT, PH_T13_CHECK,
-        PH_T14_SUBMIT, PH_T14_WAIT, PH_T14_REPLAY, PH_T14_CHECK,
+        PH_T4A_SUBMIT,  PH_T4A_CHECK,
+        PH_T4B_SUBMIT,  PH_T4B_CHECK,
+        PH_T5_DRIVE,    PH_T5_CHECK,
+        PH_T6_SUBMIT,   PH_T6_CHECK,
+        PH_T7_DRIVE,    PH_T7_CHECK,
+        PH_T8_DRIVE,    PH_T8_CHECK,
+        PH_T9_DRIVE,    PH_T9_CHECK,
+        PH_T10_DRIVE,   PH_T10_CHECK,
+        PH_T11_WAIT,    PH_T11_CHECK,
+        PH_T12A_SUBMIT, PH_T12A_CHECK,
+        PH_T12B_SUBMIT, PH_T12B_CHECK,
+        PH_T13_SUBMIT,  PH_T13_CHECK,
+        PH_T14A_SUBMIT, PH_T14A_WAIT,
+        PH_T14B_SUBMIT, PH_T14B_WAIT,
+        PH_T14_REPLAY,  PH_T14_CHECK,
         PH_DONE
     } ph_e;
 
@@ -211,25 +215,27 @@ module tb (
                 end
 
                 // -------------------------------------------------------
-                // T4: Submit valid license
+                // T4A: Submit signer-0 license — expect acceptance, but
+                //      allowance must stay 0 and nonce unchanged
+                //      (signer 1 still outstanding).
                 // -------------------------------------------------------
-                PH_T4_SUBMIT: begin
+                PH_T4A_SUBMIT: begin
                     if (nonce_ready) begin
                         ecdsa_sig_t sig;
 
                         assert(allowance == 0) else $fatal("Expected allowance=0 at license submission, got %0d", allowance);
 
-                        sig = ecdsa_sign(nonce, PRIV_KEY, SIGN_K);
-                        license_valid  <= 1'b1;
-                        license.r     <= sig.r;
-                        license.s     <= sig.s;
+                        sig = ecdsa_sign(nonce, PRIV_KEYS[0], SIGN_K);
+                        license_valid <= 1'b1;
+                        license.r    <= sig.r;
+                        license.s    <= sig.s;
+                        saved_nonce   <= nonce;
 
-                        phase        <= PH_T4_CHECK;
+                        phase        <= PH_T4A_CHECK;
                     end
                 end
 
-                PH_T4_CHECK: begin
-
+                PH_T4A_CHECK: begin
                     // Hold license until license_ready pulses
                     if (license_ready) begin
                         license_valid <= 1'b0;
@@ -237,20 +243,59 @@ module tb (
                         license.s    <= '0;
                     end
 
-                    // Check allowance afterwards (when valid is back to deasserted)
                     if (!license_valid) begin
-
-                        if (allowance != '0) begin
-                            $display("PASS  [T4  valid license] allowance incremented to %0d", allowance);
+                        if (allowance == '0 && nonce == saved_nonce) begin
+                            $display("PASS  [T4A signer-0 license] allowance still 0, nonce unchanged");
                             pass_count <= pass_count + 1;
                         end else begin
-                            $display("FAIL  [T4  valid license] allowance not incremented");
+                            $display("FAIL  [T4A signer-0 license] allowance=%0d (exp 0), nonce=0x%h (exp 0x%h)",
+                                     allowance, nonce, saved_nonce);
                             fail_count <= fail_count + 1;
                         end
-
-                        phase       <= phase.next();
+                        phase <= phase.next();
                     end else if (wait_cnt > VERIFY_TIMEOUT) begin
-                        $fatal("FAIL  [T4  valid license] handshake timeout");
+                        $fatal("FAIL  [T4A signer-0 license] handshake timeout");
+                    end
+                end
+
+                // -------------------------------------------------------
+                // T4B: Submit signer-1 license against the same nonce —
+                //      expect allowance to increment (2-of-2 complete).
+                // -------------------------------------------------------
+                PH_T4B_SUBMIT: begin
+                    if (nonce_ready) begin
+                        ecdsa_sig_t sig;
+
+                        assert(nonce == saved_nonce) else $fatal("Nonce rotated before T4B (saw 0x%h, expected 0x%h)", nonce, saved_nonce);
+
+                        sig = ecdsa_sign(nonce, PRIV_KEYS[1], SIGN_K);
+                        license_valid <= 1'b1;
+                        license.r    <= sig.r;
+                        license.s    <= sig.s;
+
+                        phase        <= PH_T4B_CHECK;
+                    end
+                end
+
+                PH_T4B_CHECK: begin
+                    // Hold license until license_ready pulses
+                    if (license_ready) begin
+                        license_valid <= 1'b0;
+                        license.r    <= '0;
+                        license.s    <= '0;
+                    end
+
+                    if (!license_valid) begin
+                        if (allowance != '0) begin
+                            $display("PASS  [T4B signer-1 license] allowance incremented to %0d", allowance);
+                            pass_count <= pass_count + 1;
+                        end else begin
+                            $display("FAIL  [T4B signer-1 license] allowance not incremented");
+                            fail_count <= fail_count + 1;
+                        end
+                        phase <= phase.next();
+                    end else if (wait_cnt > VERIFY_TIMEOUT) begin
+                        $fatal("FAIL  [T4B signer-1 license] handshake timeout");
                     end
                 end
 
@@ -468,42 +513,75 @@ module tb (
                 end
 
                 // -------------------------------------------------------
-                // T12: New nonce after valid license
-                //   Sign the current nonce dynamically, submit, check
-                //   that the nonce changes afterwards.
+                // T12A: Signer-0 license on current nonce — nonce must
+                //       not rotate yet.
                 // -------------------------------------------------------
-                PH_T12_SUBMIT: begin
+                PH_T12A_SUBMIT: begin
                     if (nonce_ready) begin
                         ecdsa_sig_t sig;
-                        sig = ecdsa_sign(nonce, PRIV_KEY, SIGN_K);
+                        sig = ecdsa_sign(nonce, PRIV_KEYS[0], SIGN_K);
                         license_valid <= 1'b1;
                         license.r    <= sig.r;
                         license.s    <= sig.s;
                         saved_nonce   <= nonce;
-                        phase         <= PH_T12_CHECK;
+                        phase         <= PH_T12A_CHECK;
                     end
                 end
 
-                PH_T12_CHECK: begin
-                    // Hold license until license_ready pulses
+                PH_T12A_CHECK: begin
                     if (license_ready) begin
                         license_valid <= 1'b0;
                         license.r    <= '0;
                         license.s    <= '0;
                     end
-
-                    // Check when next nonce is ready (after handshake completed)
-                    if (!license_valid && nonce_ready) begin
-                        if (nonce != saved_nonce) begin
-                            $display("PASS  [T12 new nonce] nonce changed");
+                    if (!license_valid) begin
+                        if (nonce == saved_nonce) begin
+                            $display("PASS  [T12A signer-0] nonce held across first signer's license");
                             pass_count <= pass_count + 1;
                         end else begin
-                            $display("FAIL  [T12 new nonce] nonce unchanged");
+                            $display("FAIL  [T12A signer-0] nonce rotated early (0x%h -> 0x%h)", saved_nonce, nonce);
                             fail_count <= fail_count + 1;
                         end
                         phase <= phase.next();
                     end else if (wait_cnt > VERIFY_TIMEOUT) begin
-                        $fatal("FAIL  [T12 new nonce] timeout");
+                        $fatal("FAIL  [T12A signer-0] timeout");
+                    end
+                end
+
+                // -------------------------------------------------------
+                // T12B: Signer-1 license on same nonce — nonce must rotate.
+                // -------------------------------------------------------
+                PH_T12B_SUBMIT: begin
+                    if (nonce_ready) begin
+                        ecdsa_sig_t sig;
+
+                        assert(nonce == saved_nonce) else $fatal("Nonce rotated before T12B (saw 0x%h, expected 0x%h)", nonce, saved_nonce);
+
+                        sig = ecdsa_sign(nonce, PRIV_KEYS[1], SIGN_K);
+                        license_valid <= 1'b1;
+                        license.r    <= sig.r;
+                        license.s    <= sig.s;
+                        phase         <= PH_T12B_CHECK;
+                    end
+                end
+
+                PH_T12B_CHECK: begin
+                    if (license_ready) begin
+                        license_valid <= 1'b0;
+                        license.r    <= '0;
+                        license.s    <= '0;
+                    end
+                    if (!license_valid && nonce_ready) begin
+                        if (nonce != saved_nonce) begin
+                            $display("PASS  [T12B signer-1] nonce changed after 2-of-2");
+                            pass_count <= pass_count + 1;
+                        end else begin
+                            $display("FAIL  [T12B signer-1] nonce unchanged");
+                            fail_count <= fail_count + 1;
+                        end
+                        phase <= phase.next();
+                    end else if (wait_cnt > VERIFY_TIMEOUT) begin
+                        $fatal("FAIL  [T12B signer-1] timeout");
                     end
                 end
 
@@ -515,7 +593,7 @@ module tb (
                 PH_T13_SUBMIT: begin
                     if (nonce_ready) begin
                         ecdsa_sig_t sig;
-                        sig = ecdsa_sign(256'd9999, PRIV_KEY, SIGN_K);
+                        sig = ecdsa_sign(256'd9999, PRIV_KEYS[0], SIGN_K);
                         license_valid <= 1'b1;
                         license.r    <= sig.r;
                         license.s    <= sig.s;
@@ -551,25 +629,44 @@ module tb (
                 end
 
                 // -------------------------------------------------------
-                // T14: Replay attack — submit same signature twice
-                //   First submission is valid (signs current nonce),
-                //   second reuses the same (r, s) against a new nonce.
+                // T14: Replay attack — after a full 2-of-2 rotates the
+                //   nonce, reusing signer 0's (r, s) against the *new*
+                //   nonce must be rejected.
                 // -------------------------------------------------------
-                PH_T14_SUBMIT: begin
+                PH_T14A_SUBMIT: begin
                     if (nonce_ready) begin
                         ecdsa_sig_t sig;
-                        sig = ecdsa_sign(nonce, PRIV_KEY, SIGN_K);
+                        sig = ecdsa_sign(nonce, PRIV_KEYS[0], SIGN_K);
                         license_valid <= 1'b1;
                         license.r    <= sig.r;
                         license.s    <= sig.s;
-                        saved_r       <= sig.r;
+                        saved_r       <= sig.r;   // save signer-0's sig for replay
                         saved_s       <= sig.s;
-                        phase         <= PH_T14_WAIT;
+                        phase         <= PH_T14A_WAIT;
                     end
                 end
 
-                PH_T14_WAIT: begin
-                    // Hold license until license_ready pulses
+                PH_T14A_WAIT: begin
+                    if (license_ready) begin
+                        license_valid <= 1'b0;
+                        license.r    <= '0;
+                        license.s    <= '0;
+                        phase <= PH_T14B_SUBMIT;
+                    end
+                end
+
+                PH_T14B_SUBMIT: begin
+                    if (nonce_ready) begin
+                        ecdsa_sig_t sig;
+                        sig = ecdsa_sign(nonce, PRIV_KEYS[1], SIGN_K);
+                        license_valid <= 1'b1;
+                        license.r    <= sig.r;
+                        license.s    <= sig.s;
+                        phase         <= PH_T14B_WAIT;
+                    end
+                end
+
+                PH_T14B_WAIT: begin
                     if (license_ready) begin
                         license_valid <= 1'b0;
                         license.r    <= '0;
@@ -580,7 +677,7 @@ module tb (
 
                 PH_T14_REPLAY: begin
                     if (nonce_ready) begin
-                        // Replay the saved signature against the new nonce
+                        // Replay signer-0's saved signature against the rotated nonce
                         license_valid <= 1'b1;
                         license.r    <= saved_r;
                         license.s    <= saved_s;
