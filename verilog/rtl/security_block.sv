@@ -79,11 +79,14 @@ module security_block
     // Registers
     // -------------------------------------------------------------------------
 
-    state_e                 state_q,            state_d;
-    logic [ALLOW_W-1:0]     allowance_q,        allowance_d;
-    logic                   result_valid_q,     result_valid_d;
-    logic [WORKLD_W-1:0]    workload_result_q,  workload_result_d;
-    logic [DELAYCNT_W-1:0]  delay_cnt_q,        delay_cnt_d;  // counts init delay
+    localparam int SIGNER_IDX_W = (ecdsa_pkg::NUM_SIGNERS > 1) ? $clog2(ecdsa_pkg::NUM_SIGNERS) : 1;
+
+    state_e                    state_q,            state_d;
+    logic [ALLOW_W-1:0]        allowance_q,        allowance_d;
+    logic                      result_valid_q,     result_valid_d;
+    logic [WORKLD_W-1:0]       workload_result_q,  workload_result_d;
+    logic [DELAYCNT_W-1:0]     delay_cnt_q,        delay_cnt_d;  // counts init delay
+    logic [SIGNER_IDX_W-1:0]   signer_q,           signer_d; // signer whose license is currently expected (fixed order)
 
 
     // -------------------------------------------------------------------------
@@ -128,10 +131,10 @@ module security_block
                 .z            (trng_nonce),
                 .r            (ecdsa_license.r),
                 .s            (ecdsa_license.s),
-                .q_x          (ecdsa_pkg::PUBKEYS[1].q_x),
-                .q_y          (ecdsa_pkg::PUBKEYS[1].q_y),
-                .gpq_x        (ecdsa_pkg::PUBKEYS[1].gpq_x),
-                .gpq_y        (ecdsa_pkg::PUBKEYS[1].gpq_y),
+                .q_x          (ecdsa_pkg::PUBKEYS[signer_q].q_x),
+                .q_y          (ecdsa_pkg::PUBKEYS[signer_q].q_y),
+                .gpq_x        (ecdsa_pkg::PUBKEYS[signer_q].gpq_x),
+                .gpq_y        (ecdsa_pkg::PUBKEYS[signer_q].gpq_y),
                 .ready        (crypto_ready),
                 .verif_passed (crypto_verif_passed)
             );
@@ -186,6 +189,7 @@ module security_block
         // Register input defaults
         state_d             = state_q;
         delay_cnt_d         = delay_cnt_q;
+        signer_d            = signer_q;
 
         // Combinational signal defaults
         trng_request_new    = 1'b0;
@@ -223,8 +227,16 @@ module security_block
                 if (crypto_ready) begin
                     license_ready = 1'b1;
                     if (crypto_verif_passed) begin
-                        increment_allowance = 1'b1;
-                        state_d             = StRequestNonce;
+                        // Require a valid license from each signer (in fixed order)
+                        // against the same nonce before rotating the nonce.
+                        if (int'(signer_q) == ecdsa_pkg::NUM_SIGNERS - 1) begin
+                            increment_allowance = 1'b1;
+                            signer_d            = '0;
+                            state_d             = StRequestNonce;
+                        end else begin
+                            signer_d = signer_q + 1'b1;
+                            state_d  = StPublishAndWait;
+                        end
                     end else begin
                         state_d = StPublishAndWait;
                     end
@@ -284,6 +296,15 @@ module security_block
             delay_cnt_q <= '0;
         end else begin
             delay_cnt_q <= delay_cnt_d;
+        end
+    end
+
+    // Signer index register
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            signer_q <= '0;
+        end else begin
+            signer_q <= signer_d;
         end
     end
 
