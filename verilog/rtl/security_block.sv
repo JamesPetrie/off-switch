@@ -17,15 +17,16 @@
 
 module security_block
     import arith_pkg::*;
+    import base_pkg::*;
 # (
     parameter bit CRYPTO_TYPE = 0,  // 1 = HSS-LMS, 0 = ECDSA
 
     // License width depends on crypto type
-    localparam int unsigned LICENSE_W = CRYPTO_TYPE ? $bits(hss_pkg::license_t)
-                                                    : $bits(ecdsa_pkg::license_t),
-    localparam int unsigned ALLOW_W   = 64,
-    localparam int unsigned WORKLD_W  =  8,
-
+    localparam int unsigned LICENSE_W    = CRYPTO_TYPE ? $bits(hss_pkg::license_t)
+                                                       : $bits(ecdsa_pkg::license_t),
+    localparam int unsigned SIGNER_IDX_W = (NUM_SIGNERS > 1) ? $clog2(NUM_SIGNERS) : 1,
+    localparam int unsigned ALLOW_W      = 64,
+    localparam int unsigned WORKLD_W     =  8,
 
     parameter logic [ALLOW_W-1:0] ALLOWANCE_INCREMENT = 64'd1_000_000_000_000
 )(
@@ -79,14 +80,13 @@ module security_block
     // Registers
     // -------------------------------------------------------------------------
 
-    localparam int SIGNER_IDX_W = (ecdsa_pkg::NUM_SIGNERS > 1) ? $clog2(ecdsa_pkg::NUM_SIGNERS) : 1;
-
     state_e                    state_q,            state_d;
     logic [ALLOW_W-1:0]        allowance_q,        allowance_d;
     logic                      result_valid_q,     result_valid_d;
     logic [WORKLD_W-1:0]       workload_result_q,  workload_result_d;
     logic [DELAYCNT_W-1:0]     delay_cnt_q,        delay_cnt_d;  // counts init delay
-    logic [SIGNER_IDX_W-1:0]   signer_q,           signer_d; // signer whose license is currently expected (fixed order)
+    // TODO update READMEs for multi signer support
+    logic [SIGNER_IDX_W-1:0]   signer_q,           signer_d; // currently expected signer
 
 
     // -------------------------------------------------------------------------
@@ -148,6 +148,8 @@ module security_block
                 .valid        (crypto_valid),
                 .message      (trng_nonce),
                 .license      (hss_license),
+                .identifier   (hss_pkg::PUBKEYS[signer_q].identifier),
+                .root_pub_key (hss_pkg::PUBKEYS[signer_q].root_pub_key),
                 .ready        (crypto_ready),
                 .verif_passed (crypto_verif_passed)
             );
@@ -229,7 +231,7 @@ module security_block
                     if (crypto_verif_passed) begin
                         // Require a valid license from each signer (in fixed order)
                         // against the same nonce before rotating the nonce.
-                        if (int'(signer_q) == ecdsa_pkg::NUM_SIGNERS - 1) begin
+                        if (int'(signer_q) == NUM_SIGNERS - 1) begin
                             increment_allowance = 1'b1;
                             signer_d            = '0;
                             state_d             = StRequestNonce;

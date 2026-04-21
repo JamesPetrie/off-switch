@@ -69,20 +69,26 @@ module tb (
     typedef enum int {
         PH_INIT,
         PH_T1_CHECK,
-        PH_T2_DRIVE,   PH_T2_CHECK,
+        PH_T2_DRIVE,    PH_T2_CHECK,
         PH_T3_CHECK,
-        PH_T4_SUBMIT,  PH_T4_CHECK,
-        PH_T5_DRIVE,   PH_T5_CHECK,
-        PH_T6_SUBMIT,  PH_T6_CHECK,
-        PH_T7_DRIVE,   PH_T7_CHECK,
-        PH_T8_DRIVE,   PH_T8_CHECK,
-        PH_T9_DRIVE,   PH_T9_CHECK,
-        PH_T10_DRIVE,  PH_T10_CHECK,
-        PH_T11_WAIT,   PH_T11_CHECK,
-        PH_T12_SUBMIT, PH_T12_CHECK,
-        PH_T13_SUBMIT, PH_T13_CHECK,
-        PH_T14_SUBMIT, PH_T14_WAIT, PH_T14_REPLAY, PH_T14_CHECK,
-        PH_T15_SUBMIT, PH_T15_WAIT, PH_T15_RESIGN, PH_T15_CHECK,
+        PH_T4A_SUBMIT,  PH_T4A_CHECK,
+        PH_T4B_SUBMIT,  PH_T4B_CHECK,
+        PH_T5_DRIVE,    PH_T5_CHECK,
+        PH_T6_SUBMIT,   PH_T6_CHECK,
+        PH_T7_DRIVE,    PH_T7_CHECK,
+        PH_T8_DRIVE,    PH_T8_CHECK,
+        PH_T9_DRIVE,    PH_T9_CHECK,
+        PH_T10_DRIVE,   PH_T10_CHECK,
+        PH_T11_WAIT,    PH_T11_CHECK,
+        PH_T12A_SUBMIT, PH_T12A_CHECK,
+        PH_T12B_SUBMIT, PH_T12B_CHECK,
+        PH_T13_SUBMIT,  PH_T13_CHECK,
+        PH_T14A_SUBMIT, PH_T14A_WAIT,
+        PH_T14B_SUBMIT, PH_T14B_WAIT,
+        PH_T14_REPLAY,  PH_T14_CHECK,
+        PH_T15A_SUBMIT, PH_T15A_WAIT,
+        PH_T15B_SUBMIT, PH_T15B_WAIT,
+        PH_T15_RESIGN,  PH_T15_CHECK,
         PH_DONE
     } ph_e;
 
@@ -140,10 +146,13 @@ module tb (
                 // -------------------------------------------------------
                 PH_INIT: begin
                     trng_load_seed <= 1'b0;
-                    // Initialise per-layer leaves, then override the bottom
-                    // (leaf-tree) leaf with the test's starting point.
+                    // Initialise per-signer × per-layer leaves, then override
+                    // each signer's bottom (leaf-tree) leaf with the test's
+                    // starting point so signer 0 and 1 advance from the same
+                    // index.
                     init_leaves();
-                    cur_leaf[HSS_LEVELS - 1] = INITIAL_LEAF;
+                    for (int s = 0; s < int'(base_pkg::NUM_SIGNERS); s++)
+                        cur_leaf[s][HSS_LEVELS - 1] = INITIAL_LEAF;
                     phase <= PH_T1_CHECK;
                 end
 
@@ -201,20 +210,57 @@ module tb (
                 end
 
                 // -------------------------------------------------------
-                // T4: Submit valid HSS license
+                // T4A: Submit signer-0 license — allowance must stay 0
+                //      and nonce unchanged (signer 1 still outstanding).
                 // -------------------------------------------------------
-                PH_T4_SUBMIT: begin
+                PH_T4A_SUBMIT: begin
                     if (nonce_ready) begin
                         assert(allowance == 0) else
                             $fatal("Expected allowance=0, got %0d", allowance);
 
-                        license       <= hss_sign(nonce);
+                        license       <= hss_sign(nonce, 0);
                         license_valid <= 1'b1;
-                        phase         <= PH_T4_CHECK;
+                        saved_nonce   <= nonce;
+                        phase         <= PH_T4A_CHECK;
                     end
                 end
 
-                PH_T4_CHECK: begin
+                PH_T4A_CHECK: begin
+                    if (license_ready) begin
+                        license_valid <= 1'b0;
+                        license       <= 0;
+                    end
+
+                    if (!license_valid) begin
+                        if (allowance == '0 && nonce == saved_nonce) begin
+                            $display("PASS  [T4A signer-0 license] allowance still 0, nonce unchanged");
+                            pass_count <= pass_count + 1;
+                        end else begin
+                            $display("FAIL  [T4A signer-0 license] allowance=%0d (exp 0), nonce=0x%h (exp 0x%h)",
+                                     allowance, nonce, saved_nonce);
+                            fail_count <= fail_count + 1;
+                        end
+                        phase <= phase.next();
+                    end else if (wait_cnt > VERIFY_TIMEOUT) begin
+                        $fatal("FAIL  [T4A signer-0 license] timeout");
+                    end
+                end
+
+                // -------------------------------------------------------
+                // T4B: Submit signer-1 license — allowance increments.
+                // -------------------------------------------------------
+                PH_T4B_SUBMIT: begin
+                    if (nonce_ready) begin
+                        assert(nonce == saved_nonce) else
+                            $fatal("Nonce rotated before T4B (saw 0x%h, expected 0x%h)", nonce, saved_nonce);
+
+                        license       <= hss_sign(nonce, 1);
+                        license_valid <= 1'b1;
+                        phase         <= PH_T4B_CHECK;
+                    end
+                end
+
+                PH_T4B_CHECK: begin
                     if (license_ready) begin
                         license_valid <= 1'b0;
                         license       <= 0;
@@ -222,15 +268,15 @@ module tb (
 
                     if (!license_valid) begin
                         if (allowance != '0) begin
-                            $display("PASS  [T4  valid license] allowance=%0d", allowance);
+                            $display("PASS  [T4B signer-1 license] allowance=%0d", allowance);
                             pass_count <= pass_count + 1;
                         end else begin
-                            $display("FAIL  [T4  valid license] allowance not incremented");
+                            $display("FAIL  [T4B signer-1 license] allowance not incremented");
                             fail_count <= fail_count + 1;
                         end
                         phase <= phase.next();
                     end else if (wait_cnt > VERIFY_TIMEOUT) begin
-                        $fatal("FAIL  [T4  valid license] timeout");
+                        $fatal("FAIL  [T4B signer-1 license] timeout");
                     end
                 end
 
@@ -404,18 +450,52 @@ module tb (
                 end
 
                 // -------------------------------------------------------
-                // T12: New nonce after valid license
+                // T12A: Signer-0 license — nonce must not rotate yet.
                 // -------------------------------------------------------
-                PH_T12_SUBMIT: begin
+                PH_T12A_SUBMIT: begin
                     if (nonce_ready) begin
-                        license       <= hss_sign(nonce);
+                        license       <= hss_sign(nonce, 0);
                         license_valid <= 1'b1;
                         saved_nonce   <= nonce;
-                        phase         <= PH_T12_CHECK;
+                        phase         <= PH_T12A_CHECK;
                     end
                 end
 
-                PH_T12_CHECK: begin
+                PH_T12A_CHECK: begin
+                    if (license_ready) begin
+                        license_valid <= 1'b0;
+                        license       <= 0;
+                    end
+                    if (!license_valid) begin
+                        if (nonce == saved_nonce) begin
+                            $display("PASS  [T12A signer-0] nonce held across first signer's license");
+                            pass_count <= pass_count + 1;
+                        end else begin
+                            $display("FAIL  [T12A signer-0] nonce rotated early (0x%h -> 0x%h)",
+                                     saved_nonce, nonce);
+                            fail_count <= fail_count + 1;
+                        end
+                        phase <= phase.next();
+                    end else if (wait_cnt > VERIFY_TIMEOUT) begin
+                        $fatal("FAIL  [T12A signer-0] timeout");
+                    end
+                end
+
+                // -------------------------------------------------------
+                // T12B: Signer-1 license — nonce must rotate.
+                // -------------------------------------------------------
+                PH_T12B_SUBMIT: begin
+                    if (nonce_ready) begin
+                        assert(nonce == saved_nonce) else
+                            $fatal("Nonce rotated before T12B (saw 0x%h, expected 0x%h)", nonce, saved_nonce);
+
+                        license       <= hss_sign(nonce, 1);
+                        license_valid <= 1'b1;
+                        phase         <= PH_T12B_CHECK;
+                    end
+                end
+
+                PH_T12B_CHECK: begin
                     if (license_ready) begin
                         license_valid <= 1'b0;
                         license       <= 0;
@@ -423,15 +503,15 @@ module tb (
 
                     if (!license_valid && nonce_ready) begin
                         if (nonce != saved_nonce) begin
-                            $display("PASS  [T12 new nonce] nonce changed");
+                            $display("PASS  [T12B signer-1] nonce changed after 2-of-2");
                             pass_count <= pass_count + 1;
                         end else begin
-                            $display("FAIL  [T12 new nonce] nonce unchanged");
+                            $display("FAIL  [T12B signer-1] nonce unchanged");
                             fail_count <= fail_count + 1;
                         end
                         phase <= phase.next();
                     end else if (wait_cnt > VERIFY_TIMEOUT) begin
-                        $fatal("FAIL  [T12 new nonce] timeout");
+                        $fatal("FAIL  [T12B signer-1] timeout");
                     end
                 end
 
@@ -440,8 +520,11 @@ module tb (
                 // -------------------------------------------------------
                 PH_T13_SUBMIT: begin
                     if (nonce_ready) begin
-                        // Sign a different message than the current nonce
-                        license       <= hss_sign(256'd9999);
+                        // Sign a different message than the current nonce.
+                        // DUT expects signer 0 first after the T12 rotation,
+                        // so submit a signer-0 license over the wrong message
+                        // — rejection is the expected outcome.
+                        license       <= hss_sign(256'd9999, 0);
                         license_valid <= 1'b1;
                         saved_allow   <= allowance;
                         saved_nonce   <= nonce;
@@ -470,19 +553,37 @@ module tb (
                 end
 
                 // -------------------------------------------------------
-                // T14: Replay attack — submit same signature twice
+                // T14: Replay attack — after a full 2-of-2 rotates the
+                //   nonce, reusing signer 0's saved license against the
+                //   *new* nonce must be rejected.
                 // -------------------------------------------------------
-                PH_T14_SUBMIT: begin
+                PH_T14A_SUBMIT: begin
                     if (nonce_ready) begin
-                        automatic license_t sig = hss_sign(nonce);
+                        automatic license_t sig = hss_sign(nonce, 0);
                         license       <= sig;
-                        saved_license <= sig;
+                        saved_license <= sig;     // save signer-0's license for replay
                         license_valid <= 1'b1;
-                        phase         <= PH_T14_WAIT;
+                        phase         <= PH_T14A_WAIT;
                     end
                 end
 
-                PH_T14_WAIT: begin
+                PH_T14A_WAIT: begin
+                    if (license_ready) begin
+                        license_valid <= 1'b0;
+                        license       <= 0;
+                        phase         <= PH_T14B_SUBMIT;
+                    end
+                end
+
+                PH_T14B_SUBMIT: begin
+                    if (nonce_ready) begin
+                        license       <= hss_sign(nonce, 1);
+                        license_valid <= 1'b1;
+                        phase         <= PH_T14B_WAIT;
+                    end
+                end
+
+                PH_T14B_WAIT: begin
                     if (license_ready) begin
                         license_valid <= 1'b0;
                         license       <= 0;
@@ -492,7 +593,7 @@ module tb (
 
                 PH_T14_REPLAY: begin
                     if (nonce_ready) begin
-                        // Replay the saved license against the new nonce
+                        // Replay signer-0's saved license against the rotated nonce
                         license       <= saved_license;
                         license_valid <= 1'b1;
                         saved_allow   <= allowance;
@@ -523,20 +624,37 @@ module tb (
 
                 // -------------------------------------------------------
                 // T15: Re-sign old nonce with a different leaf
-                //   First submit a valid license, then re-sign the OLD
-                //   nonce using a different leaf and submit against the
-                //   NEW nonce. Should be rejected (wrong message).
+                //   Complete a full 2-of-2 for the initial nonce (which
+                //   rotates it), then re-sign the OLD nonce with signer 0
+                //   on a fresh leaf and submit it against the NEW nonce.
+                //   Should be rejected (wrong message).
                 // -------------------------------------------------------
-                PH_T15_SUBMIT: begin
+                PH_T15A_SUBMIT: begin
                     if (nonce_ready) begin
-                        license       <= hss_sign(nonce);
+                        license       <= hss_sign(nonce, 0);
                         license_valid <= 1'b1;
                         saved_nonce   <= nonce;
-                        phase         <= PH_T15_WAIT;
+                        phase         <= PH_T15A_WAIT;
                     end
                 end
 
-                PH_T15_WAIT: begin
+                PH_T15A_WAIT: begin
+                    if (license_ready) begin
+                        license_valid <= 1'b0;
+                        license       <= 0;
+                        phase         <= PH_T15B_SUBMIT;
+                    end
+                end
+
+                PH_T15B_SUBMIT: begin
+                    if (nonce_ready) begin
+                        license       <= hss_sign(nonce, 1);
+                        license_valid <= 1'b1;
+                        phase         <= PH_T15B_WAIT;
+                    end
+                end
+
+                PH_T15B_WAIT: begin
                     if (license_ready) begin
                         license_valid <= 1'b0;
                         license       <= 0;
@@ -546,8 +664,9 @@ module tb (
 
                 PH_T15_RESIGN: begin
                     if (nonce_ready) begin
-                        // Sign the OLD nonce with the next leaf (auto-advanced)
-                        license       <= hss_sign(saved_nonce);
+                        // Sign the OLD nonce with signer 0 on a fresh leaf,
+                        // submit against the NEW nonce — expect rejection.
+                        license       <= hss_sign(saved_nonce, 0);
                         license_valid <= 1'b1;
                         saved_allow   <= allowance;
                         saved_nonce   <= nonce;

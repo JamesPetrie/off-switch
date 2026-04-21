@@ -151,10 +151,11 @@ package tb_hss_sign_pkg;
     endfunction
 
     // -------------------------------------------------------------------------
-    // Extract auth path from pre-built tree (per layer)
+    // Extract auth path from pre-built tree (per signer × layer)
     // -------------------------------------------------------------------------
 
     function automatic void get_auth_path(
+        input  int signer_id,
         input  int lv,
         input  int leaf_q,
         output logic [TREE_H_MAX-1:0][WIDTH-1:0] path
@@ -162,7 +163,7 @@ package tb_hss_sign_pkg;
         int node_idx;
         node_idx = NUM_LEAVES + leaf_q;
         for (int level = 0; level < TREE_H; level++) begin
-            path[level] = TREE[lv][node_idx ^ 1];
+            path[level] = TREE[signer_id][lv][node_idx ^ 1];
             node_idx = node_idx >> 1;
         end
         for (int level = TREE_H; level < TREE_H_MAX; level++)
@@ -170,30 +171,33 @@ package tb_hss_sign_pkg;
     endfunction
 
     // -------------------------------------------------------------------------
-    // Per-layer leaf state — only the bottom layer advances on each sign call;
-    // upper-layer leaves stay sticky (set from SUB_LEAF_INDEX) throughout the
-    // simulation.
+    // Per-signer × per-layer leaf state. Only the bottom-layer leaf advances
+    // on each sign call for that signer; upper-layer leaves stay sticky
+    // (initialised from SUB_LEAF_INDEX) throughout the simulation.
     // -------------------------------------------------------------------------
 
-    int cur_leaf [HSS_LEVELS];
+    int cur_leaf [base_pkg::NUM_SIGNERS][HSS_LEVELS];
 
     function automatic void init_leaves();
-        // Upper layers (if any): use pre-chosen sub leaves, stable across
-        // signings. For L=1 the loop is empty.
-        for (int lv = 0; lv < int'(HSS_LEVELS) - 1; lv++)
-            cur_leaf[lv] = SUB_LEAF_INDEX[lv];
-        // Bottom layer: starts at 5, advances on each hss_sign
-        cur_leaf[HSS_LEVELS - 1] = 5;
+        for (int s = 0; s < int'(base_pkg::NUM_SIGNERS); s++) begin
+            // Upper layers (if any): pre-chosen sub leaves, stable across
+            // signings. For L=1 the inner loop is empty.
+            for (int lv = 0; lv < int'(HSS_LEVELS) - 1; lv++)
+                cur_leaf[s][lv] = SUB_LEAF_INDEX[lv];
+            // Bottom layer: starts at 5, advances on each hss_sign
+            cur_leaf[s][HSS_LEVELS - 1] = 5;
+        end
     endfunction
 
     function automatic logic [255:0] make_randomizer(input int leaf);
         return {32{leaf[7:0]}};
     endfunction
 
-    function automatic void advance_leaf();
-        cur_leaf[HSS_LEVELS - 1] = cur_leaf[HSS_LEVELS - 1] + 1;
-        if (cur_leaf[HSS_LEVELS - 1] >= NUM_LEAVES)
-            $fatal("Exhausted all %0d leaves in the bottom tree", NUM_LEAVES);
+    function automatic void advance_leaf(input int signer_id);
+        cur_leaf[signer_id][HSS_LEVELS - 1] = cur_leaf[signer_id][HSS_LEVELS - 1] + 1;
+        if (cur_leaf[signer_id][HSS_LEVELS - 1] >= NUM_LEAVES)
+            $fatal("Exhausted all %0d leaves in signer %0d's bottom tree",
+                   NUM_LEAVES, signer_id);
     endfunction
 
     // -------------------------------------------------------------------------
@@ -202,6 +206,7 @@ package tb_hss_sign_pkg;
     // -------------------------------------------------------------------------
 
     function automatic void sign_layer_with_q(
+        input int                                    signer_id,
         input int                                    lv,
         input logic [255:0]                          q_hash,
         ref   license_t                              lic
@@ -212,9 +217,9 @@ package tb_hss_sign_pkg;
         logic [255:0] seed;
         int q;
 
-        ident = IDENTIFIER[lv];
-        seed  = MASTER_SEED[lv];
-        q     = cur_leaf[lv];
+        ident = IDENTIFIERS[signer_id][lv];
+        seed  = MASTER_SEEDS[signer_id][lv];
+        q     = cur_leaf[signer_id][lv];
 
         // Extract digits
         for (int i = 0; i < WOTS_P1; i++)
@@ -240,20 +245,22 @@ package tb_hss_sign_pkg;
         lic.randomizer[lv] = make_randomizer(q);
 
         // Auth path
-        get_auth_path(lv, q, lic.auth_path[lv]);
+        get_auth_path(signer_id, lv, q, lic.auth_path[lv]);
     endfunction
 
     // -------------------------------------------------------------------------
-    // HSS sign — populate a license_t across all HSS_LEVELS layers.
+    // HSS sign — populate a license_t across all HSS_LEVELS layers for the
+    // given signer.
     //
     // Layer HSS_LEVELS-1 (bottom) signs the user message.
     // Layer lv < L-1 signs pub[lv+1] = serialised LMS public key of layer lv+1.
     // Upper-layer signatures are recomputed each call (cheap for small h),
-    // but only the bottom-layer leaf advances afterwards.
+    // but only the signer's bottom-layer leaf advances afterwards.
     // -------------------------------------------------------------------------
 
     function automatic license_t hss_sign(
-        input logic [255:0] message
+        input logic [255:0] message,
+        input int           signer_id
     );
         license_t lic;
         logic [255:0] q_hash;
@@ -263,29 +270,29 @@ package tb_hss_sign_pkg;
 
         // Subtree identifiers go into the license so the verifier can
         // reconstruct pub[lv] during upper-layer Q hashing. sub_I[0] is unused
-        // (layer 0 is the top tree and uses TOP_IDENTIFIER).
+        // (layer 0 is the top tree and uses the signer's top identifier).
         for (int lv = 1; lv < HSS_LEVELS; lv++)
-            lic.sub_I[lv] = IDENTIFIER[lv];
+            lic.sub_I[lv] = IDENTIFIERS[signer_id][lv];
 
         // Sign each layer lv from top (0) to bottom (L-1). Payload at lv:
         //   - lv == L-1 : user message
         //   - lv <  L-1 : pub[lv+1] = {LMS_TYPE, LMOTS_TYPE, I_{lv+1}, root_{lv+1}}
         for (int lv = 0; lv < HSS_LEVELS; lv++) begin
-            q = cur_leaf[lv];
+            q = cur_leaf[signer_id][lv];
             if (lv == HSS_LEVELS - 1) begin
-                q_hash = compute_q_hash_msg(IDENTIFIER[lv], q,
+                q_hash = compute_q_hash_msg(IDENTIFIERS[signer_id][lv], q,
                                             make_randomizer(q), message);
             end else begin
-                q_hash = compute_q_hash_sub(IDENTIFIER[lv], q,
+                q_hash = compute_q_hash_sub(IDENTIFIERS[signer_id][lv], q,
                                             make_randomizer(q),
-                                            IDENTIFIER[lv + 1],
-                                            TREE[lv + 1][1]);  // T_{lv+1}[1] = root
+                                            IDENTIFIERS[signer_id][lv + 1],
+                                            TREE[signer_id][lv + 1][1]);  // root T_{lv+1}[1]
             end
-            sign_layer_with_q(lv, q_hash, lic);
+            sign_layer_with_q(signer_id, lv, q_hash, lic);
         end
 
-        // Advance only the bottom-layer leaf for the next call.
-        advance_leaf();
+        // Advance only this signer's bottom-layer leaf for the next call.
+        advance_leaf(signer_id);
 
         return lic;
     endfunction
