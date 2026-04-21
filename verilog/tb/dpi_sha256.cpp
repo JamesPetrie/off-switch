@@ -129,7 +129,7 @@ void sha256(const uint8_t *data, size_t len, uint8_t *hash)
 //
 // SV declaration:
 //   import "DPI-C" function void dpi_sha256(
-//       input byte unsigned data[], input int byte_len,
+//       input byte unsigned data[96], input int byte_len,
 //       output bit [255:0] digest);
 //
 // Verilator packs bit[255:0] as an array of svBitVecVal (uint32_t words),
@@ -138,14 +138,11 @@ void sha256(const uint8_t *data, size_t len, uint8_t *hash)
 // little-endian word array that verilator expects.
 // --------------------------------------------------------------------------
 
-extern "C" void dpi_sha256(const svOpenArrayHandle data, int byte_len,
+extern "C" void dpi_sha256(const unsigned char *data, int byte_len,
                            svBitVecVal *digest)
 {
-    // Extract byte array from SV open array
-    const uint8_t *src = (const uint8_t *)svGetArrayPtr(data);
-
     uint8_t hash[32];
-    sha256(src, (size_t)byte_len, hash);
+    sha256((const uint8_t *)data, (size_t)byte_len, hash);
 
     // Pack big-endian hash bytes into svBitVecVal words (little-endian word order)
     // digest word 0 = bits[31:0] = hash[28..31]

@@ -12,7 +12,7 @@ package tb_hss_sign_pkg;
 
     // DPI import — implemented in dpi_sha256.cpp
     import "DPI-C" function void dpi_sha256(
-        input byte unsigned data[], input int byte_len,
+        input byte unsigned data[96], input int byte_len,
         output bit [255:0] digest
     );
 
