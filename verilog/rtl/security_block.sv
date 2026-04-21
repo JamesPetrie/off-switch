@@ -128,6 +128,10 @@ module security_block
                 .z            (trng_nonce),
                 .r            (ecdsa_license.r),
                 .s            (ecdsa_license.s),
+                .q_x          (ecdsa_pkg::PUBKEYS[1].q_x),
+                .q_y          (ecdsa_pkg::PUBKEYS[1].q_y),
+                .gpq_x        (ecdsa_pkg::PUBKEYS[1].gpq_x),
+                .gpq_y        (ecdsa_pkg::PUBKEYS[1].gpq_y),
                 .ready        (crypto_ready),
                 .verif_passed (crypto_verif_passed)
             );
