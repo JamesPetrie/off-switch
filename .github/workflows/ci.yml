@@ -10,6 +10,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install Verilator
         uses: veryl-lang/setup-verilator@v1
@@ -31,6 +33,10 @@ jobs:
         run: make lint TOOL=verible
         working-directory: verilog
 
-      - name: Simulate
-        run: make sim TB=top
+      - name: Simulate ECDSA
+        run: make sim TB=top_ecdsa
+        working-directory: verilog
+
+      - name: Simulate HSS-LMS
+        run: make sim TB=top_hss
         working-directory: verilog
