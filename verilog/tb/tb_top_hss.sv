@@ -140,7 +140,10 @@ module tb (
                 // -------------------------------------------------------
                 PH_INIT: begin
                     trng_load_seed <= 1'b0;
-                    cur_leaf = INITIAL_LEAF;
+                    // Initialise per-layer leaves, then override the bottom
+                    // (leaf-tree) leaf with the test's starting point.
+                    init_leaves();
+                    cur_leaf[HSS_LEVELS - 1] = INITIAL_LEAF;
                     phase <= PH_T1_CHECK;
                 end
 
