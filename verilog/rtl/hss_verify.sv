@@ -47,7 +47,7 @@ module hss_verify
 
 
     typedef enum logic [0:0] {
-        StMrklLoad, StMrklHash
+        StMrklInit, StMrklHash
     } mrkl_state_e;
 
     // -------------------------------------------------------------------------
@@ -62,7 +62,7 @@ module hss_verify
     logic [WIDTH-1:0] hash_reg_q,    hash_reg_d;
 
     // Auxiliary register — companion value alongside hash_reg
-    // WOTS: holds Q hash; Merkle: auth path sibling
+    // WOTS: holds Q hash
     logic [WIDTH-1:0] aux_reg_q,     aux_reg_d;
 
     // Shared block counter — indexes SHA-256 blocks within a multi-block hash
@@ -254,8 +254,8 @@ module hss_verify
     logic [WIDTH-1:0] left_node;
     logic [WIDTH-1:0] right_node;
 
-    assign {left_node, right_node} = is_right ? {aux_reg_q,  hash_reg_q}
-                                              : {hash_reg_q, aux_reg_q };
+    assign {left_node, right_node} = is_right ? {cur_auth_node, hash_reg_q}
+                                              : {hash_reg_q,    cur_auth_node};
 
     // -------------------------------------------------------------------------
     // Merkle: H(I || parent || D_INTR || left || right)
@@ -348,22 +348,15 @@ module hss_verify
     // hash_reg — captures sha_digest on completion, or sig chain on WOTS load
     // -------------------------------------------------------------------------
 
-    wire wots_loading  = (seq_q == StWots) && (wots_q == StWotsLoad);
+    wire wots_loading = (seq_q == StWots) && (wots_q == StWotsLoad);
+    wire hash_reg_en  = wots_loading | hash_complete;
 
-    always_comb begin
-        hash_reg_d = hash_reg_q;
-
-        unique case ({wots_loading, hash_complete})
-            2'b01: hash_reg_d = sha_digest;
-            2'b10: hash_reg_d = cur_sig_chain;
-            default: ;
-        endcase
-    end
+    assign hash_reg_d = (!wots_loading) ? sha_digest : cur_sig_chain;
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             hash_reg_q <= '0;
-        end else begin
+        end else if (hash_reg_en) begin
             hash_reg_q <= hash_reg_d;
         end
     end
@@ -372,25 +365,13 @@ module hss_verify
     // aux_reg — stores Q hash throughout WOTS, and auth siblings during Merkle
     // -------------------------------------------------------------------------
 
-    wire wots_init    = (seq_q == StWots)   && (wots_q == StWotsInit);
-    wire mrkl_load    = (seq_q == StMerkle) && (mrkl_q == StMrklLoad)
-                        && (mrkl_level_q < 6'(TREE_HEIGHT));
-
-    always_comb begin
-        aux_reg_d = aux_reg_q;
-
-        unique case ({mrkl_load, wots_init})
-            2'b01: aux_reg_d = hash_reg_q;
-            2'b10: aux_reg_d = cur_auth_node;
-            default: ;
-        endcase
-    end
+    wire wots_init  = (seq_q == StWots) && (wots_q == StWotsInit);
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             aux_reg_q <= '0;
-        end else begin
-            aux_reg_q <= aux_reg_d;
+        end else if (wots_init) begin
+            aux_reg_q <= hash_reg_q;
         end
     end
 
@@ -493,15 +474,11 @@ module hss_verify
         if (seq_q == StMerkle) begin
 
             unique case (mrkl_q)
-                StMrklLoad: begin
-                    // initialize node_index from license if uninitialized
-                    if (node_index_q == 0) begin
-                        // set bit h to convert leaf index to node index
-                        // (nodes above might use leaf_index but with bit[h]=0)
-                        node_index_d = (32'd1 << TREE_HEIGHT) | license.leaf_index;
-                    end
-                    // aux_reg loads auth sibling this cycle also
-                    // (outside this always_comb since aux_reg is shared)
+                StMrklInit: begin
+                    // initialize node_index from license
+                    // set bit h to convert leaf index to node index
+                    // (nodes above might use leaf_index but with bit[h]=0)
+                    node_index_d = (32'd1 << TREE_HEIGHT) | license.leaf_index;
 
                     mrkl_d = StMrklHash;
                 end
@@ -514,11 +491,7 @@ module hss_verify
                         // or clear counter and node index
                         mrkl_level_d = ~last_level ? mrkl_level_q+1 : '0;
                         node_index_d = ~last_level ? parent_num     : '0;
-
-                        // This FSM has no separate Init state
-                        // so move back to the starting Load state
-                        // on either the next level or completion
-                        mrkl_d = StMrklLoad;
+                        mrkl_d = ~last_level ? StMrklHash : StMrklInit;
 
                         // signal completion to main FSM on last level
                         mrkl_complete = last_level;
@@ -611,7 +584,7 @@ module hss_verify
             wots_q        <= StWotsInit;
             wots_chain_q  <= '0;
             wots_step_q   <= '0;
-            mrkl_q        <= StMrklLoad;
+            mrkl_q        <= StMrklInit;
             mrkl_level_q  <= '0;
             node_index_q  <= '0;
             for (int i = 0; i < WOTS_P; i++)
