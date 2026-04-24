@@ -19,6 +19,13 @@ P2 = 2   # checksum digits
 P = P1 + P2  # 34 total chains
 MAX_COEF = (1 << W) - 1  # 255
 
+# RFC 8554 §5.1 typecodes — used to serialise an LMS public key that an upper
+# HSS layer signs. Must agree with hss_pkg.sv::LMS_TYPE / LMS_OTSTYPE.
+LMS_TYPE    = 0x00000005   # lms_sha256_n32_h5
+LMS_OTSTYPE = 0x00000004   # lmots_sha256_n32_w8
+
+D_MESG = 0x8181
+
 
 def sha256(data: bytes) -> bytes:
     return hashlib.sha256(data).digest()
@@ -174,14 +181,33 @@ def merkle_auth_path(nodes: list, height: int, leaf_idx: int) -> list:
     return path
 
 
-def generate_test_vectors():
-    """Generate test vectors for the HardCaml implementation."""
+def serialise_lms_pub(identifier: bytes, root: bytes) -> bytes:
+    """Serialise an LMS public key for signing by an upper HSS layer:
+        pub = u32str(LMS_TYPE) || u32str(LMS_OTSTYPE) || I || T[1]
+    """
+    return (struct.pack(">I", LMS_TYPE) + struct.pack(">I", LMS_OTSTYPE)
+            + identifier + root)
 
-    # Fixed test parameters
-    identifier = b'\x01' * 16  # I = 16 bytes of 0x01
+
+def build_layer(identifier: bytes, master_seed: bytes, height: int) -> dict:
+    """Build a full LMS layer: all leaf Kc, leaf hashes, tree, root."""
+    num_leaves = 1 << height
+    all_Kc = [wots_keygen(identifier, q, master_seed)[2] for q in range(num_leaves)]
+    leaf_hashes = [merkle_leaf_hash(identifier, i, all_Kc[i]) for i in range(num_leaves)]
+    root, nodes = build_merkle_tree(identifier, leaf_hashes, height)
+    return {
+        "identifier":   identifier,
+        "master_seed":  master_seed,
+        "height":       height,
+        "root":         root,
+        "nodes":        nodes,
+    }
+
+
+def generate_test_vectors(identifier: bytes, seed: bytes, height: int):
+    """Generate single-tree test vectors for the HardCaml / OCaml reference."""
+
     q = 5  # leaf index
-    seed = b'\xAB' * 32  # deterministic seed
-    height = 4  # small tree for testing (16 leaves)
 
     # Generate WOTS+ keypair
     sk, pk_elements, Kc = wots_keygen(identifier, q, seed)
@@ -193,7 +219,6 @@ def generate_test_vectors():
     # Q = H(I || u32str(q) || u16str(D_MESG) || C || message)
     C = os.urandom(32)  # randomizer
     C = b'\xCC' * 32  # deterministic for testing
-    D_MESG = 0x8181
     Q_input = identifier + struct.pack(">I", q) + struct.pack(">H", D_MESG) + C + message
     Q = sha256(Q_input)
 
@@ -203,7 +228,7 @@ def generate_test_vectors():
     # Verify
     assert wots_verify(Q, sig, identifier, q, Kc), "Self-verification failed!"
 
-    # Build Merkle tree (small, height=4, 16 leaves)
+    # Build Merkle tree (small)
     # All leaves use the same master seed; wots_keygen derives per-leaf keys via RFC 8554 Appendix A
     all_Kc = []
     for leaf_q in range(1 << height):
@@ -244,7 +269,7 @@ def generate_test_vectors():
         "signature": [s.hex() for s in sig],
         "Kc": Kc.hex(),
         "pk_elements": [pk.hex() for pk in pk_elements],
-        "tree_height": height,
+        "tree_h": height,
         "leaf_hash": leaf_hashes[q].hex(),
         "auth_path": [node.hex() for node in auth_path],
         "merkle_root": root.hex(),
@@ -265,7 +290,7 @@ def print_ocaml_vectors(v):
     print(f'let kc_hex = "{v["Kc"]}"')
     print(f'let leaf_hash_hex = "{v["leaf_hash"]}"')
     print(f'let merkle_root_hex = "{v["merkle_root"]}"')
-    print(f'let tree_height = {v["tree_height"]}')
+    print(f'let tree_h = {v["tree_h"]}')
     print()
     print("let digits = [|")
     for i in range(0, len(v["digits"]), 8):
@@ -284,94 +309,232 @@ def print_ocaml_vectors(v):
     print("|]")
 
 
-def emit_sv_tree_pkg(identifier: bytes, master_seed: bytes, height: int,
-                     output_path: str):
-    """Emit a SystemVerilog package with the pre-built Merkle tree."""
+def emit_sv_tree_pkg(identifiers: list, master_seeds: list, height: int,
+                     sub_leaf_indices: list, output_path: str):
+    """Emit a SystemVerilog package with NUM_LAYERS pre-built Merkle trees.
+
+    identifiers[lv], master_seeds[lv]: per-layer tree identity (lv 0 = top).
+    sub_leaf_indices[lv]: upper-tree leaf that signs pub[lv+1], for lv in 0..L-2.
+    """
+
+    L = len(identifiers)
+    assert len(master_seeds) == L
+    assert len(sub_leaf_indices) == L - 1, \
+        f"expected {L-1} sub leaf indices for {L} layers"
 
     num_leaves = 1 << height
     total_nodes = 2 * num_leaves  # 1-based: indices 1..(2*num_leaves-1)
 
-    # Build all leaf Kc values using RFC 8554 Appendix A derivation
-    all_Kc = []
-    for q in range(num_leaves):
-        _, _, Kc = wots_keygen(identifier, q, master_seed)
-        all_Kc.append(Kc)
+    # Build each layer
+    layers = [build_layer(identifiers[lv], master_seeds[lv], height)
+              for lv in range(L)]
 
-    # Leaf hashes
-    leaf_hashes = [merkle_leaf_hash(identifier, i, all_Kc[i])
-                   for i in range(num_leaves)]
+    # Self-check each layer with a few leaves
+    for lv, layer in enumerate(layers):
+        nodes = layer["nodes"]
+        ident = layer["identifier"]
+        root  = layer["root"]
+        for test_q in [0, min(5, num_leaves - 1), num_leaves - 1]:
+            path = merkle_auth_path(nodes, height, test_q)
+            leaf_Kc = wots_keygen(ident, test_q, layer["master_seed"])[2]
+            computed = merkle_leaf_hash(ident, test_q, leaf_Kc)
+            idx = num_leaves + test_q
+            for lvl in range(height):
+                parent = idx >> 1
+                sib = path[lvl]
+                if idx % 2 == 0:
+                    computed = merkle_internal_hash(ident, parent, computed, sib)
+                else:
+                    computed = merkle_internal_hash(ident, parent, sib, computed)
+                idx = parent
+            assert computed == root, f"Layer {lv} self-check failed for leaf {test_q}"
 
-    # Build tree
-    root, nodes = build_merkle_tree(identifier, leaf_hashes, height)
+    # Cross-layer self-check: verify an HSS chain from bottom-up against top root.
+    # Sign a test message with layer L-1's leaf 0, then sign each lower layer's
+    # pub with the chosen sub leaf of the layer above.
+    test_msg = sha256(b"hss self-check message")
+    test_bottom_leaf = 0
+    _check_hss_chain(layers, height, sub_leaf_indices, test_bottom_leaf, test_msg)
 
-    # Self-check a few leaves
-    for test_q in [0, 5, num_leaves - 1]:
-        path = merkle_auth_path(nodes, height, test_q)
-        computed = leaf_hashes[test_q]
-        idx = num_leaves + test_q
-        for lv in range(height):
-            parent = idx >> 1
-            sib = path[lv]
-            if idx % 2 == 0:
-                computed = merkle_internal_hash(identifier, parent, computed, sib)
-            else:
-                computed = merkle_internal_hash(identifier, parent, sib, computed)
-            idx = parent
-        assert computed == root, f"Self-check failed for leaf {test_q}"
+    top_root = layers[0]["root"]
 
     # Emit SV
     with open(output_path, "w") as f:
         f.write("// Auto-generated by reference_lms.py — do not edit\n")
-        f.write("// Merkle tree for HSS-LMS testbench\n\n")
+        f.write(f"// HSS-LMS testbench: {L}-layer Merkle tree bundle\n\n")
         f.write("package tb_hss_tree_pkg;\n\n")
         f.write("    import arith_pkg::*;\n\n")
-        f.write(f"    localparam int unsigned TREE_HEIGHT = {height};\n")
-        f.write(f"    localparam int unsigned NUM_LEAVES  = 1 << TREE_HEIGHT;\n\n")
+        f.write(f"    localparam int unsigned NUM_LAYERS = {L};\n")
+        f.write(f"    localparam int unsigned TREE_H = {height};\n")
+        f.write(f"    localparam int unsigned NUM_LEAVES  = 1 << TREE_H;\n")
         f.write(f"    localparam int unsigned NUM_NODES   = 2*NUM_LEAVES - 1;\n\n")
 
-        f.write(f"    localparam logic [127:0] IDENTIFIER =\n")
-        f.write(f"        128'h{identifier.hex()};\n\n")
+        # Per-layer identifiers
+        f.write(f"    localparam logic [NUM_LAYERS-1:0][127:0] IDENTIFIER = '{{\n")
+        # SV packed array literal: index 0 is the LSBs, so emit the highest
+        # layer first for readability ({L-1, ..., 1, 0}).
+        for lv in range(L - 1, -1, -1):
+            tail = "," if lv > 0 else ""
+            f.write(f"        128'h{layers[lv]['identifier'].hex()}{tail}  // layer {lv}\n")
+        f.write("    };\n\n")
 
-        f.write(f"    localparam logic [WIDTH-1:0] MASTER_SEED =\n")
-        f.write(f"        256'h{master_seed.hex()};\n\n")
+        # Per-layer master seeds
+        f.write(f"    localparam logic [NUM_LAYERS-1:0][WIDTH-1:0] MASTER_SEED = '{{\n")
+        for lv in range(L - 1, -1, -1):
+            tail = "," if lv > 0 else ""
+            f.write(f"        256'h{layers[lv]['master_seed'].hex()}{tail}  // layer {lv}\n")
+        f.write("    };\n\n")
 
+        # Top-tree root is the HSS anchor
         f.write(f"    localparam logic [WIDTH-1:0] ROOT =\n")
-        f.write(f"        256'h{root.hex()};\n\n")
+        f.write(f"        256'h{top_root.hex()};\n\n")
 
-        # Tree nodes array (1-based, index 0 unused)
-        f.write(f"    // Tree nodes: index 1 = root, {num_leaves}..{2*num_leaves-1} = leaves\n")
-        f.write(f"    localparam logic [WIDTH-1:0] TREE [{total_nodes}] = '{{\n")
-        f.write(f"        // index 0 unused (default: '0)\n")
-        for i in range(1, total_nodes):
-            label = ""
-            if i == 1:
-                label = "  // root"
-            elif i >= num_leaves:
-                label = f"  // leaf {i - num_leaves}"
-            f.write(f"        {i:2d}: 256'h{nodes[i].hex()},{label}\n")
-        f.write(f"        default: '0\n")
+        # Upper-tree leaf indices that sign the pub of the next layer down.
+        # Sized [NUM_LAYERS] so the array is always present even at L=1
+        # (index 0..L-2 is meaningful; index L-1 is an unused placeholder).
+        f.write(f"    localparam int unsigned SUB_LEAF_INDEX [NUM_LAYERS] = '{{\n")
+        for lv in range(L):
+            tail = "," if lv < L - 1 else ""
+            if lv < L - 1:
+                label = f"  // layer {lv} leaf that signs pub[{lv+1}]"
+                val = sub_leaf_indices[lv]
+            else:
+                label = "  // unused (bottom layer signs the user message)"
+                val = 0
+            f.write(f"        {val}{tail}{label}\n")
+        f.write("    };\n\n")
+
+        # Tree nodes array — [NUM_LAYERS][2*NUM_LEAVES]
+        f.write(f"    // Tree nodes per layer: index 1 = root, {num_leaves}..{2*num_leaves-1} = leaves\n")
+        f.write(f"    localparam logic [WIDTH-1:0] TREE [NUM_LAYERS][{total_nodes}] = '{{\n")
+        for lv in range(L):
+            f.write(f"        // ---- layer {lv} ----\n")
+            f.write(f"        '{{\n")
+            f.write(f"            // index 0 unused (default: '0)\n")
+            for i in range(1, total_nodes):
+                label = ""
+                if i == 1:
+                    label = "  // root"
+                elif i >= num_leaves:
+                    label = f"  // leaf {i - num_leaves}"
+                f.write(f"            {i:2d}: 256'h{layers[lv]['nodes'][i].hex()},{label}\n")
+            f.write(f"            default: '0\n")
+            tail = "" if lv == L - 1 else ","
+            f.write(f"        }}{tail}\n")
         f.write("    };\n\n")
 
         f.write("endpackage\n")
 
     print(f"Generated {output_path}")
-    print(f"  {height}-level tree, {num_leaves} leaves, {2*num_leaves-1} nodes")
+    print(f"  {L}-layer HSS-LMS trees, height {height}, {num_leaves} leaves/tree, top root {top_root.hex()[:32]}...")
+
+
+def _check_hss_chain(layers, height, sub_leaf_indices, bottom_leaf, message):
+    """Simulate an HSS sign+verify across all layers to sanity-check the tree
+    bundle we're about to emit. Bottom-up verify mirrors the RTL."""
+    L = len(layers)
+
+    # SIGN (top→down in generation, but stored in layer-indexed arrays).
+    # For each layer, pick the active leaf:
+    active_leaf = [None] * L
+    active_leaf[L - 1] = bottom_leaf
+    for lv in range(L - 1):
+        active_leaf[lv] = sub_leaf_indices[lv]
+
+    # For each layer, compute the signed payload:
+    payloads = [None] * L
+    payloads[L - 1] = message
+    for lv in range(L - 1):
+        payloads[lv] = serialise_lms_pub(layers[lv + 1]["identifier"],
+                                         layers[lv + 1]["root"])
+
+    # WOTS+ sign and generate auth paths
+    sigs = []
+    auth_paths = []
+    for lv in range(L):
+        ident = layers[lv]["identifier"]
+        seed  = layers[lv]["master_seed"]
+        q     = active_leaf[lv]
+        # Compute Q hash
+        C = bytes([q & 0xff] * 32)  # deterministic randomizer (match tb_hss_sign_pkg)
+        Q_input = (ident + struct.pack(">I", q) + struct.pack(">H", D_MESG)
+                   + C + payloads[lv])
+        Q = sha256(Q_input)
+        sk, _, _ = wots_keygen(ident, q, seed)
+        sig, _ = wots_sign(Q, sk, ident, q)
+        sigs.append(sig)
+        auth_paths.append(merkle_auth_path(layers[lv]["nodes"], height, q))
+
+    # VERIFY bottom-up (mirrors the RTL)
+    prev_root = None
+    for lv in reversed(range(L)):
+        ident = layers[lv]["identifier"]
+        q     = active_leaf[lv]
+        # payload: either user message (bottom) or serialised pub built from
+        # the previous layer's computed root
+        if lv == L - 1:
+            payload = message
+        else:
+            payload = serialise_lms_pub(layers[lv + 1]["identifier"], prev_root)
+        C = bytes([q & 0xff] * 32)
+        Q_input = (ident + struct.pack(">I", q) + struct.pack(">H", D_MESG)
+                   + C + payload)
+        Q = sha256(Q_input)
+        # Recover pk candidate from signature
+        all_digits = coefs(Q, W) + checksum(coefs(Q, W))
+        pk_candidate = []
+        for i in range(P):
+            steps = MAX_COEF - all_digits[i]
+            pk_i = chain(sigs[lv][i], 0, ident, q, i, all_digits[i], steps)
+            pk_candidate.append(pk_i)
+        # Kc
+        msg = ident + struct.pack(">I", q) + struct.pack(">H", 0x8080)
+        for pk_i in pk_candidate:
+            msg += pk_i
+        Kc = sha256(msg)
+        # Leaf
+        leaf = merkle_leaf_hash(ident, q, Kc)
+        # Walk up
+        node_idx = (1 << height) + q
+        cur = leaf
+        for lvl in range(height):
+            parent = node_idx >> 1
+            sib = auth_paths[lv][lvl]
+            if node_idx % 2 == 0:
+                cur = merkle_internal_hash(ident, parent, cur, sib)
+            else:
+                cur = merkle_internal_hash(ident, parent, sib, cur)
+            node_idx = parent
+        prev_root = cur
+
+    assert prev_root == layers[0]["root"], \
+        "HSS cross-layer self-check failed: computed top root != expected"
 
 
 if __name__ == "__main__":
     import sys
 
-    # Fixed parameters (must match hss_pkg.sv)
-    identifier = b'\x01' * 16
-    master_seed = b'\xAB' * 32
-    height = 4
+    # Per-HSS-layer parameters. Layer 0 = top (must keep 0x01../0xAB.. so the
+    # ROOT_PUB_KEY embedded in hss_pkg.sv stays stable), layer L-1 = bottom.
+    # Lower layers use simple repeating-byte patterns that increment per layer
+    # for easy recognition in waveforms.
+    height = 5
+    NUM_LAYERS = 2
+    identifiers  = [bytes([0x01 + lv] * 16) for lv in range(NUM_LAYERS)]
+    master_seeds = [bytes([0xAB - lv] * 32) for lv in range(NUM_LAYERS)]
 
-    vectors = generate_test_vectors()
+    # Pre-chosen leaf in layer lv that signs pub[lv+1]. Pick leaf 0 for
+    # reproducibility and to keep the upper-tree leaf sticky across bottom
+    # signings (tb_hss_sign_pkg only advances the bottom leaf).
+    sub_leaf_indices = [0] * (NUM_LAYERS - 1)
+
+    vectors = generate_test_vectors(identifiers[0], master_seeds[0], height)
 
     # emit SV tree package
-    emit_sv_tree_pkg(identifier, master_seed, height, "verilog/tb/tb_hss_tree_pkg.sv")
+    emit_sv_tree_pkg(identifiers, master_seeds, height, sub_leaf_indices,
+                     "verilog/tb/tb_hss_tree_pkg.sv")
 
-    # Save JSON
+    # Save JSON (single-tree vectors, for OCaml reference)
     with open("test/test_vectors_lms.json", "w") as f:
         json.dump(vectors, f, indent=2)
     print("Saved test_vectors_lms.json")
