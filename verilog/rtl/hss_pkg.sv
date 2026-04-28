@@ -100,4 +100,17 @@ package hss_pkg;
         logic [HSS_LEVELS-1:0]                [127:0]      sub_I;
     } hss_lic_t;
 
+    // -------------------------------------------------------------------------
+    // SHA256 message formats
+    // -------------------------------------------------------------------------
+
+    // Q_MSG: H(I || q || D_MESG || C || <signed payload>)
+    typedef struct packed {
+        logic     [127:0] i;
+        logic      [31:0] q;
+        logic      [15:0] d_mesg;
+        logic [WIDTH-1:0] c;
+        logic [WIDTH-1:0] message;
+    } q_msg_t;
+
 endpackage

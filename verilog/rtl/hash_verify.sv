@@ -5,14 +5,14 @@
 // at elaboration; only one branch survives synthesis.
 //
 //   LMS (RFC 8554 HSS/LMS):
-//     Idle → Q0 → Wots → WotsKc → Leaf → Merkle → Done
+//     Idle → Q → Wots → WotsKc → Leaf → Merkle → Done
 //   SPHINCS+ FORS (this iteration; hypertree TODO):
-//     Idle → Q0 → Q1 → Fors → ForsKc → Wots → … → Done   (Wots not yet SPHINCS-aware)
+//     Idle → Q → Qext → Fors → ForsKc → Wots → … → Done   (Wots not yet SPHINCS-aware)
 //
 // Q phase: produces enough message-hash material for the chosen scheme.
-//   - LMS uses 256 bits (fits one SHA-256 digest, captured at end of StQ0).
+//   - LMS uses 256 bits (fits one SHA-256 digest, captured at end of StQ).
 //   - SPHINCS+ needs K*A + tree_idx + leaf_idx ≈ 379 bits, supplied by two
-//     MGF1-SHA256 blocks (StQ0 + StQ1) into a 2*WIDTH-wide aux register.
+//     MGF1-SHA256 blocks (StQ + StQext) into a 2*WIDTH-wide aux register.
 //     Block index q_hash_cntr is appended to the SPHINCS Q payload so the
 //     same Q_SPHINCS_DATA macro covers both blocks.
 //
@@ -53,12 +53,12 @@ module hash_verify
 
     // -------------------------------------------------------------------------
     // FSM state types — FORS states placed before WOTS to mirror dataflow:
-    // SPHINCS goes Q* → Fors → ForsKc → Wots; LMS goes Q0 → Wots directly.
+    // SPHINCS goes Q* → Fors → ForsKc → Wots; LMS goes Q → Wots directly.
     // -------------------------------------------------------------------------
 
     typedef enum logic [3:0] {
         StIdle,
-        StQ0, StQ1,                                // Q phase (Q1 SPHINCS-only)
+        StQ, StQext,                                // Q phase (Qext SPHINCS-only)
         StFors, StForsKc,                          // SPHINCS FORS path
         StWots, StWotsKc, StLeaf, StMerkle,        // LMS / SPHINCS hypertree
         StDone
@@ -154,18 +154,18 @@ module hash_verify
     // Hypertree layer corresponding to the public key (top)
     wire is_pk_layer  = (layer_q == '0);
 
-    // Module-level shared wires (driven inside generate)
     wire [127:0]     cur_I;
     wire [31:0]      cur_leaf_index;
     wire [WIDTH-1:0] cur_randomizer;
     wire [127:0]     cur_sub_I_next;     // identity of layer below (HSS Q_sub)
-    wire [WIDTH-1:0] cur_sub_root;       // T[1] from layer below (HSS Q_sub)
     wire [WIDTH-1:0] cur_sig_chain;
-    wire             last_chain;
     wire [WIDTH-1:0] cur_auth_node;
-    wire             last_level;
+
     wire [WIDTH-1:0] cur_fors_sk;
     wire [WIDTH-1:0] cur_fors_auth;
+
+    localparam Q_MSG_W = SCHEME ? $bits(sphincs_pkg::h_msg_inner_t) : $bits(hss_pkg::q_msg_t);
+    wire [Q_MSG_W-1:0] q_msg_data;
 
     generate
         if (SCHEME == 1'b0) begin : g_lms
@@ -177,15 +177,19 @@ module hash_verify
             assign cur_leaf_index  = hss_lic.leaf_index[layer_q];
             assign cur_randomizer  = hss_lic.randomizer[layer_q];
             assign cur_sub_I_next  = hss_lic.sub_I[layer_q + 1'b1];
-            assign cur_sub_root    = hash_reg_q;   // T[1] just computed below
             assign cur_sig_chain   = hss_lic.sig_chains[layer_q][wots_chain_q];
-            assign last_chain      = (int'(wots_chain_q) == WOTS_P - 1);
             assign cur_auth_node   = hss_lic.auth_path[layer_q][mrkl_level_q];
-            assign last_level      = (int'(mrkl_level_q) == TREE_H - 1);
 
             // FORS-side wires unused in LMS; drive to constants.
             assign cur_fors_sk     = '0;
             assign cur_fors_auth   = '0;
+
+
+            assign q_msg_data = q_msg_t'{i:       cur_I,
+                                         q:       cur_leaf_index,
+                                         d_mesg:  D_MESG,
+                                         c:       cur_randomizer,
+                                         message: message};
         end else begin : g_sphincs
             sphincs_lic_t sphincs_lic;
             assign sphincs_lic = license;
@@ -197,22 +201,28 @@ module hash_verify
             assign cur_leaf_index  = '0;
             assign cur_randomizer  = '0;
             assign cur_sub_I_next  = TOP_IDENTIFIER;
-            assign cur_sub_root    = hash_reg_q;
             assign cur_sig_chain   = '0;
-            assign last_chain      = (int'(wots_chain_q) == WOTS_P - 1);
             assign cur_auth_node   = '0;
-            assign last_level      = (int'(mrkl_level_q) == TREE_H - 1);
 
             // FORS license drives the per-tree sk and per-(tree,level) sibling.
             assign cur_fors_sk     = sphincs_lic.sk[fors_tree_q];
             assign cur_fors_auth   = sphincs_lic.auth[fors_tree_q][fors_level_q];
+
+            assign q_msg_data = h_msg_inner_t'{r:       sphincs_lic.r,
+                                               pk_seed: TEST_PK.seed,
+                                               pk_root: TEST_PK.root,
+                                               m:       message};
         end
     endgenerate
 
+    // common helpers
+    wire last_chain = (int'(wots_chain_q) == WOTS_P - 1);
+    wire last_level = (int'(mrkl_level_q) == TREE_H - 1);
+
     // -------------------------------------------------------------------------
     // q_digits (LMS WOTS) — derived from the upper half of aux_reg, which
-    // captured the StQ0 digest. SPHINCS leaves the lower half holding the
-    // StQ1 digest; LMS skips StQ1 and the lower half stays at reset.
+    // captured the StQ digest. SPHINCS leaves the lower half holding the
+    // StQext digest; LMS skips StQext and the lower half stays at reset.
     // -------------------------------------------------------------------------
 
     logic [7:0] q_digits[WOTS_P];
@@ -303,6 +313,11 @@ module hash_verify
         return (calc_sha_blocks(data_bits) * 512) - (data_bits + SHA_PAD_OVERHEAD);
     endfunction
 
+    localparam int unsigned Q_MSG_BLOCKS    = calc_sha_blocks($bits(q_msg_data));
+    localparam int unsigned Q_MSG_PAD_ZEROS = calc_sha_pad_zeros($bits(q_msg_data));
+    wire [Q_MSG_BLOCKS*512-1:0] q_msg_padded =
+            {q_msg_data, 1'b1, {Q_MSG_PAD_ZEROS{1'b0}}, 64'($bits(q_msg_data))};
+
     // -------------------------------------------------------------------------
     // Q: H(I || q || D_MESG || C || <signed payload>)
     //
@@ -315,53 +330,17 @@ module hash_verify
 
 `define Q_PREFIX {cur_I, cur_leaf_index, D_MESG, cur_randomizer}
 
-`define Q_MSG_DATA {`Q_PREFIX, message}
-    wire [$bits(`Q_MSG_DATA)-1 : 0] q_msg_data = `Q_MSG_DATA;
-`undef Q_MSG_DATA
-
-`define Q_SUB_DATA {`Q_PREFIX, LMS_TYPE, LMOTS_TYPE, cur_sub_I_next, cur_sub_root}
+`define Q_SUB_DATA {`Q_PREFIX, LMS_TYPE, LMOTS_TYPE, cur_sub_I_next, hash_reg_q}
     wire [$bits(`Q_SUB_DATA)-1 : 0] q_sub_data = `Q_SUB_DATA;
 `undef Q_SUB_DATA
 
-    localparam int unsigned Q_MSG_BLOCKS    = calc_sha_blocks($bits(q_msg_data));
-    localparam int unsigned Q_MSG_PAD_ZEROS = calc_sha_pad_zeros($bits(q_msg_data));
+
     localparam int unsigned Q_SUB_BLOCKS    = calc_sha_blocks($bits(q_sub_data));
     localparam int unsigned Q_SUB_PAD_ZEROS = calc_sha_pad_zeros($bits(q_sub_data));
 
-    wire [Q_MSG_BLOCKS*512-1:0] q_msg_padded =
-            {q_msg_data, 1'b1, {Q_MSG_PAD_ZEROS{1'b0}}, 64'($bits(q_msg_data))};
+
     wire [Q_SUB_BLOCKS*512-1:0] q_sub_padded =
             {q_sub_data, 1'b1, {Q_SUB_PAD_ZEROS{1'b0}}, 64'($bits(q_sub_data))};
-
-    // -------------------------------------------------------------------------
-    // SPHINCS+ Q payload — single macro covering both MGF1-SHA256 blocks of
-    // H_msg. The block index `q_hash_cntr` (0 in StQ0, 1 in StQ1) is appended
-    // to the payload so the same data wire feeds both hashes.
-    //
-    //   block_i = SHA-256(SPHINCS_R || PUB_SEED || PUB_ROOT || message || u32str(i))
-    // for i = 0, 1.
-    //
-    // TODO(SPHINCS+): SPHINCS_R is per-signature randomness from the license
-    // (not yet present in sphincs_lic_t); PUB_ROOT is the SPHINCS+ public-key
-    // root (not yet in sphincs_pkg). Placeholders are used for now — the
-    // structural skeleton is what this iteration is for.
-    // -------------------------------------------------------------------------
-
-    localparam logic [WIDTH-1:0] SPHINCS_R = '0;   // TODO: per-signature randomness
-    localparam logic [WIDTH-1:0] PUB_ROOT  = '0;   // TODO: SPHINCS+ public-key root
-
-    // Block index for the SPHINCS Q payload. 0 in StQ0, 1 in StQ1.
-    wire q_hash_cntr = (seq_q != StQ1) ? 1'b0 : 1'b1;
-
-`define Q_SPHINCS_DATA {SPHINCS_R, PUB_SEED, PUB_ROOT, message, 32'(q_hash_cntr)}
-    wire [$bits(`Q_SPHINCS_DATA)-1 : 0] q_sphincs_data = `Q_SPHINCS_DATA;
-`undef Q_SPHINCS_DATA
-
-    localparam int unsigned Q_SPHINCS_BLOCKS    = calc_sha_blocks  ($bits(q_sphincs_data));
-    localparam int unsigned Q_SPHINCS_PAD_ZEROS = calc_sha_pad_zeros($bits(q_sphincs_data));
-
-    wire [Q_SPHINCS_BLOCKS*512-1:0] q_sphincs_padded =
-            {q_sphincs_data, 1'b1, {Q_SPHINCS_PAD_ZEROS{1'b0}}, 64'($bits(q_sphincs_data))};
 
     // -------------------------------------------------------------------------
     // WOTS chain: H(I || q || i || j || tmp)
@@ -453,17 +432,17 @@ module hash_verify
     // FORS aggregation: H(PUB_SEED || ADRS_FORS_ROOTS || pk_store[0] || ... || pk_store[K-1])
     // -------------------------------------------------------------------------
 
-`define FORS_LEAF_DATA {PUB_SEED, ADRS_FORS_TREE, 32'(fors_tree_q),    \
+`define FORS_LEAF_DATA {TEST_PK.seed, ADRS_FORS_TREE, 32'(fors_tree_q),    \
                         32'(fors_q_idx[fors_tree_q]), cur_fors_sk}
     wire [$bits(`FORS_LEAF_DATA)-1 : 0] fors_leaf_data = `FORS_LEAF_DATA;
 `undef FORS_LEAF_DATA
 
-`define FORS_NODE_DATA {PUB_SEED, ADRS_FORS_TREE, 32'(fors_tree_q),    \
+`define FORS_NODE_DATA {TEST_PK.seed, ADRS_FORS_TREE, 32'(fors_tree_q),    \
                         32'(fors_parent), fors_l, fors_r}
     wire [$bits(`FORS_NODE_DATA)-1 : 0] fors_node_data = `FORS_NODE_DATA;
 `undef FORS_NODE_DATA
 
-`define KC_FORS_DATA {PUB_SEED, ADRS_FORS_ROOTS, pk_fors_concat}
+`define KC_FORS_DATA {TEST_PK.seed, ADRS_FORS_ROOTS, pk_fors_concat}
     wire [$bits(`KC_FORS_DATA)-1 : 0] kc_fors_data = `KC_FORS_DATA;
 `undef KC_FORS_DATA
 
@@ -492,7 +471,6 @@ module hash_verify
 
     logic [$bits(q_msg_padded)-1:0]            q_msg_discard;
     logic [$bits(q_sub_padded)-1:0]            q_sub_discard;
-    logic [$bits(q_sphincs_padded)-1:0]        q_sphincs_discard;
     logic [$bits(kc_wots_padded)-1:0]          kc_wots_discard;
     logic [$bits(leaf_padded)-1:0]             leaf_discard;
     logic [$bits(mrkl_padded)-1:0]             mrkl_discard;
@@ -527,7 +505,6 @@ module hash_verify
 
         q_msg_discard         = 0;
         q_sub_discard         = 0;
-        q_sphincs_discard     = 0;
         kc_wots_discard       = 0;
         leaf_discard          = 0;
         mrkl_discard          = 0;
@@ -536,12 +513,8 @@ module hash_verify
         kc_fors_discard       = 0;
 
         unique case (seq_q)
-            StQ0: begin
-                if (SCHEME == 1'b1) begin
-                    num_blocks = Q_SPHINCS_BLOCKS;
-                    {sha_block, q_sphincs_discard} =
-                        {q_sphincs_padded, 512'b0} << blk_shift;
-                end else if (is_msg_layer) begin
+            StQ: begin
+                if (is_msg_layer) begin
                     num_blocks = Q_MSG_BLOCKS;
                     {sha_block, q_msg_discard} = {q_msg_padded, 512'b0} << blk_shift;
                 end else begin
@@ -549,15 +522,11 @@ module hash_verify
                     {sha_block, q_sub_discard} = {q_sub_padded, 512'b0} << blk_shift;
                 end
             end
-            StQ1: begin
-                if (SCHEME == 1'b1) begin
-                    num_blocks = Q_SPHINCS_BLOCKS;
-                    {sha_block, q_sphincs_discard} =
-                        {q_sphincs_padded, 512'b0} << blk_shift;
-                end
+            StQext: begin
+                // TODO
             end
             StFors: begin
-                if (SCHEME == 1'b1) begin
+                if (SCHEME == 1'b1) begin // Only SPHINCS uses FORS
                     unique case (fors_q)
                         StForsLeaf: begin
                             num_blocks = FORS_LEAF_BLOCKS;
@@ -574,7 +543,7 @@ module hash_verify
                 end
             end
             StForsKc: begin
-                if (SCHEME == 1'b1) begin
+                if (SCHEME == 1'b1) begin // Only SPHINCS uses FORS
                     num_blocks = KC_FORS_BLOCKS;
                     {sha_block, kc_fors_discard} = {kc_fors_padded, 512'b0} << blk_shift;
                 end
@@ -618,19 +587,19 @@ module hash_verify
 
     // -------------------------------------------------------------------------
     // aux_reg — holds Q hash material across the rest of the run.
-    // StQ0 → upper half (LMS uses this for q_digits)
-    // StQ1 → lower half (SPHINCS only; together with upper, feeds fors_q_idx)
+    // StQ → upper half (LMS uses this for q_digits)
+    // StQext → lower half (SPHINCS only; together with upper, feeds fors_q_idx)
     // -------------------------------------------------------------------------
 
-    wire q0_capture = (seq_q == StQ0) && hash_complete;
-    wire q1_capture = (seq_q == StQ1) && hash_complete;
+    wire q_capture = (seq_q == StQ) && hash_complete;
+    wire qext_capture = (seq_q == StQext) && hash_complete;
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             aux_reg_q <= '0;
         end else begin
-            if (q0_capture) aux_reg_q[AUX_W-1:WIDTH] <= sha_digest;
-            if (q1_capture) aux_reg_q[WIDTH-1:0]    <= sha_digest;
+            if (q_capture) aux_reg_q[AUX_W-1:WIDTH] <= sha_digest;
+            if (qext_capture) aux_reg_q[WIDTH-1:0]    <= sha_digest;
         end
     end
 
@@ -864,20 +833,20 @@ module hash_verify
             StIdle: begin
                 if (valid) begin
                     layer_d = LAYER_CNT_W'(HSS_LEVELS - 1);
-                    seq_d   = StQ0;
+                    seq_d   = StQ;
                 end
             end
 
-            StQ0: begin
+            StQ: begin
                 // Hash first message-digest block; LMS finishes Q here, SPHINCS
-                // continues into StQ1 for the second MGF1 block.
+                // continues into StQext for the second MGF1 block.
                 sha_valid = 1'b1;
                 if (hash_complete) begin
-                    seq_d = (SCHEME == 1'b1) ? StQ1 : StWots;
+                    seq_d = (SCHEME == 1'b1) ? StQext : StWots;
                 end
             end
 
-            StQ1: begin
+            StQext: begin
                 // SPHINCS-only: second MGF1 block.
                 sha_valid = 1'b1;
                 if (hash_complete) begin
@@ -932,7 +901,7 @@ module hash_verify
                 // The Merkle step has multiple iterations, delegate hash control to Merkle sub-FSM
                 sha_valid = mrkl_sha_valid;
                 if (mrkl_complete) begin
-                    seq_d   = (~is_pk_layer) ? StQ0            : StDone;
+                    seq_d   = (~is_pk_layer) ? StQ            : StDone;
                     layer_d = (~is_pk_layer) ? layer_q - 1'b1  : '0;
                 end
             end
