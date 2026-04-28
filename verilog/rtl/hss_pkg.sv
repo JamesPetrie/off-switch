@@ -104,7 +104,7 @@ package hss_pkg;
     // SHA256 message formats
     // -------------------------------------------------------------------------
 
-    // Q_MSG: H(I || q || D_MESG || C || <signed payload>)
+    // Q_MSG: H(I || q || D_MESG || C || message)              (bottom layer)
     typedef struct packed {
         logic     [127:0] i;
         logic      [31:0] q;
@@ -112,5 +112,52 @@ package hss_pkg;
         logic [WIDTH-1:0] c;
         logic [WIDTH-1:0] message;
     } q_msg_t;
+
+    // Q_SUB: H(I || q || D_MESG || C || LMS_TYPE || LMOTS_TYPE || sub_I || T[1])
+    // (upper layers — signed payload is the serialised pub of the layer below)
+    typedef struct packed {
+        logic     [127:0] i;
+        logic      [31:0] q;
+        logic      [15:0] d_mesg;
+        logic [WIDTH-1:0] c;
+        logic      [31:0] lms_type;
+        logic      [31:0] lmots_type;
+        logic     [127:0] sub_i_next;
+        logic [WIDTH-1:0] sub_root;
+    } q_sub_t;
+
+    // WOTS chain step: H(I || q || i || j || tmp)
+    typedef struct packed {
+        logic     [127:0] i;
+        logic      [31:0] q;
+        logic      [15:0] chain_i;
+        logic       [7:0] step_j;
+        logic [WIDTH-1:0] tmp;
+    } wots_t;
+
+    // KC_WOTS: H(I || q || D_PBLC || pk0..pk[WOTS_P-1])
+    typedef struct packed {
+        logic                  [127:0] i;
+        logic                   [31:0] q;
+        logic                   [15:0] d_pblc;
+        logic [WOTS_P*WIDTH-1:0]       pks;
+    } kc_wots_t;
+
+    // Leaf: H(I || q || D_LEAF || Kc)
+    typedef struct packed {
+        logic     [127:0] i;
+        logic      [31:0] q;
+        logic      [15:0] d_leaf;
+        logic [WIDTH-1:0] kc;
+    } leaf_t;
+
+    // Merkle internal node: H(I || parent || D_INTR || left || right)
+    typedef struct packed {
+        logic     [127:0] i;
+        logic      [31:0] parent;
+        logic      [15:0] d_intr;
+        logic [WIDTH-1:0] l;
+        logic [WIDTH-1:0] r;
+    } mrkl_t;
 
 endpackage

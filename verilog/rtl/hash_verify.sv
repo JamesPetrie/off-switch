@@ -164,8 +164,25 @@ module hash_verify
     wire [WIDTH-1:0] cur_fors_sk;
     wire [WIDTH-1:0] cur_fors_auth;
 
-    localparam Q_MSG_W = SCHEME ? $bits(sphincs_pkg::h_msg_inner_t) : $bits(hss_pkg::q_msg_t);
-    wire [Q_MSG_W-1:0] q_msg_data;
+    // Hash-input bitvectors. Width depends on SCHEME for slots common to both
+    // schemes (Q msg-layer); otherwise sized to the only scheme that uses it.
+    // All values are driven inside the SCHEME generate below.
+    localparam Q_MSG_W = SCHEME ? $bits(sphincs_pkg::h_msg_inner_t)
+                                : $bits(hss_pkg::q_msg_t);
+    wire [Q_MSG_W-1:0]                          q_msg_data;
+
+    // LMS-only slots (driven in g_lms; tied to '0 in g_sphincs).
+    wire [$bits(hss_pkg::q_sub_t)-1:0]          q_sub_data;
+    wire [$bits(hss_pkg::wots_t)-1:0]           wots_data;
+    wire [$bits(hss_pkg::kc_wots_t)-1:0]        kc_wots_data;
+    wire [$bits(hss_pkg::leaf_t)-1:0]           leaf_data;
+    wire [$bits(hss_pkg::mrkl_t)-1:0]           mrkl_data;
+
+    // SPHINCS-only slots (driven in g_sphincs; tied to '0 in g_lms).
+    wire [$bits(sphincs_pkg::h_msg_outer_t)-1:0] q_ext_data;
+    wire [$bits(sphincs_pkg::fors_leaf_t)-1:0]   fors_leaf_data;
+    wire [$bits(sphincs_pkg::fors_node_t)-1:0]   fors_node_data;
+    wire [$bits(sphincs_pkg::kc_fors_t)-1:0]     kc_fors_data;
 
     generate
         if (SCHEME == 1'b0) begin : g_lms
@@ -184,12 +201,44 @@ module hash_verify
             assign cur_fors_sk     = '0;
             assign cur_fors_auth   = '0;
 
-
+            // LMS hash-input payloads.
             assign q_msg_data = q_msg_t'{i:       cur_I,
                                          q:       cur_leaf_index,
                                          d_mesg:  D_MESG,
                                          c:       cur_randomizer,
                                          message: message};
+            assign q_sub_data = q_sub_t'{i:          cur_I,
+                                         q:          cur_leaf_index,
+                                         d_mesg:     D_MESG,
+                                         c:          cur_randomizer,
+                                         lms_type:   LMS_TYPE,
+                                         lmots_type: LMOTS_TYPE,
+                                         sub_i_next: cur_sub_I_next,
+                                         sub_root:   hash_reg_q};
+            assign wots_data  = wots_t'{i:       cur_I,
+                                        q:       cur_leaf_index,
+                                        chain_i: 16'(wots_chain_q),
+                                        step_j:  8'(wots_step_q),
+                                        tmp:     hash_reg_q};
+            assign kc_wots_data = kc_wots_t'{i:      cur_I,
+                                             q:      cur_leaf_index,
+                                             d_pblc: D_PBLC,
+                                             pks:    pk_wots_concat};
+            assign leaf_data = leaf_t'{i:      cur_I,
+                                       q:      cur_leaf_index,
+                                       d_leaf: D_LEAF,
+                                       kc:     hash_reg_q};
+            assign mrkl_data = mrkl_t'{i:      cur_I,
+                                       parent: parent_num,
+                                       d_intr: D_INTR,
+                                       l:      left_node,
+                                       r:      right_node};
+
+            // SPHINCS-only payloads tied to '0 in LMS mode.
+            assign q_ext_data     = '0;
+            assign fors_leaf_data = '0;
+            assign fors_node_data = '0;
+            assign kc_fors_data   = '0;
         end else begin : g_sphincs
             sphincs_lic_t sphincs_lic;
             assign sphincs_lic = license;
@@ -205,13 +254,39 @@ module hash_verify
             assign cur_auth_node   = '0;
 
             // FORS license drives the per-tree sk and per-(tree,level) sibling.
-            assign cur_fors_sk     = sphincs_lic.sk[fors_tree_q];
-            assign cur_fors_auth   = sphincs_lic.auth[fors_tree_q][fors_level_q];
+            assign cur_fors_sk     = sphincs_lic.fors_sk[fors_tree_q];
+            assign cur_fors_auth   = sphincs_lic.fors_auth[fors_tree_q][fors_level_q];
 
+            // LMS payloads tied to '0 in SPHINCS mode.
+            assign q_sub_data   = '0;
+            assign wots_data    = '0;
+            assign kc_wots_data = '0;
+            assign leaf_data    = '0;
+            assign mrkl_data    = '0;
+
+            // SPHINCS hash-input payloads.
             assign q_msg_data = h_msg_inner_t'{r:       sphincs_lic.r,
                                                pk_seed: TEST_PK.seed,
                                                pk_root: TEST_PK.root,
                                                m:       message};
+            assign q_ext_data = h_msg_outer_t'{r:       sphincs_lic.r,
+                                               pk_seed: TEST_PK.seed,
+                                               inner:   aux_reg_q[AUX_W-1:WIDTH],
+                                               cntr:    32'd1};
+            assign fors_leaf_data = fors_leaf_t'{pk_seed:   TEST_PK.seed,
+                                                 adrs_type: ADRS_FORS_TREE,
+                                                 tree_idx:  32'(fors_tree_q),
+                                                 q_idx:     32'(fors_q_idx[fors_tree_q]),
+                                                 sk:        cur_fors_sk};
+            assign fors_node_data = fors_node_t'{pk_seed:    TEST_PK.seed,
+                                                 adrs_type:  ADRS_FORS_TREE,
+                                                 tree_idx:   32'(fors_tree_q),
+                                                 parent_idx: 32'(fors_parent),
+                                                 l:          fors_l,
+                                                 r:          fors_r};
+            assign kc_fors_data = kc_fors_t'{pk_seed:   TEST_PK.seed,
+                                             adrs_type: ADRS_FORS_ROOTS,
+                                             roots:     pk_fors_concat};
         end
     endgenerate
 
@@ -319,104 +394,17 @@ module hash_verify
             {q_msg_data, 1'b1, {Q_MSG_PAD_ZEROS{1'b0}}, 64'($bits(q_msg_data))};
 
     // -------------------------------------------------------------------------
-    // Q: H(I || q || D_MESG || C || <signed payload>)
-    //
-    // Message layer (is_msg_layer):   signed payload = user message (1 block)
-    // Upper layers:                   signed payload = serialised pub[lv+1]
-    //                                 = LMS_TYPE || LMOTS_TYPE || sub_I[lv+1] || T[1]
-    //                                 where T[1] lives in hash_reg_q (the root
-    //                                 just computed by the layer below)
+    // Merkle / FORS auth-path helpers (siblings + L/R muxing). The actual
+    // node payload structs are assembled inside the SCHEME generate above.
     // -------------------------------------------------------------------------
 
-`define Q_PREFIX {cur_I, cur_leaf_index, D_MESG, cur_randomizer}
-
-`define Q_SUB_DATA {`Q_PREFIX, LMS_TYPE, LMOTS_TYPE, cur_sub_I_next, hash_reg_q}
-    wire [$bits(`Q_SUB_DATA)-1 : 0] q_sub_data = `Q_SUB_DATA;
-`undef Q_SUB_DATA
-
-
-    localparam int unsigned Q_SUB_BLOCKS    = calc_sha_blocks($bits(q_sub_data));
-    localparam int unsigned Q_SUB_PAD_ZEROS = calc_sha_pad_zeros($bits(q_sub_data));
-
-
-    wire [Q_SUB_BLOCKS*512-1:0] q_sub_padded =
-            {q_sub_data, 1'b1, {Q_SUB_PAD_ZEROS{1'b0}}, 64'($bits(q_sub_data))};
-
-    // -------------------------------------------------------------------------
-    // WOTS chain: H(I || q || i || j || tmp)
-    // -------------------------------------------------------------------------
-
-`define WOTS_DATA {cur_I, cur_leaf_index, 16'(wots_chain_q), 8'(wots_step_q), hash_reg_q}
-    wire [$bits(`WOTS_DATA)-1 : 0] wots_data = `WOTS_DATA;
-`undef WOTS_DATA
-
-    // WOTS is designed to fit in a single block, assume BLOCKS=1
-    //localparam int unsigned WOTS_BLOCKS    = calc_sha_blocks($bits(wots_data));
-    localparam int unsigned WOTS_PAD_ZEROS = calc_sha_pad_zeros($bits(wots_data));
-
-    wire [512-1:0] wots_padded =
-            {wots_data, 1'b1, {WOTS_PAD_ZEROS{1'b0}}, 64'($bits(wots_data))};
-
-    // -------------------------------------------------------------------------
-    // KC_WOTS (LMS WOTS pks aggregation): H(I || q || D_PBLC || pk0..pk33)
-    // -------------------------------------------------------------------------
-
-`define KC_WOTS_DATA {cur_I, cur_leaf_index, D_PBLC, pk_wots_concat}
-    wire [$bits(`KC_WOTS_DATA)-1 : 0] kc_wots_data = `KC_WOTS_DATA;
-`undef KC_WOTS_DATA
-
-    localparam int unsigned KC_WOTS_BLOCKS    = calc_sha_blocks($bits(kc_wots_data));
-    localparam int unsigned KC_WOTS_PAD_ZEROS = calc_sha_pad_zeros($bits(kc_wots_data));
-
-    wire [KC_WOTS_BLOCKS*512-1:0] kc_wots_padded =
-            {kc_wots_data, 1'b1, {KC_WOTS_PAD_ZEROS{1'b0}}, 64'($bits(kc_wots_data))};
-
-    // -------------------------------------------------------------------------
-    // Leaf: H(I || q || D_LEAF || Kc)
-    // -------------------------------------------------------------------------
-
-`define LEAF_DATA {cur_I, cur_leaf_index, D_LEAF, hash_reg_q}
-    wire [$bits(`LEAF_DATA)-1 : 0] leaf_data = `LEAF_DATA;
-`undef LEAF_DATA
-
-    localparam int unsigned LEAF_BLOCKS    = calc_sha_blocks($bits(leaf_data));
-    localparam int unsigned LEAF_PAD_ZEROS = calc_sha_pad_zeros($bits(leaf_data));
-
-    wire [LEAF_BLOCKS*512-1:0] leaf_padded =
-            {leaf_data, 1'b1, {LEAF_PAD_ZEROS{1'b0}}, 64'($bits(leaf_data))};
-
-    // -------------------------------------------------------------------------
-    // Merkle helpers
-    // -------------------------------------------------------------------------
-
-    // Nodes are indexed as 2n (left) and 2n+1 (right) from their parent
-    wire [31:0]      parent_num = node_index_q >> 1; // node / 2
+    wire [31:0]      parent_num = node_index_q >> 1;
     wire             is_right   = node_index_q[0];
 
-    // aux_reg holds the auth path sibling
     logic [WIDTH-1:0] left_node;
     logic [WIDTH-1:0] right_node;
-
     assign {left_node, right_node} = is_right ? {cur_auth_node, hash_reg_q}
                                               : {hash_reg_q,    cur_auth_node};
-
-    // -------------------------------------------------------------------------
-    // Merkle: H(I || parent || D_INTR || left || right)
-    // -------------------------------------------------------------------------
-
-`define MRKL_DATA {cur_I, parent_num, D_INTR, left_node, right_node}
-    wire [$bits(`MRKL_DATA)-1 : 0] mrkl_data = `MRKL_DATA;
-`undef MRKL_DATA
-
-    localparam int unsigned MRKL_BLOCKS    = calc_sha_blocks($bits(mrkl_data));
-    localparam int unsigned MRKL_PAD_ZEROS = calc_sha_pad_zeros($bits(mrkl_data));
-
-    wire [MRKL_BLOCKS*512-1:0] mrkl_padded =
-            {mrkl_data, 1'b1, {MRKL_PAD_ZEROS{1'b0}}, 64'($bits(mrkl_data))};
-
-    // -------------------------------------------------------------------------
-    // FORS auth-path helpers (peer to the LMS Merkle helpers above)
-    // -------------------------------------------------------------------------
 
     wire [FORS_NODE_W-2:0] fors_parent   = fors_node_q[FORS_NODE_W-1:1];
     wire                   fors_is_right = fors_node_q[0];
@@ -427,38 +415,54 @@ module hash_verify
                                             : {hash_reg_q,    cur_fors_auth};
 
     // -------------------------------------------------------------------------
-    // FORS leaf:        H(PUB_SEED || ADRS_FORS_TREE  || tree_idx || fors_q_idx[tree] || sk[tree])
-    // FORS internal:    H(PUB_SEED || ADRS_FORS_TREE  || tree_idx || parent_idx       || L || R)
-    // FORS aggregation: H(PUB_SEED || ADRS_FORS_ROOTS || pk_store[0] || ... || pk_store[K-1])
+    // SHA-256 padded vectors per payload (block count + zero pad come from
+    // each payload wire's $bits, which is fixed by its packed-struct type).
     // -------------------------------------------------------------------------
 
-`define FORS_LEAF_DATA {TEST_PK.seed, ADRS_FORS_TREE, 32'(fors_tree_q),    \
-                        32'(fors_q_idx[fors_tree_q]), cur_fors_sk}
-    wire [$bits(`FORS_LEAF_DATA)-1 : 0] fors_leaf_data = `FORS_LEAF_DATA;
-`undef FORS_LEAF_DATA
+    localparam int unsigned Q_SUB_BLOCKS    = calc_sha_blocks  ($bits(q_sub_data));
+    localparam int unsigned Q_SUB_PAD_ZEROS = calc_sha_pad_zeros($bits(q_sub_data));
+    wire [Q_SUB_BLOCKS*512-1:0] q_sub_padded =
+            {q_sub_data, 1'b1, {Q_SUB_PAD_ZEROS{1'b0}}, 64'($bits(q_sub_data))};
 
-`define FORS_NODE_DATA {TEST_PK.seed, ADRS_FORS_TREE, 32'(fors_tree_q),    \
-                        32'(fors_parent), fors_l, fors_r}
-    wire [$bits(`FORS_NODE_DATA)-1 : 0] fors_node_data = `FORS_NODE_DATA;
-`undef FORS_NODE_DATA
+    localparam int unsigned Q_EXT_BLOCKS    = calc_sha_blocks  ($bits(q_ext_data));
+    localparam int unsigned Q_EXT_PAD_ZEROS = calc_sha_pad_zeros($bits(q_ext_data));
+    wire [Q_EXT_BLOCKS*512-1:0] q_ext_padded =
+            {q_ext_data, 1'b1, {Q_EXT_PAD_ZEROS{1'b0}}, 64'($bits(q_ext_data))};
 
-`define KC_FORS_DATA {TEST_PK.seed, ADRS_FORS_ROOTS, pk_fors_concat}
-    wire [$bits(`KC_FORS_DATA)-1 : 0] kc_fors_data = `KC_FORS_DATA;
-`undef KC_FORS_DATA
+    // WOTS is designed to fit in a single block, assume BLOCKS=1
+    localparam int unsigned WOTS_PAD_ZEROS = calc_sha_pad_zeros($bits(wots_data));
+    wire [512-1:0] wots_padded =
+            {wots_data, 1'b1, {WOTS_PAD_ZEROS{1'b0}}, 64'($bits(wots_data))};
 
-    localparam int unsigned FORS_LEAF_BLOCKS  = calc_sha_blocks  ($bits(fors_leaf_data));
-    localparam int unsigned FORS_LEAF_PAD_Z   = calc_sha_pad_zeros($bits(fors_leaf_data));
-    localparam int unsigned FORS_NODE_BLOCKS  = calc_sha_blocks  ($bits(fors_node_data));
-    localparam int unsigned FORS_NODE_PAD_Z   = calc_sha_pad_zeros($bits(fors_node_data));
-    localparam int unsigned KC_FORS_BLOCKS    = calc_sha_blocks  ($bits(kc_fors_data));
-    localparam int unsigned KC_FORS_PAD_Z     = calc_sha_pad_zeros($bits(kc_fors_data));
+    localparam int unsigned KC_WOTS_BLOCKS    = calc_sha_blocks  ($bits(kc_wots_data));
+    localparam int unsigned KC_WOTS_PAD_ZEROS = calc_sha_pad_zeros($bits(kc_wots_data));
+    wire [KC_WOTS_BLOCKS*512-1:0] kc_wots_padded =
+            {kc_wots_data, 1'b1, {KC_WOTS_PAD_ZEROS{1'b0}}, 64'($bits(kc_wots_data))};
 
+    localparam int unsigned LEAF_BLOCKS    = calc_sha_blocks  ($bits(leaf_data));
+    localparam int unsigned LEAF_PAD_ZEROS = calc_sha_pad_zeros($bits(leaf_data));
+    wire [LEAF_BLOCKS*512-1:0] leaf_padded =
+            {leaf_data, 1'b1, {LEAF_PAD_ZEROS{1'b0}}, 64'($bits(leaf_data))};
+
+    localparam int unsigned MRKL_BLOCKS    = calc_sha_blocks  ($bits(mrkl_data));
+    localparam int unsigned MRKL_PAD_ZEROS = calc_sha_pad_zeros($bits(mrkl_data));
+    wire [MRKL_BLOCKS*512-1:0] mrkl_padded =
+            {mrkl_data, 1'b1, {MRKL_PAD_ZEROS{1'b0}}, 64'($bits(mrkl_data))};
+
+    localparam int unsigned FORS_LEAF_BLOCKS = calc_sha_blocks  ($bits(fors_leaf_data));
+    localparam int unsigned FORS_LEAF_PAD_Z  = calc_sha_pad_zeros($bits(fors_leaf_data));
     wire [FORS_LEAF_BLOCKS*512-1:0] fors_leaf_padded =
             {fors_leaf_data, 1'b1, {FORS_LEAF_PAD_Z{1'b0}}, 64'($bits(fors_leaf_data))};
+
+    localparam int unsigned FORS_NODE_BLOCKS = calc_sha_blocks  ($bits(fors_node_data));
+    localparam int unsigned FORS_NODE_PAD_Z  = calc_sha_pad_zeros($bits(fors_node_data));
     wire [FORS_NODE_BLOCKS*512-1:0] fors_node_padded =
             {fors_node_data, 1'b1, {FORS_NODE_PAD_Z{1'b0}}, 64'($bits(fors_node_data))};
-    wire [KC_FORS_BLOCKS*512-1:0]   kc_fors_padded   =
-            {kc_fors_data,   1'b1, {KC_FORS_PAD_Z{1'b0}},   64'($bits(kc_fors_data))};
+
+    localparam int unsigned KC_FORS_BLOCKS = calc_sha_blocks  ($bits(kc_fors_data));
+    localparam int unsigned KC_FORS_PAD_Z  = calc_sha_pad_zeros($bits(kc_fors_data));
+    wire [KC_FORS_BLOCKS*512-1:0] kc_fors_padded =
+            {kc_fors_data, 1'b1, {KC_FORS_PAD_Z{1'b0}}, 64'($bits(kc_fors_data))};
 
 
     // -------------------------------------------------------------------------
@@ -471,6 +475,7 @@ module hash_verify
 
     logic [$bits(q_msg_padded)-1:0]            q_msg_discard;
     logic [$bits(q_sub_padded)-1:0]            q_sub_discard;
+    logic [$bits(q_ext_padded)-1:0]            q_ext_discard;
     logic [$bits(kc_wots_padded)-1:0]          kc_wots_discard;
     logic [$bits(leaf_padded)-1:0]             leaf_discard;
     logic [$bits(mrkl_padded)-1:0]             mrkl_discard;
@@ -505,6 +510,7 @@ module hash_verify
 
         q_msg_discard         = 0;
         q_sub_discard         = 0;
+        q_ext_discard         = 0;
         kc_wots_discard       = 0;
         leaf_discard          = 0;
         mrkl_discard          = 0;
@@ -523,7 +529,10 @@ module hash_verify
                 end
             end
             StQext: begin
-                // TODO
+                if (SCHEME == 1'b1) begin
+                    num_blocks = Q_EXT_BLOCKS;
+                    {sha_block, q_ext_discard} = {q_ext_padded, 512'b0} << blk_shift;
+                end
             end
             StFors: begin
                 if (SCHEME == 1'b1) begin // Only SPHINCS uses FORS

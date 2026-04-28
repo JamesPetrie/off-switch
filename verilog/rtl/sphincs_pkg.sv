@@ -65,4 +65,30 @@ package sphincs_pkg;
         logic        [31:0] cntr;      // MGF1 counter
     } h_msg_outer_t;
 
+    // FORS leaf: H(PK.seed || ADRS_FORS_TREE || tree_idx || q_idx || sk[tree])
+    typedef struct packed {
+        logic [WIDTH-1:0] pk_seed;
+        logic      [31:0] adrs_type;
+        logic      [31:0] tree_idx;
+        logic      [31:0] q_idx;
+        logic [WIDTH-1:0] sk;
+    } fors_leaf_t;
+
+    // FORS internal node: H(PK.seed || ADRS_FORS_TREE || tree_idx || parent || L || R)
+    typedef struct packed {
+        logic [WIDTH-1:0] pk_seed;
+        logic      [31:0] adrs_type;
+        logic      [31:0] tree_idx;
+        logic      [31:0] parent_idx;
+        logic [WIDTH-1:0] l;
+        logic [WIDTH-1:0] r;
+    } fors_node_t;
+
+    // KC_FORS: H(PK.seed || ADRS_FORS_ROOTS || pk[0] || ... || pk[K-1])
+    typedef struct packed {
+        logic                 [WIDTH-1:0] pk_seed;
+        logic                      [31:0] adrs_type;
+        logic [FORS_K*WIDTH-1:0]          roots;
+    } kc_fors_t;
+
 endpackage
