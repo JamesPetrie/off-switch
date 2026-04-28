@@ -1,6 +1,6 @@
 // HSS-LMS signing functions for testbench use.
 // Uses DPI-C SHA-256 to compute WOTS+ signatures at runtime across
-// HSS_LEVELS stacked trees (bottom-up verify order mirrors hss_verify.sv).
+// HSS_LEVELS stacked trees (bottom-up verify order mirrors hash_verify.sv).
 
 `ifndef TB_HSS_SIGN_PKG_SV
 `define TB_HSS_SIGN_PKG_SV
@@ -204,7 +204,7 @@ package tb_hss_sign_pkg;
     function automatic void sign_layer_with_q(
         input int                                    lv,
         input logic [255:0]                          q_hash,
-        ref   license_t                              lic
+        ref   hss_lic_t                              lic
     );
         logic [15:0]  csum;
         int digits [WOTS_P];
@@ -244,7 +244,7 @@ package tb_hss_sign_pkg;
     endfunction
 
     // -------------------------------------------------------------------------
-    // HSS sign — populate a license_t across all HSS_LEVELS layers.
+    // HSS sign — populate a hss_lic_t across all HSS_LEVELS layers.
     //
     // Layer HSS_LEVELS-1 (bottom) signs the user message.
     // Layer lv < L-1 signs pub[lv+1] = serialised LMS public key of layer lv+1.
@@ -252,10 +252,10 @@ package tb_hss_sign_pkg;
     // but only the bottom-layer leaf advances afterwards.
     // -------------------------------------------------------------------------
 
-    function automatic license_t hss_sign(
+    function automatic hss_lic_t hss_sign(
         input logic [255:0] message
     );
-        license_t lic;
+        hss_lic_t lic;
         logic [255:0] q_hash;
         int q;
 
