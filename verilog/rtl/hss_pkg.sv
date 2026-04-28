@@ -98,6 +98,6 @@ package hss_pkg;
         // Subtree identifiers. sub_I[0] is unused
         // (the top tree uses TOP_IDENTIFIER)
         logic [HSS_LEVELS-1:0]                [127:0]      sub_I;
-    } license_t;
+    } hss_lic_t;
 
 endpackage

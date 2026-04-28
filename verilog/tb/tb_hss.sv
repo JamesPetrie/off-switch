@@ -27,9 +27,9 @@ module tb (
     logic             dut_ready;
     logic             dut_verif_passed;
     logic             saved_verif_passed = 1'b0;
-    license_t         dut_license;
+    hss_lic_t         dut_license;
 
-    hss_verify u_dut (
+    hash_verify u_dut (
         .clk          (clk),
         .rst_n        (rst_n),
         .valid        (dut_valid),

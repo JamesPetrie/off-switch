@@ -19,7 +19,7 @@ module tb (
 
     logic             license_valid  = 1'b0;
     logic             license_ready;
-    license_t         license        = 0;
+    hss_lic_t         license        = 0;
     logic             workload_valid = 1'b0;
     logic [7:0]       workload_a     = '0;
     logic [7:0]       workload_b     = '0;
@@ -93,7 +93,7 @@ module tb (
     int          fail_count = 0;
     logic [63:0]      saved_allow;
     logic [WIDTH-1:0] saved_nonce;
-    license_t         saved_license;
+    hss_lic_t         saved_license;
 
     // -------------------------------------------------------------------------
     // Sequencer infrastructure
@@ -267,7 +267,7 @@ module tb (
                 // -------------------------------------------------------
                 PH_T6_SUBMIT: begin
                     if (nonce_ready) begin
-                        license       <= ~license_t'(0); // all bits 1
+                        license       <= ~hss_lic_t'(0); // all bits 1
                         license_valid <= 1'b1;
                         saved_allow   <= allowance;
                         saved_nonce   <= nonce;
@@ -474,7 +474,7 @@ module tb (
                 // -------------------------------------------------------
                 PH_T14_SUBMIT: begin
                     if (nonce_ready) begin
-                        automatic license_t sig = hss_sign(nonce);
+                        automatic hss_lic_t sig = hss_sign(nonce);
                         license       <= sig;
                         saved_license <= sig;
                         license_valid <= 1'b1;

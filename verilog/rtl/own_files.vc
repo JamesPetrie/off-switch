@@ -8,6 +8,7 @@
 ./ecdsa_pkg.sv
 ./ecdsa.sv
 ./hss_pkg.sv
+./sphincs_pkg.sv
 ./sha256_wrap.sv
-./hss_verify.sv
+./hash_verify.sv
 ./security_block.sv
