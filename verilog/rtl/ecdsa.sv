@@ -31,7 +31,7 @@
 
 module ecdsa
     import arith_pkg::*; // import in module header to be used in port list
-    import secp256k1_pkg::*;
+    import ecdsa_pkg::*;
 (
     input  logic             clk,
     input  logic             rst_n,

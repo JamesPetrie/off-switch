@@ -4,23 +4,22 @@
 
    Components:
    - TRNG submodule for nonce generation
-   - ECDSA submodule for license verification
+   - HSS/LMS submodule for license verification (post-quantum)
    - Inline usage allowance counter
    - Inline workload with output gating
 
    State machine:
    - Requests nonce from TRNG at initialization
    - Publishes nonce for external license generation
-   - Verifies received licenses via ECDSA
+   - Verifies received HSS/LMS signatures
    - Increments allowance on valid license, then generates new nonce
    - On invalid license, returns to Publish with same nonce
 
    Workload output is gated by ANDing each bit with (allowance > 0).
    Allowance decrements every clock cycle (time-based authorization).
 
-   Note: The Int8 Add workload is an example. In production, this would be
-   replaced with actual essential chip operations (e.g., matrix multiply units,
-   data routing logic).
+   The HSS verifier uses a streaming interface: it requests signature
+   elements and auth path nodes from outside via request/response signals.
 *)
 
 open Hardcaml
@@ -28,7 +27,6 @@ open Signal
 
 module Config = struct
   let nonce_width = 256
-  let signature_width = 256
   let allowance_width = 64
   let init_delay_cycles = 100
   let allowance_increment = 1_000_000_000_000  (* ~17 min at 1GHz *)
@@ -40,15 +38,21 @@ module I = struct
     ; clear : 'a
     (* License interface *)
     ; license_submit : 'a
-    ; license_r : 'a [@bits Config.signature_width]
-    ; license_s : 'a [@bits Config.signature_width]
+    ; license_leaf_index : 'a [@bits 32]
+    ; license_randomizer : 'a [@bits 256]
+    (* HSS signature streaming *)
+    ; sig_element : 'a [@bits 256]
+    ; sig_element_valid : 'a
+    ; auth_node : 'a [@bits 256]
+    ; auth_node_valid : 'a
+    (* HSS public key configuration *)
+    ; root_pub_key : 'a [@bits 256]
+    ; identifier : 'a [@bits 128]
+    ; tree_height : 'a [@bits 6]
     (* Workload interface *)
     ; workload_valid : 'a
     ; int8_a : 'a [@bits 8]
     ; int8_b : 'a [@bits 8]
-    (* ECDSA curve parameters *)
-    ; param_a : 'a [@bits Config.signature_width]
-    ; param_b3 : 'a [@bits Config.signature_width]
     (* TRNG seed for testing *)
     ; trng_seed : 'a [@bits Config.nonce_width]
     ; trng_load_seed : 'a
@@ -67,10 +71,15 @@ module O = struct
     (* Status *)
     ; allowance : 'a [@bits Config.allowance_width]
     ; enabled : 'a
+    (* HSS signature request interface *)
+    ; request_sig_element : 'a
+    ; sig_element_index : 'a [@bits 6]
+    ; request_auth_node : 'a
+    ; auth_level : 'a [@bits 6]
     (* Debug *)
     ; state_debug : 'a [@bits 4]
     ; licenses_accepted : 'a [@bits 16]
-    ; ecdsa_busy : 'a
+    ; hss_busy : 'a
     }
   [@@deriving sexp_of, hardcaml]
 end
@@ -108,21 +117,26 @@ let create scope (i : _ I.t) =
   (* === Nonce Register === *)
   let current_nonce = Variable.reg spec ~width:Config.nonce_width in
 
-  (* === ECDSA Submodule === *)
-  let ecdsa_start = Variable.wire ~default:gnd in
-  let license_r_reg = Variable.reg spec ~width:Config.signature_width in
-  let license_s_reg = Variable.reg spec ~width:Config.signature_width in
+  (* === HSS/LMS Verification Submodule === *)
+  let hss_start = Variable.wire ~default:gnd in
+  let license_leaf_index_reg = Variable.reg spec ~width:32 in
+  let license_randomizer_reg = Variable.reg spec ~width:256 in
 
-  let ecdsa = Ecdsa.create (Scope.sub_scope scope "ecdsa")
-    { Ecdsa.I.
+  let hss = Hss_verify.create (Scope.sub_scope scope "hss")
+    { Hss_verify.I.
       clock = i.clock
     ; clear = i.clear
-    ; start = ecdsa_start.value
-    ; z = current_nonce.value
-    ; r = license_r_reg.value
-    ; s = license_s_reg.value
-    ; param_a = i.param_a
-    ; param_b3 = i.param_b3
+    ; start = hss_start.value
+    ; identifier = i.identifier
+    ; leaf_index = license_leaf_index_reg.value
+    ; tree_height = i.tree_height
+    ; root_pub_key = i.root_pub_key
+    ; message = current_nonce.value
+    ; randomizer = license_randomizer_reg.value
+    ; sig_element = i.sig_element
+    ; sig_element_valid = i.sig_element_valid
+    ; auth_node = i.auth_node
+    ; auth_node_valid = i.auth_node_valid
     }
   in
 
@@ -150,7 +164,6 @@ let create scope (i : _ I.t) =
   (* === State Machine === *)
   compile [
     (* Allowance update logic - runs every cycle independent of state machine *)
-    (* Increment takes priority; otherwise decrement every cycle if allowance > 0 *)
     if_ increment_allowance.value [
       allowance <-- incremented_allowance;
     ] @@ elif (allowance.value >:. 0) [
@@ -181,22 +194,22 @@ let create scope (i : _ I.t) =
       State.Publish, [
         (* Nonce is stable, wait for license submission *)
         when_ i.license_submit [
-          license_r_reg <-- i.license_r;
-          license_s_reg <-- i.license_s;
+          license_leaf_index_reg <-- i.license_leaf_index;
+          license_randomizer_reg <-- i.license_randomizer;
           sm.set_next Verify_start;
         ];
       ];
 
       State.Verify_start, [
-        when_ (~:(ecdsa.busy)) [
-          ecdsa_start <-- vdd;
+        when_ (~:(hss.busy)) [
+          hss_start <-- vdd;
           sm.set_next Verify_wait;
         ];
       ];
 
       State.Verify_wait, [
-        when_ ecdsa.done_ [
-          if_ ecdsa.valid [
+        when_ hss.done_ [
+          if_ hss.valid [
             (* Valid license: increment allowance, get new nonce *)
             increment_allowance <-- vdd;
             licenses_accepted <-- licenses_accepted.value +:. 1;
@@ -242,7 +255,11 @@ let create scope (i : _ I.t) =
   ; result_valid = result_valid_reg.value
   ; allowance = allowance.value
   ; enabled = enabled
+  ; request_sig_element = hss.request_sig_element
+  ; sig_element_index = hss.sig_element_index
+  ; request_auth_node = hss.request_auth_node
+  ; auth_level = hss.auth_level
   ; state_debug = state_encoding
   ; licenses_accepted = licenses_accepted.value
-  ; ecdsa_busy = ecdsa.busy
+  ; hss_busy = hss.busy
   }

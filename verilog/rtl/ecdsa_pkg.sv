@@ -1,4 +1,4 @@
-package secp256k1_pkg;
+package ecdsa_pkg;
 
     import arith_pkg::*;
 
@@ -24,5 +24,14 @@ package secp256k1_pkg;
     G_X = 256'h79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,
     G_Y = 256'h483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8,
     G_Z = 1; // projective coordinate for affine points have Z=1
+
+    // -------------------------------------------------------------------------
+    // ECDSA license format
+    // -------------------------------------------------------------------------
+
+    typedef struct packed {
+        logic [WIDTH-1:0] r;
+        logic [WIDTH-1:0] s;
+    } license_t;
 
 endpackage

@@ -4,12 +4,14 @@ on:
   pull_request:
 
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install Verilator
         uses: veryl-lang/setup-verilator@v1
@@ -31,6 +33,23 @@ jobs:
         run: make lint TOOL=verible
         working-directory: verilog
 
-      - name: Simulate
-        run: make sim TB=top
+  simulate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        tb: [top_ecdsa, top_hss]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Verilator
+        uses: veryl-lang/setup-verilator@v1
+        with:
+          version: 5.044 # REVISIT: 5.046 used locally is not yet available on GitHub
+
+      - name: Simulate ${{ matrix.tb }}
+        run: make sim TB=${{ matrix.tb }}
         working-directory: verilog

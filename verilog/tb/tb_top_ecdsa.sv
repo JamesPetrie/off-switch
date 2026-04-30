@@ -12,6 +12,7 @@ module tb (
     input logic rst_n
 );
     import arith_pkg::*;
+    import ecdsa_pkg::*;
     import tb_math_pkg::*;
 
     // -------------------------------------------------------------------------
@@ -20,8 +21,7 @@ module tb (
 
     logic             license_valid  = 1'b0;
     logic             license_ready;
-    logic [WIDTH-1:0] license_r      = '0;
-    logic [WIDTH-1:0] license_s      = '0;
+    license_t         license        = '0;
     logic             workload_valid = 1'b0;
     logic [7:0]       workload_a     = '0;
     logic [7:0]       workload_b     = '0;
@@ -40,8 +40,7 @@ module tb (
         .rst_n          (rst_n),
         .license_valid  (license_valid),
         .license_ready  (license_ready),
-        .license_r      (license_r),
-        .license_s      (license_s),
+        .license        (license),
         .workload_valid (workload_valid),
         .workload_a     (workload_a),
         .workload_b     (workload_b),
@@ -137,8 +136,8 @@ module tb (
             trng_seed      <= TRNG_SEED;
             trng_load_seed <= 1'b1;
             license_valid  <= 1'b0;
-            license_r      <= '0;
-            license_s      <= '0;
+            license.r     <= '0;
+            license.s     <= '0;
             workload_valid <= 1'b0;
             workload_a     <= '0;
             workload_b     <= '0;
@@ -222,8 +221,8 @@ module tb (
 
                         sig = ecdsa_sign(nonce, PRIV_KEY, SIGN_K);
                         license_valid  <= 1'b1;
-                        license_r      <= sig.r;
-                        license_s      <= sig.s;
+                        license.r     <= sig.r;
+                        license.s     <= sig.s;
 
                         phase        <= PH_T4_CHECK;
                     end
@@ -231,11 +230,11 @@ module tb (
 
                 PH_T4_CHECK: begin
 
-                    // Hold license_r/s until license_ready pulses
+                    // Hold license until license_ready pulses
                     if (license_ready) begin
                         license_valid <= 1'b0;
-                        license_r     <= '0;
-                        license_s     <= '0;
+                        license.r    <= '0;
+                        license.s    <= '0;
                     end
 
                     // Check allowance afterwards (when valid is back to deasserted)
@@ -297,8 +296,8 @@ module tb (
                 PH_T6_SUBMIT: begin
                     if (nonce_ready) begin
                         license_valid <= 1'b1;
-                        license_r     <= 256'd11111;
-                        license_s     <= 256'd22222;
+                        license.r    <= 256'd11111;
+                        license.s    <= 256'd22222;
                         saved_allow   <= allowance;
                         saved_nonce   <= nonce;
                         phase         <= PH_T6_CHECK;
@@ -306,11 +305,11 @@ module tb (
                 end
 
                 PH_T6_CHECK: begin
-                    // Hold license_r/s until license_ready pulses
+                    // Hold license until license_ready pulses
                     if (license_ready) begin
                         license_valid <= 1'b0;
-                        license_r     <= '0;
-                        license_s     <= '0;
+                        license.r    <= '0;
+                        license.s    <= '0;
                     end
 
                     // Check after deassert
@@ -478,19 +477,19 @@ module tb (
                         ecdsa_sig_t sig;
                         sig = ecdsa_sign(nonce, PRIV_KEY, SIGN_K);
                         license_valid <= 1'b1;
-                        license_r     <= sig.r;
-                        license_s     <= sig.s;
+                        license.r    <= sig.r;
+                        license.s    <= sig.s;
                         saved_nonce   <= nonce;
                         phase         <= PH_T12_CHECK;
                     end
                 end
 
                 PH_T12_CHECK: begin
-                    // Hold license_r/s until license_ready pulses
+                    // Hold license until license_ready pulses
                     if (license_ready) begin
                         license_valid <= 1'b0;
-                        license_r     <= '0;
-                        license_s     <= '0;
+                        license.r    <= '0;
+                        license.s    <= '0;
                     end
 
                     // Check when next nonce is ready (after handshake completed)
@@ -518,8 +517,8 @@ module tb (
                         ecdsa_sig_t sig;
                         sig = ecdsa_sign(256'd9999, PRIV_KEY, SIGN_K);
                         license_valid <= 1'b1;
-                        license_r     <= sig.r;
-                        license_s     <= sig.s;
+                        license.r    <= sig.r;
+                        license.s    <= sig.s;
                         saved_allow   <= allowance;
                         saved_nonce   <= nonce;
                         phase         <= PH_T13_CHECK;
@@ -527,11 +526,11 @@ module tb (
                 end
 
                 PH_T13_CHECK: begin
-                    // Hold license_r/s until license_ready pulses
+                    // Hold license until license_ready pulses
                     if (license_ready) begin
                         license_valid <= 1'b0;
-                        license_r     <= '0;
-                        license_s     <= '0;
+                        license.r    <= '0;
+                        license.s    <= '0;
                     end
 
                     // Check after deassert
@@ -561,8 +560,8 @@ module tb (
                         ecdsa_sig_t sig;
                         sig = ecdsa_sign(nonce, PRIV_KEY, SIGN_K);
                         license_valid <= 1'b1;
-                        license_r     <= sig.r;
-                        license_s     <= sig.s;
+                        license.r    <= sig.r;
+                        license.s    <= sig.s;
                         saved_r       <= sig.r;
                         saved_s       <= sig.s;
                         phase         <= PH_T14_WAIT;
@@ -570,11 +569,11 @@ module tb (
                 end
 
                 PH_T14_WAIT: begin
-                    // Hold license_r/s until license_ready pulses
+                    // Hold license until license_ready pulses
                     if (license_ready) begin
                         license_valid <= 1'b0;
-                        license_r     <= '0;
-                        license_s     <= '0;
+                        license.r    <= '0;
+                        license.s    <= '0;
                         phase <= PH_T14_REPLAY;
                     end
                 end
@@ -583,8 +582,8 @@ module tb (
                     if (nonce_ready) begin
                         // Replay the saved signature against the new nonce
                         license_valid <= 1'b1;
-                        license_r     <= saved_r;
-                        license_s     <= saved_s;
+                        license.r    <= saved_r;
+                        license.s    <= saved_s;
                         saved_allow   <= allowance;
                         saved_nonce   <= nonce;
                         phase         <= PH_T14_CHECK;
@@ -592,11 +591,11 @@ module tb (
                 end
 
                 PH_T14_CHECK: begin
-                    // Hold license_r/s until license_ready pulses
+                    // Hold license until license_ready pulses
                     if (license_ready) begin
                         license_valid <= 1'b0;
-                        license_r     <= '0;
-                        license_s     <= '0;
+                        license.r    <= '0;
+                        license.s    <= '0;
                     end
 
                     // Check after deassert
