@@ -65,6 +65,8 @@ package sphincs_pkg;
         logic        [31:0] cntr;      // MGF1 counter
     } h_msg_outer_t;
 
+    // TODO the 3 FORS formats are only placeholders, not the ones described in the SPHINCS+ spec.
+
     // FORS leaf: H(PK.seed || ADRS_FORS_TREE || tree_idx || q_idx || sk[tree])
     typedef struct packed {
         logic [WIDTH-1:0] pk_seed;

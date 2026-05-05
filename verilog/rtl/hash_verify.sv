@@ -149,11 +149,6 @@ module hash_verify
     // typed license view exists in elaboration.
     // -------------------------------------------------------------------------
 
-    // Hypertree layer signing the message (bottom)
-    wire is_msg_layer = (int'(layer_q) == HSS_LEVELS - 1);
-    // Hypertree layer corresponding to the public key (top)
-    wire is_pk_layer  = (layer_q == '0);
-
     wire [127:0]     cur_I;
     wire [31:0]      cur_leaf_index;
     wire [WIDTH-1:0] cur_randomizer;
@@ -169,7 +164,7 @@ module hash_verify
     // All values are driven inside the SCHEME generate below.
     localparam Q_MSG_W = SCHEME ? $bits(sphincs_pkg::h_msg_inner_t)
                                 : $bits(hss_pkg::q_msg_t);
-    wire [Q_MSG_W-1:0]                          q_msg_data;
+    wire [Q_MSG_W-1:0] q_msg_data;
 
     // LMS-only slots (driven in g_lms; tied to '0 in g_sphincs).
     wire [$bits(hss_pkg::q_sub_t)-1:0]          q_sub_data;
@@ -183,6 +178,27 @@ module hash_verify
     wire [$bits(sphincs_pkg::fors_leaf_t)-1:0]   fors_leaf_data;
     wire [$bits(sphincs_pkg::fors_node_t)-1:0]   fors_node_data;
     wire [$bits(sphincs_pkg::kc_fors_t)-1:0]     kc_fors_data;
+
+    // -------------------------------------------------------------------------
+    // Merkle / FORS auth-path helpers (siblings + L/R muxing). The actual
+    // node payload structs are assembled inside the SCHEME generate above.
+    // -------------------------------------------------------------------------
+
+    wire [31:0]      parent_num = node_index_q >> 1;
+    wire             is_right   = node_index_q[0];
+
+    logic [WIDTH-1:0] left_node;
+    logic [WIDTH-1:0] right_node;
+    assign {left_node, right_node} = is_right ? {cur_auth_node, hash_reg_q}
+                                              : {hash_reg_q,    cur_auth_node};
+
+    wire [FORS_NODE_W-2:0] fors_parent   = fors_node_q[FORS_NODE_W-1:1];
+    wire                   fors_is_right = fors_node_q[0];
+
+    logic [WIDTH-1:0] fors_l;
+    logic [WIDTH-1:0] fors_r;
+    assign {fors_l, fors_r} = fors_is_right ? {cur_fors_auth, hash_reg_q}
+                                            : {hash_reg_q,    cur_fors_auth};
 
     generate
         if (SCHEME == 1'b0) begin : g_lms
@@ -264,34 +280,52 @@ module hash_verify
             assign leaf_data    = '0;
             assign mrkl_data    = '0;
 
+            // -------------------------------------------------------------------------
             // SPHINCS hash-input payloads.
+            // -------------------------------------------------------------------------
+
             assign q_msg_data = h_msg_inner_t'{r:       sphincs_lic.r,
                                                pk_seed: TEST_PK.seed,
                                                pk_root: TEST_PK.root,
                                                m:       message};
+
             assign q_ext_data = h_msg_outer_t'{r:       sphincs_lic.r,
                                                pk_seed: TEST_PK.seed,
                                                inner:   aux_reg_q[AUX_W-1:WIDTH],
                                                cntr:    32'd1};
+
+            // TODO the 3 FORS formats are only placeholders, not the ones described in the SPHINCS+ spec.
+
             assign fors_leaf_data = fors_leaf_t'{pk_seed:   TEST_PK.seed,
                                                  adrs_type: ADRS_FORS_TREE,
                                                  tree_idx:  32'(fors_tree_q),
                                                  q_idx:     32'(fors_q_idx[fors_tree_q]),
                                                  sk:        cur_fors_sk};
+
             assign fors_node_data = fors_node_t'{pk_seed:    TEST_PK.seed,
                                                  adrs_type:  ADRS_FORS_TREE,
                                                  tree_idx:   32'(fors_tree_q),
                                                  parent_idx: 32'(fors_parent),
                                                  l:          fors_l,
                                                  r:          fors_r};
+
             assign kc_fors_data = kc_fors_t'{pk_seed:   TEST_PK.seed,
                                              adrs_type: ADRS_FORS_ROOTS,
                                              roots:     pk_fors_concat};
         end
     endgenerate
 
+    // -------------------------------------------------------------------------
     // common helpers
+    // -------------------------------------------------------------------------
+
+    // Hypertree layer signing the message (bottom)
+    wire is_msg_layer = (int'(layer_q) == HSS_LEVELS - 1);
+    // Hypertree layer corresponding to the public key (top)
+    wire is_pk_layer  = (layer_q == '0);
+    // WOTS chain being the last in its tree
     wire last_chain = (int'(wots_chain_q) == WOTS_P - 1);
+    // Merkle tree node being the root (no more hashing up)
     wire last_level = (int'(mrkl_level_q) == TREE_H - 1);
 
     // -------------------------------------------------------------------------
@@ -388,36 +422,17 @@ module hash_verify
         return (calc_sha_blocks(data_bits) * 512) - (data_bits + SHA_PAD_OVERHEAD);
     endfunction
 
+    // -------------------------------------------------------------------------
+    // TODO this padding is repeated many times and difficult to read; consider sharing the padding code somehow
+    // TODO the same could include declaring the "discard" variables
+    // SHA-256 padded vectors per payload (block count + zero pad come from
+    // each payload wire's $bits, which is fixed by its packed-struct type).
+    // -------------------------------------------------------------------------
+
     localparam int unsigned Q_MSG_BLOCKS    = calc_sha_blocks($bits(q_msg_data));
     localparam int unsigned Q_MSG_PAD_ZEROS = calc_sha_pad_zeros($bits(q_msg_data));
     wire [Q_MSG_BLOCKS*512-1:0] q_msg_padded =
             {q_msg_data, 1'b1, {Q_MSG_PAD_ZEROS{1'b0}}, 64'($bits(q_msg_data))};
-
-    // -------------------------------------------------------------------------
-    // Merkle / FORS auth-path helpers (siblings + L/R muxing). The actual
-    // node payload structs are assembled inside the SCHEME generate above.
-    // -------------------------------------------------------------------------
-
-    wire [31:0]      parent_num = node_index_q >> 1;
-    wire             is_right   = node_index_q[0];
-
-    logic [WIDTH-1:0] left_node;
-    logic [WIDTH-1:0] right_node;
-    assign {left_node, right_node} = is_right ? {cur_auth_node, hash_reg_q}
-                                              : {hash_reg_q,    cur_auth_node};
-
-    wire [FORS_NODE_W-2:0] fors_parent   = fors_node_q[FORS_NODE_W-1:1];
-    wire                   fors_is_right = fors_node_q[0];
-
-    logic [WIDTH-1:0] fors_l;
-    logic [WIDTH-1:0] fors_r;
-    assign {fors_l, fors_r} = fors_is_right ? {cur_fors_auth, hash_reg_q}
-                                            : {hash_reg_q,    cur_fors_auth};
-
-    // -------------------------------------------------------------------------
-    // SHA-256 padded vectors per payload (block count + zero pad come from
-    // each payload wire's $bits, which is fixed by its packed-struct type).
-    // -------------------------------------------------------------------------
 
     localparam int unsigned Q_SUB_BLOCKS    = calc_sha_blocks  ($bits(q_sub_data));
     localparam int unsigned Q_SUB_PAD_ZEROS = calc_sha_pad_zeros($bits(q_sub_data));
@@ -518,6 +533,7 @@ module hash_verify
         fors_node_discard     = 0;
         kc_fors_discard       = 0;
 
+        // TODO shall we use a macro for the repeated assignment pattern here?
         unique case (seq_q)
             StQ: begin
                 if (is_msg_layer) begin
