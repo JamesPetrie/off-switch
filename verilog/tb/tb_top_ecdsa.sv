@@ -35,7 +35,13 @@ module tb (
     logic [63:0]      allowance;
     logic             enabled;
 
-    security_block u_dut (
+    // Note: number of signers is hardcoded in the testcases!
+    localparam int unsigned NUM_SIGNERS = 2;
+
+    security_block #(
+        .CRYPTO_TYPE(0),
+        .NUM_SIGNERS(NUM_SIGNERS)
+    ) u_dut (
         .clk            (clk),
         .rst_n          (rst_n),
         .license_valid  (license_valid),
@@ -61,7 +67,7 @@ module tb (
     localparam logic [WIDTH-1:0] TRNG_SEED = 256'd12345;
 
     // ECDSA signing: private keys matching PUBKEYS[0] (d=2) and PUBKEYS[1] (d=3)
-    localparam logic [WIDTH-1:0] PRIV_KEYS [base_pkg::NUM_SIGNERS] = '{256'd2, 256'd3};
+    localparam logic [WIDTH-1:0] PRIV_KEYS [NUM_SIGNERS] = '{256'd2, 256'd3};
     localparam logic [WIDTH-1:0] SIGN_K                  = 256'd7;
 
     localparam int VERIFY_TIMEOUT = 15_000_000;

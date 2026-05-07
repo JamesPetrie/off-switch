@@ -19,7 +19,8 @@ module security_block
     import arith_pkg::*;
     import base_pkg::*;
 # (
-    parameter bit CRYPTO_TYPE = 0,  // 1 = HSS-LMS, 0 = ECDSA
+    parameter bit          CRYPTO_TYPE = 0,  // 1 = HSS-LMS, 0 = ECDSA
+    parameter int unsigned NUM_SIGNERS = 2,  // Number of signers
 
     // License width depends on crypto type
     localparam int unsigned LICENSE_W    = CRYPTO_TYPE ? $bits(hss_pkg::license_t)

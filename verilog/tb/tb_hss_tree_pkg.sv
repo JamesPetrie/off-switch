@@ -4,18 +4,18 @@
 package tb_hss_tree_pkg;
 
     import arith_pkg::*;
-    import base_pkg::NUM_SIGNERS;
 
     // Emitted for 2 signer(s) × 2 layer(s); regenerate via
-    // reference_lms.py if base_pkg::NUM_SIGNERS or hss_pkg::HSS_LEVELS change.
+    // reference_lms.py if more signers or levels are needed.
     // (mismatch is caught at elaboration by the array-literal size.)
 
-    localparam int unsigned NUM_LAYERS = 2;
-    localparam int unsigned TREE_H     = 5;
-    localparam int unsigned NUM_LEAVES = 1 << TREE_H;
-    localparam int unsigned NUM_NODES  = 2*NUM_LEAVES - 1;
+    localparam int unsigned NUM_SIGNERS = 2;
+    localparam int unsigned NUM_LAYERS  = 2;
+    localparam int unsigned TREE_H      = 5;
+    localparam int unsigned NUM_LEAVES  = 1 << TREE_H;
+    localparam int unsigned NUM_NODES   = 2*NUM_LEAVES - 1;
 
-    localparam logic [NUM_LAYERS-1:0][127:0] IDENTIFIERS [2] = '{
+    localparam logic [NUM_LAYERS-1:0][127:0] IDENTIFIERS [NUM_SIGNERS] = '{
         0: '{  // signer 0
             128'h02020202020202020202020202020202,  // layer 1
             128'h01010101010101010101010101010101  // layer 0
@@ -26,7 +26,7 @@ package tb_hss_tree_pkg;
         }
     };
 
-    localparam logic [NUM_LAYERS-1:0][WIDTH-1:0] MASTER_SEEDS [2] = '{
+    localparam logic [NUM_LAYERS-1:0][WIDTH-1:0] MASTER_SEEDS [NUM_SIGNERS] = '{
         0: '{  // signer 0
             256'haaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,  // layer 1
             256'habababababababababababababababababababababababababababababababab  // layer 0
@@ -37,7 +37,7 @@ package tb_hss_tree_pkg;
         }
     };
 
-    localparam logic [WIDTH-1:0] ROOTS [2] = '{
+    localparam logic [WIDTH-1:0] ROOTS [NUM_SIGNERS] = '{
         0: 256'h0d5d8e8b6c4eb1f474f02048e9cbecbeb66eb10fd307ea7d86f5d485b2e9b45f,  // signer 0 top root
         1: 256'h9b395083685f54e20a7f77a76e8ff2317e514ff2e6bbbaec942f80c872038167  // signer 1 top root
     };
@@ -48,7 +48,7 @@ package tb_hss_tree_pkg;
     };
 
     // Tree nodes per signer × layer: index 1 = root, 32..63 = leaves
-    localparam logic [WIDTH-1:0] TREE [2][NUM_LAYERS][64] = '{
+    localparam logic [WIDTH-1:0] TREE [NUM_SIGNERS][NUM_LAYERS][64] = '{
         0: '{  // signer 0
             // ---- layer 0 ----
             '{

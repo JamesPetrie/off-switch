@@ -82,7 +82,7 @@ def main():
             print("ERROR: timed out waiting for a non-zero nonce", file=sys.stderr)
             return 1
         if nonce == prev_nonce:
-            print("(nonce unchanged after timeout — previous license likely rejected)")
+            print("(nonce unchanged after timeout — more signatures might be needed or license was rejected)")
 
         print()
         print(f"Nonce (hex, big-endian): {nonce:064x}")
