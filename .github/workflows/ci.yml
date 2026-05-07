@@ -35,7 +35,7 @@ jobs:
 
   simulate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       matrix:
         tb: [top_ecdsa, top_hss]

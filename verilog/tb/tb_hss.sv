@@ -68,7 +68,6 @@ module tb (
             case (phase)
                 PH_INIT: begin
                     $display("=== HSS-LMS Verification Test (L=%0d) ===", HSS_LEVELS);
-                    init_leaves();
                     dut_license <= hss_sign(MESSAGE, 0);
                     phase       <= PH_START;
                 end

@@ -33,7 +33,13 @@ module tb (
     logic [63:0]      allowance;
     logic             enabled;
 
-    security_block #(.CRYPTO_TYPE(1)) u_dut (
+    // Note: number of signers is hardcoded in the testcases!
+    localparam int unsigned NUM_SIGNERS = 2;
+
+    security_block #(
+        .CRYPTO_TYPE(1),
+        .NUM_SIGNERS(NUM_SIGNERS)
+    ) u_dut (
         .clk            (clk),
         .rst_n          (rst_n),
         .license_valid  (license_valid),
@@ -59,7 +65,6 @@ module tb (
     localparam logic [WIDTH-1:0] TRNG_SEED     = 256'd12345;
     localparam int               NONCE_TIMEOUT = 300;
 
-    localparam int INITIAL_LEAF   = 5;
     localparam int VERIFY_TIMEOUT = 2_000_000;
 
     // -------------------------------------------------------------------------
@@ -146,13 +151,6 @@ module tb (
                 // -------------------------------------------------------
                 PH_INIT: begin
                     trng_load_seed <= 1'b0;
-                    // Initialise per-signer × per-layer leaves, then override
-                    // each signer's bottom (leaf-tree) leaf with the test's
-                    // starting point so signer 0 and 1 advance from the same
-                    // index.
-                    init_leaves();
-                    for (int s = 0; s < int'(base_pkg::NUM_SIGNERS); s++)
-                        cur_leaf[s][HSS_LEVELS - 1] = INITIAL_LEAF;
                     phase <= PH_T1_CHECK;
                 end
 

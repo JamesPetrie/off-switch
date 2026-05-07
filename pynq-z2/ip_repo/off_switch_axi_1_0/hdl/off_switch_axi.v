@@ -69,25 +69,25 @@ module off_switch_axi #
         .license_ready (license_ready)
     );
 
-    // ECDSA build (CRYPTO_TYPE=0). TRNG runs free; workload path unused.
     security_block #(
-        .CRYPTO_TYPE(1'b0)
+        .CRYPTO_TYPE(1'b0), // ECDSA build (CRYPTO_TYPE=0)
+        .NUM_SIGNERS(1)     // Single signer
     ) u_security (
         .clk             (s00_axi_aclk),
         .rst_n           (s00_axi_aresetn),
         .license_valid   (license_valid),
         .license_ready   (license_ready),
         .license         (license),
-        .workload_valid  (1'b0),
+        .workload_valid  (1'b0),            // Workload path unused
         .workload_a      (8'b0),
         .workload_b      (8'b0),
         .trng_seed       (256'b0),
-        .trng_load_seed  (1'b0),
+        .trng_load_seed  (1'b0),            // TRNG runs free
         .nonce           (nonce),
-        .nonce_ready     (),
+        .nonce_ready     (),                // The client only checks the nonce value right now (e.g. non-zero, changed vs last sample)
         .workload_result (),
-        .result_valid    (),
-        .allowance       (),
+        .result_valid    (),                // Workload path unused
+        .allowance       (),                // Allowance not monitored for now
         .enabled         (led)
     );
 

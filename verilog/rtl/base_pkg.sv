@@ -3,9 +3,6 @@
 // package (e.g. ecdsa_pkg / hss_pkg).
 package base_pkg;
 
-    // Number of signers whose licenses must all be verified per nonce
-    // before the allowance counter is incremented and a fresh nonce is
-    // published (multi-sig enforcement — fixed submission order).
-    localparam int unsigned NUM_SIGNERS = 2;
+    // Intentionally empty for now
 
 endpackage

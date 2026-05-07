@@ -176,10 +176,10 @@ package tb_hss_sign_pkg;
     // (initialised from SUB_LEAF_INDEX) throughout the simulation.
     // -------------------------------------------------------------------------
 
-    int cur_leaf [base_pkg::NUM_SIGNERS][HSS_LEVELS];
+    int cur_leaf [NUM_SIGNERS][HSS_LEVELS];
 
     function automatic void init_leaves();
-        for (int s = 0; s < int'(base_pkg::NUM_SIGNERS); s++) begin
+        for (int s = 0; s < int'(NUM_SIGNERS); s++) begin
             // Upper layers (if any): pre-chosen sub leaves, stable across
             // signings. For L=1 the inner loop is empty.
             for (int lv = 0; lv < int'(HSS_LEVELS) - 1; lv++)
@@ -262,9 +262,16 @@ package tb_hss_sign_pkg;
         input logic [255:0] message,
         input int           signer_id
     );
+        static bit leaves_initialised = 1'b0;
         license_t lic;
         logic [255:0] q_hash;
         int q;
+
+        // One-shot initialisation on first sign across all signers.
+        if (!leaves_initialised) begin
+            init_leaves();
+            leaves_initialised = 1'b1;
+        end
 
         lic = 0;
 
