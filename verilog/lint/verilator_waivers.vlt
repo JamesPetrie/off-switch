@@ -1,0 +1,4 @@
+`verilator_config
+
+// Waive lint warnings in the third-party SHA-256 core.
+lint_off -file "*/sha256/*"
