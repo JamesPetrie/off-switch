@@ -180,7 +180,9 @@ module hss_verify
 
     logic [WOTS_P*WIDTH-1:0] pk_concat;
     always_comb begin
+        /* verilator lint_off UNUSEDSIGNAL */
         logic [WIDTH-1:0] pk_discard;
+        /* verilator lint_on UNUSEDSIGNAL */
         pk_concat = 0; // '0 triggers verilator WIDTHCONCAT on wide vectors
         for (int i = 0; i < WOTS_P; i++) begin
             // shift pk_concat left WIDTH bits, shift in from pk_store_q[i], discard shift out
@@ -324,11 +326,13 @@ module hss_verify
     int unsigned blk_shift;
 
     // Unused bits from shift output
+    /* verilator lint_off UNUSEDSIGNAL */
     logic [$bits(q_msg_padded)-1:0] q_msg_discard;
     logic [$bits(q_sub_padded)-1:0] q_sub_discard;
     logic [$bits(kc_padded)-1:0]    kc_discard;
     logic [$bits(leaf_padded)-1:0]  leaf_discard;
     logic [$bits(mrkl_padded)-1:0]  mrkl_discard;
+    /* verilator lint_on UNUSEDSIGNAL */
 
     // Block counter
     always_comb begin
@@ -417,11 +421,13 @@ module hss_verify
 
     wire wots_init  = (seq_q == StWots) && (wots_q == StWotsInit);
 
+    assign aux_reg_d = hash_reg_q;
+
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             aux_reg_q <= '0;
         end else if (wots_init) begin
-            aux_reg_q <= hash_reg_q;
+            aux_reg_q <= aux_reg_d;
         end
     end
 

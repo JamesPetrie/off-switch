@@ -25,12 +25,16 @@ jobs:
           tar xzf verible-${VERIBLE_VERSION}-linux-static-x86_64.tar.gz
           sudo cp verible-${VERIBLE_VERSION}/bin/* /usr/local/bin/
 
-      - name: Lint Verilator
-        run: make lint TOOL=verilator
+      - name: Lint Verilator ECDSA
+        run: make lint TOOL=verilator CRYPTO_TYPE=0
+        working-directory: verilog
+
+      - name: Lint Verilator HSS-LMS
+        run: make lint TOOL=verilator CRYPTO_TYPE=1
         working-directory: verilog
 
       - name: Lint Verible
-        run: make lint TOOL=verible
+        run: make lint TOOL=verible # verible does not compile the design, just checks syntax and style, no need to run separately for each CRYPTO_TYPE
         working-directory: verilog
 
   simulate:

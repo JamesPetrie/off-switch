@@ -58,8 +58,8 @@ ifeq ($(GUI),1)
 	$(error Lint GUI '$(GUI)' not supported. See 'make help' for valid options)
 endif
 ifeq ($(TOOL),verilator)
-	@echo "-- RUN VERILATOR LINT -------"
-	verilator --lint-only -Wall -F $(RTL_VC)
+	@echo "-- RUN VERILATOR LINT (CRYPTO_TYPE=$(CRYPTO_TYPE)) --"
+	verilator --lint-only -Wall -F $(RTL_VC) lint/verilator_waivers.vlt --top-module security_block -GCRYPTO_TYPE=$(CRYPTO_TYPE)
 	@echo "-- DONE --------------------"
 else ifeq ($(TOOL),verible)
 	@echo "-- RUN VERIBLE LINT --------"
