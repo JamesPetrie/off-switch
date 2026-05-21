@@ -2,9 +2,10 @@
 # Makefile configuration — edit these for your run
 # ---------------------------------------------------------------------------
 
-TOOL ?= verilator
-TB   ?= demo
-GUI  ?= 0
+TOOL        ?= verilator
+TB          ?= demo
+GUI         ?= 0
+CRYPTO_TYPE ?= 0
 
 # ---------------------------------------------------------------------------
 # Constant variables
@@ -16,7 +17,7 @@ TB_DIR     := tb
 TB_FILE    := $(TB_DIR)/tb_$(TB).sv
 BUILD_DIR  := build
 TOP_MODULE := tb
-DPI_FILE    := $(TB_DIR)/dpi_sha256.cpp
+DPI_FILE   := $(TB_DIR)/dpi_sha256.cpp
 
 # ---------------------------------------------------------------------------
 # Simulation
@@ -73,6 +74,26 @@ endif
 
 
 # ---------------------------------------------------------------------------
+# Synthesis (yosys + slang, area/GE report)
+# ---------------------------------------------------------------------------
+# Maps the design to standard cells via the Liberty file in $CELL_LIB and
+# reports total cell area. Divide by the NAND2 area in that lib for GE count.
+
+SYNTH_SCRIPT  := synth/yosys_synth.tcl
+SYNTH_OUT_DIR := $(BUILD_DIR)/synth_out
+SYNTH_LOG     := $(SYNTH_OUT_DIR)/synth_report_crypto_type_$(CRYPTO_TYPE).log
+
+.PHONY: synth
+synth:
+ifndef CELL_LIB
+	$(error CELL_LIB is not set. Source ../dotshrc (or export CELL_LIB) first)
+endif
+	@mkdir -p $(SYNTH_OUT_DIR)
+	@echo "-- SYNTH (CRYPTO_TYPE=$(CRYPTO_TYPE)) --"
+	yosys -l $(SYNTH_LOG) -c $(SYNTH_SCRIPT) -- $(RTL_VC) $(CRYPTO_TYPE)
+	@echo "-- LOG: $(SYNTH_LOG)"
+
+# ---------------------------------------------------------------------------
 # Housekeeping
 # ---------------------------------------------------------------------------
 
@@ -87,6 +108,7 @@ help:
 	@echo "────────────────────────────────────────────────────────"
 	@echo "  sim      Run simulation (TOOL=verilator TB=demo|top_ecdsa|top_hss|ecdsa|arith|hss GUI=0|1)"
 	@echo "  lint     Run linter (TOOL=verilator|verible GUI=0)"
+	@echo "  synth    Run yosys synthesis and report cell area (CRYPTO_TYPE=0|1). Requires CELL_LIB env var."
 	@echo "  clean    Remove all generated build artefacts"
 	@echo "  help     Print this message"
 

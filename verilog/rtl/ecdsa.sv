@@ -170,9 +170,6 @@ module ecdsa
     localparam int FINALIZE_START  = POINT_ADD_END   + 1;
     localparam int FINALIZE_END    = FINALIZE_START  + FINALIZE_LEN  - 1;
 
-    // Array to collect the PC values where execution should automatically stop
-    localparam int PROGRAM_ENDS [3] = '{PREPARE_END, POINT_ADD_END, FINALIZE_END};
-
     // -------------------------------------------------------------------------
     // FSM states
     // -------------------------------------------------------------------------
@@ -326,7 +323,9 @@ module ecdsa
             reg_write(current_instr.dst, arith_result);
 
             // If end of program reached, stop the program
-            if (int'(pc_q) inside {PROGRAM_ENDS}) begin
+            // Note: tried to collect the END addresses in an array,
+            //       but Yosys does not have the inside {array} SV feature implemented
+            if (int'(pc_q) inside {PREPARE_END, POINT_ADD_END, FINALIZE_END}) begin
                 arith_valid_d = 1'b0;
             end
         end

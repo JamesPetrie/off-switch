@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+# Must be sourced (not executed)
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  echo "ERROR: This script must be sourced: source ${BASH_SOURCE[0]}" >&2
+  exit 1
+fi
+
+# Path to the standard-cell library (Liberty format).
+# Override this to point to your library file.
+export CELL_LIB="path/to/cell.lib"
