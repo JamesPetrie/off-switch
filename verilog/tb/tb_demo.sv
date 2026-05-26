@@ -46,6 +46,7 @@ module tb (
     localparam logic [63:0] DEMO_INCREMENT = 64'd5_000_000;
 
     security_block #(
+        .NUM_SIGNERS         (1),
         .ALLOWANCE_INCREMENT (DEMO_INCREMENT)
     ) u_dut (
         .clk            (clk),
