@@ -62,7 +62,10 @@ module tb (
     // Constants
     // -------------------------------------------------------------------------
 
-    localparam logic [WIDTH-1:0] TRNG_SEED     = 256'd12345;
+    localparam logic [WIDTH-1:0] TRNG_SEED = (
+        // random looking 256-bit value (SHA-256 initial hash state)
+        256'h6a09e667_bb67ae85_3c6ef372_a54ff53a_510e527f_9b05688c_1f83d9ab_5be0cd19
+    );
     localparam int               NONCE_TIMEOUT = 300;
 
     localparam int VERIFY_TIMEOUT = 2_000_000;

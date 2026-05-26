@@ -2,8 +2,7 @@
 //
 // Nonce derivation:
 //   trng_load_seed=1 fires on the first posedge after rst_n deasserts.
-//   TRNG counter = TRNG_SEED after that edge, then increments.
-//   trng_request_new pulses 100 cycles later (after INIT_DELAY_CYCLES).
+//   TRNG state = TRNG_SEED after that edge, then advances from that.
 
 `include "tb_math_pkg.sv"
 
@@ -64,8 +63,10 @@ module tb (
     // Constants
     // -------------------------------------------------------------------------
 
-    localparam logic [WIDTH-1:0] TRNG_SEED = 256'd12345;
-
+    localparam logic [WIDTH-1:0] TRNG_SEED = (
+        // random looking 256-bit value (SHA-256 initial hash state)
+        256'h6a09e667_bb67ae85_3c6ef372_a54ff53a_510e527f_9b05688c_1f83d9ab_5be0cd19
+    );
     // ECDSA signing: private keys matching PUBKEYS[0] (d=2) and PUBKEYS[1] (d=3)
     localparam logic [WIDTH-1:0] PRIV_KEYS [NUM_SIGNERS] = '{256'd2, 256'd3};
     localparam logic [WIDTH-1:0] SIGN_K                  = 256'd7;

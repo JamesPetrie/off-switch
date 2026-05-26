@@ -71,7 +71,10 @@ module tb (
     // Constants
     // -------------------------------------------------------------------------
 
-    localparam logic [WIDTH-1:0] TRNG_SEED = 256'd12345;
+    localparam logic [WIDTH-1:0] TRNG_SEED = (
+        // random looking 256-bit value (SHA-256 initial hash state)
+        256'h6a09e667_bb67ae85_3c6ef372_a54ff53a_510e527f_9b05688c_1f83d9ab_5be0cd19
+    );
     localparam logic [WIDTH-1:0] PRIV_KEY  = 256'd2;
     localparam logic [WIDTH-1:0] SIGN_K    = 256'd7;
 
@@ -207,6 +210,7 @@ module tb (
                     if (nonce_ready) begin
                         ecdsa_sig_t sig;
                         sig = ecdsa_sign(nonce, PRIV_KEY, SIGN_K);
+                        $display("[DBG cycle %0d] sign: nonce=0x%h r=0x%h s=0x%h", cycle_cnt, nonce, sig.r, sig.s);
                         license_valid <= 1'b1;
                         license.r    <= sig.r;
                         license.s    <= sig.s;

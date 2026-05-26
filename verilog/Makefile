@@ -79,9 +79,11 @@ endif
 # Maps the design to standard cells via the Liberty file in $CELL_LIB and
 # reports total cell area. Divide by the NAND2 area in that lib for GE count.
 
-SYNTH_SCRIPT  := synth/yosys_synth.tcl
-SYNTH_OUT_DIR := $(BUILD_DIR)/synth_out
-SYNTH_LOG     := $(SYNTH_OUT_DIR)/synth_report_crypto_type_$(CRYPTO_TYPE).log
+YOSYS_SCRIPT  := synth/yosys_synth.tcl
+STA_SCRIPT    := synth/opensta_sta.tcl
+SYNTH_OUT_DIR := $(BUILD_DIR)/synth_out/crypto_type_$(CRYPTO_TYPE)
+AREA_LOG      := $(SYNTH_OUT_DIR)/area_report.log
+TIMING_LOG    := $(SYNTH_OUT_DIR)/timing_report.log
 
 .PHONY: synth
 synth:
@@ -90,8 +92,11 @@ ifndef CELL_LIB
 endif
 	@mkdir -p $(SYNTH_OUT_DIR)
 	@echo "-- SYNTH (CRYPTO_TYPE=$(CRYPTO_TYPE)) --"
-	yosys -l $(SYNTH_LOG) -c $(SYNTH_SCRIPT) -- $(RTL_VC) $(CRYPTO_TYPE)
-	@echo "-- LOG: $(SYNTH_LOG)"
+	yosys -l $(AREA_LOG) -c $(YOSYS_SCRIPT) -- $(RTL_VC) $(CRYPTO_TYPE) $(SYNTH_OUT_DIR)
+	@echo "-- STA --"
+	cd $(SYNTH_OUT_DIR) && sta -no_init -exit $(abspath $(STA_SCRIPT)) | tee $(notdir $(TIMING_LOG))
+	@echo "-- LOGS: $(AREA_LOG)"
+	@echo "         $(TIMING_LOG)"
 
 # ---------------------------------------------------------------------------
 # Housekeeping

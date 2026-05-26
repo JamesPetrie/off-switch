@@ -8,4 +8,16 @@ fi
 
 # Path to the standard-cell library (Liberty format).
 # Override this to point to your library file.
-export CELL_LIB="path/to/cell.lib"
+export CELL_LIB=""
+
+# Name of the NAND2 cell in the library.
+# Override this to match your library.
+export NAND2_CELL=""
+
+# Name of the FO4 reference cell in the library.
+# Override this to match your library.
+export FO4_CELL=""
+
+# Target clock period in picoseconds (ps).
+# Override this to set your desired clock frequency.
+export TARGET_PERIOD_PS=
