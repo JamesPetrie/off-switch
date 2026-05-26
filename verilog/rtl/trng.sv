@@ -29,12 +29,17 @@ module trng
     logic             nonce_valid_q;
 
     // counter
+    // Using LFSR instead of simple counter to avoid impact of 256bit carry on timing
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            counter_q     <= '0;
+            counter_q     <= WIDTH'(1'b1);
         end else begin
             if      (load_seed) counter_q <= seed;
-            else if (enable)    counter_q <= counter_q + 1;
+            else if (enable) begin
+                counter_q[WIDTH-1:1] <= counter_q[WIDTH-2:0];
+                counter_q[0]         <=    counter_q[255] ^ counter_q[253]
+                                         ^ counter_q[250] ^ counter_q[245];
+            end
         end
     end
 

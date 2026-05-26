@@ -132,7 +132,7 @@ flowchart TB
 
 | Module | Type | Purpose |
 |--------|------|---------|
-| `trng` | Submodule | Nonce generation (256-bit counter in prototype; ring oscillator in production) |
+| `trng` | Submodule | Nonce generation (256-bit LFSR in prototype; ring oscillator in production) |
 | `ecdsa` | Submodule (CRYPTO_TYPE=0) | Signature verification using secp256k1 curve |
 | `hss_verify` | Submodule (CRYPTO_TYPE=1) | RFC 8554 HSS/LMS verification (L=1, w=8, n=32, p=34) |
 | Security Logic | Inline | State machine orchestration |
@@ -719,7 +719,7 @@ This is a proof-of-concept implementation. The paper discusses broader limitatio
 
 | Component | Prototype | Production |
 |-----------|-----------|------------|
-| TRNG | 256-bit counter | Ring oscillator(s) with XORed entropy |
+| TRNG | 256-bit LFSR | Ring oscillator(s) with XORed entropy |
 | public key | Hardcoded | Configurable via Mask ROM |
 | ECDSA curve | secp256k1 only | Multiple curves for redundancy |
 | ECDSA Input validation | Minimal | Full range checking |
