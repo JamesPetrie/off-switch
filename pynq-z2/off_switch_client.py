@@ -13,16 +13,30 @@ Register map:
     0x60         submit     (W, write 1 to assert license_valid)
 
 Usage (on the board):
-    sudo -i /path/to/off_switch_client.py [bitstream.bit]
+    ./off_switch_client.py [bitstream.bit]
+
+Run it directly as the normal user from any directory — if not already root
+the script re-execs itself under `sudo -i` so the pynq-venv and XRT
+environment are sourced (plain `sudo` fails with "No Devices Found").
 
 If no bitstream argument is given, the script loads off_switch.bit from the
-same directory as itself. `sudo -i` is required so the pynq-venv and XRT
-environment are sourced (plain `sudo` will fail with "No Devices Found").
+same directory as itself.
 """
 
 import os
 import sys
 import time
+
+# Re-exec under `sudo -i` when not root, so the pynq-venv + XRT environment is
+# sourced. This lets the script be launched directly (e.g. ./off_switch_client.py)
+# from any directory. `sudo -i` resets cwd to root's home, so we always pass our
+# own absolute path; resolve a relative bitstream arg before cwd changes too.
+if os.geteuid() != 0:
+    _args = sys.argv[1:]
+    if _args:
+        _args[0] = os.path.abspath(_args[0])
+    os.execvp("sudo", ["sudo", "-i", os.path.abspath(__file__), *_args])
+
 from pynq import Overlay
 
 REG_NONCE = 0x00
