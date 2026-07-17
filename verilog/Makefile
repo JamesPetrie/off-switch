@@ -4,8 +4,10 @@
 
 TOOL        ?= verilator
 TB          ?= demo
+VERILATOR_JOBS ?= 4
 GUI         ?= 0
 CRYPTO_TYPE ?= 0
+SLH_STREAM_INPUT ?= 0
 
 # ---------------------------------------------------------------------------
 # Constant variables
@@ -18,12 +20,19 @@ TB_FILE    := $(TB_DIR)/tb_$(TB).sv
 BUILD_DIR  := build
 TOP_MODULE := tb
 DPI_FILE   := $(TB_DIR)/dpi_sha256.cpp
+PYNQ_IP_DIR := ../pynq-z2/ip_repo/off_switch_axi_1_0/hdl
+PYNQ_TOP    := $(PYNQ_IP_DIR)/off_switch_axi.v
+PYNQ_SLAVE  := $(PYNQ_IP_DIR)/off_switch_axi_slave_lite_v1_0_S00_AXI.sv
+
+ifeq ($(TB),pynq_axi_slh)
+EXTRA_RTL := $(PYNQ_SLAVE)
+endif
 
 # ---------------------------------------------------------------------------
 # Simulation
 # ---------------------------------------------------------------------------
 
-VFLAGS := -cc --exe --build -j --timing
+VFLAGS := -cc --exe --build -j $(VERILATOR_JOBS) --timing
 ifeq ($(GUI),1)
 	# using FST instead of VCD as the ECDSA simulation dump is in GBs range
 	# FST is 5-20x smaller in general
@@ -34,7 +43,7 @@ endif
 sim:
 ifeq ($(TOOL),verilator)
 	@echo "-- VERILATE & BUILD --------"
-	verilator $(VFLAGS) -F $(RTL_VC) +incdir+$(TB_DIR) $(TB_FILE) $(DPI_FILE) --top-module $(TOP_MODULE) tb/sim_main.cpp --Mdir $(BUILD_DIR)
+	verilator $(VFLAGS) -F $(RTL_VC) $(EXTRA_RTL) +incdir+$(TB_DIR) $(TB_FILE) $(DPI_FILE) --top-module $(TOP_MODULE) tb/sim_main.cpp --Mdir $(BUILD_DIR)
 	@echo "-- RUN ---------------------"
 	$(BUILD_DIR)/V$(TOP_MODULE)
 	@echo "-- DONE --------------------"
@@ -58,8 +67,8 @@ ifeq ($(GUI),1)
 	$(error Lint GUI '$(GUI)' not supported. See 'make help' for valid options)
 endif
 ifeq ($(TOOL),verilator)
-	@echo "-- RUN VERILATOR LINT (CRYPTO_TYPE=$(CRYPTO_TYPE)) --"
-	verilator --lint-only -Wall -F $(RTL_VC) lint/verilator_waivers.vlt --top-module security_block -GCRYPTO_TYPE=$(CRYPTO_TYPE)
+	@echo "-- RUN VERILATOR LINT (CRYPTO_TYPE=$(CRYPTO_TYPE), SLH_STREAM_INPUT=$(SLH_STREAM_INPUT)) --"
+	verilator --lint-only -Wall -F $(RTL_VC) lint/verilator_waivers.vlt --top-module security_block -GCRYPTO_TYPE=$(CRYPTO_TYPE) -GSLH_STREAM_INPUT=$(SLH_STREAM_INPUT)
 	@echo "-- DONE --------------------"
 else ifeq ($(TOOL),verible)
 	@echo "-- RUN VERIBLE LINT --------"
@@ -70,6 +79,17 @@ else ifeq ($(TOOL),verible)
 else
 	$(error Unknown lint tool '$(TOOL)'. See 'make help' for valid options)
 endif
+
+.PHONY: pynq-lint pynq-client-test
+pynq-lint:
+	@echo "-- RUN PYNQ-Z2 WRAPPER LINT (ECDSA) --"
+	verilator --lint-only -Wall -Wno-SYNCASYNCNET -F $(RTL_VC) lint/verilator_waivers.vlt $(PYNQ_TOP) $(PYNQ_SLAVE) --top-module off_switch_axi -GCRYPTO_TYPE=0
+	@echo "-- RUN PYNQ-Z2 WRAPPER LINT (STREAMED SLH-DSA) --"
+	verilator --lint-only -Wall -Wno-SYNCASYNCNET -F $(RTL_VC) lint/verilator_waivers.vlt $(PYNQ_TOP) $(PYNQ_SLAVE) --top-module off_switch_axi -GCRYPTO_TYPE=2
+	@echo "-- DONE --------------------"
+
+pynq-client-test:
+	python3 tools/test_pynq_slh_client.py
 
 
 
@@ -91,7 +111,7 @@ ifndef CELL_LIB
 	$(error CELL_LIB is not set. Source ../dotshrc (or export CELL_LIB) first)
 endif
 	@mkdir -p $(SYNTH_OUT_DIR)
-	@echo "-- SYNTH (CRYPTO_TYPE=$(CRYPTO_TYPE)) --"
+	@echo "-- SYNTH (CRYPTO_TYPE=$(CRYPTO_TYPE), 0=ECDSA 1=HSS 2=SLH-DSA) --"
 	yosys -l $(AREA_LOG) -c $(YOSYS_SCRIPT) -- $(RTL_VC) $(CRYPTO_TYPE) $(SYNTH_OUT_DIR)
 	@echo "-- STA --"
 	cd $(SYNTH_OUT_DIR) && sta -no_init -exit $(abspath $(STA_SCRIPT)) | tee $(notdir $(TIMING_LOG))
@@ -111,9 +131,11 @@ help:
 	@echo ""
 	@echo "RTL Makefile — available targets"
 	@echo "────────────────────────────────────────────────────────"
-	@echo "  sim      Run simulation (TOOL=verilator TB=demo|top_ecdsa|top_hss|ecdsa|arith|hss GUI=0|1)"
+	@echo "  sim      Run simulation (TOOL=verilator TB=demo|top_ecdsa|top_hss|top_slh|top_slh_stream|pynq_axi_slh|ecdsa|arith|hss|slh_dsa_verify|slh_fors_pk_from_sig|slh_hash_fh|slh_hash_tl|slh_hmsg|slh_ht_verify|slh_sig_parser|slh_wots_pk_from_sig|slh_xmss_pk_from_sig GUI=0|1)"
 	@echo "  lint     Run linter (TOOL=verilator|verible GUI=0)"
-	@echo "  synth    Run yosys synthesis and report cell area (CRYPTO_TYPE=0|1). Requires CELL_LIB env var."
+	@echo "  pynq-lint        Lint the PYNQ-Z2 AXI wrapper in ECDSA and SLH-DSA modes."
+	@echo "  pynq-client-test Test canonical-message and signature-stream byte order."
+	@echo "  synth    Run yosys synthesis and report cell area (CRYPTO_TYPE=0|1|2). Requires CELL_LIB env var."
 	@echo "  clean    Remove all generated build artefacts"
 	@echo "  help     Print this message"
 

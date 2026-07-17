@@ -1,4 +1,5 @@
-# PYNQ-Z2 build: Zynq PS -> AXI Interconnect -> off_switch_axi -> LD0
+# PYNQ-Z2 build: Zynq PS -> AXI Interconnect -> streamed SLH-DSA
+# off_switch_axi -> security_block -> LD0.
 # Output: ./build/off_switch.bit + ./build/off_switch.hwh for PYNQ overlay use.
 
 set proj_name off_switch
@@ -64,6 +65,7 @@ ipx::edit_ip_in_project -upgrade true -name edit_ip_prj \
     ./ip_repo/off_switch_axi_1_0/component.xml
 
 add_files -norecurse [read_vc ../verilog/rtl/design.vc]
+puts "Packaging CRYPTO_TYPE=2: streamed SLH-DSA-SHA2-128s verifier"
 
 ipx::merge_project_changes ports       [ipx::current_core]
 ipx::merge_project_changes file_groups [ipx::current_core]
@@ -82,8 +84,8 @@ create_bd_design $bd_name
 create_bd_cell -type ip -vlnv xilinx.com:ip:processing_system7 ps7_0
 apply_pynqz2_ps7_config [get_bd_cells ps7_0]
 # Enable M_AXI_GP0 (preset has it off; the PYNQ base overlay turns it on).
-# Drop FCLK0 from 100 MHz to 50 MHz — the ECDSA 256-bit modular arithmetic
-# path won't close at 10 ns on this part (WNS ~ -7.5 ns).
+# Use a conservative 50 MHz prototype clock. Check the generated SLH-DSA
+# timing report before increasing this frequency.
 set_property -dict [list \
     CONFIG.PCW_USE_M_AXI_GP0           {1}  \
     CONFIG.PCW_FPGA0_PERIPHERAL_FREQMHZ {50} \

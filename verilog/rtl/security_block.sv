@@ -2,7 +2,8 @@
 //
 // Manages crypto-based license validation, a TRNG nonce source, an allowance
 // counter, and a gated workload unit.
-// CRYPTO_TYPE selects the verification engine: 0 = ECDSA, 1 = HSS-LMS.
+// CRYPTO_TYPE selects the verification engine:
+//   0 = ECDSA, 1 = HSS-LMS, 2 = SLH-DSA-SHA2-128s.
 //
 // Protocol:
 //   1. On startup, waits INIT_DELAY then generates an initial nonce
@@ -19,12 +20,22 @@ module security_block
     import arith_pkg::*;
     import base_pkg::*;
 # (
-    parameter bit          CRYPTO_TYPE = 0,  // 1 = HSS-LMS, 0 = ECDSA
-    parameter int unsigned NUM_SIGNERS = 2,  // Number of signers
+    parameter int unsigned CRYPTO_TYPE = 0,
+    parameter int unsigned NUM_SIGNERS =
+        (CRYPTO_TYPE == 2) ? 1 : 2,
+    parameter bit          SLH_STREAM_INPUT = 1'b0,
+    parameter logic [127:0] SLH_PK_SEED = '0,
+    parameter logic [127:0] SLH_PK_ROOT = '0,
+    parameter logic [127:0] SLH_DEVICE_ID =
+        slh_dsa_pkg::OFFSWITCH_DEFAULT_DEVICE_ID,
+    parameter logic [63:0]  SLH_POLICY_EPOCH = 64'd1,
 
     // License width depends on crypto type
-    localparam int unsigned LICENSE_W    = CRYPTO_TYPE ? $bits(hss_pkg::license_t)
-                                                       : $bits(ecdsa_pkg::license_t),
+    localparam int unsigned LICENSE_W    =
+        (CRYPTO_TYPE == 0) ? $bits(ecdsa_pkg::license_t) :
+        (CRYPTO_TYPE == 1) ? $bits(hss_pkg::license_t) :
+        (SLH_STREAM_INPUT)  ? 1 :
+                              8 * slh_dsa_pkg::SIG_BYTES,
     localparam int unsigned SIGNER_IDX_W = (NUM_SIGNERS > 1) ? $clog2(NUM_SIGNERS) : 1,
     localparam int unsigned ALLOW_W      = 64,
     localparam int unsigned WORKLD_W     =  8,
@@ -38,6 +49,13 @@ module security_block
     input  logic                  license_valid,
     output logic                  license_ready,
     input  logic [LICENSE_W-1:0]  license,
+    output logic                  license_passed,
+
+    input  logic                           slh_sig_valid,
+    output logic                           slh_sig_ready,
+    input  logic [slh_dsa_pkg::STREAM_BITS-1:0] slh_sig_data,
+    input  logic [slh_dsa_pkg::STREAM_BYTES-1:0] slh_sig_keep,
+    input  logic                           slh_sig_last,
 
     // Workload interface
     input  logic                workload_valid,
@@ -117,11 +135,16 @@ module security_block
     logic             crypto_valid;
 
     // Outputs
+    wire              slh_sig_ready_internal;
     logic             crypto_ready;
     logic             crypto_verif_passed;
+    assign slh_sig_ready = slh_sig_ready_internal;
 
     generate
         if (CRYPTO_TYPE == 0) begin : g_ecdsa
+            assign slh_sig_ready_internal = 1'b0 & ^{
+                slh_sig_valid, slh_sig_data, slh_sig_keep, slh_sig_last
+            };
             ecdsa_pkg::license_t ecdsa_license;
             assign ecdsa_license = license;
 
@@ -139,7 +162,10 @@ module security_block
                 .ready        (crypto_ready),
                 .verif_passed (crypto_verif_passed)
             );
-        end else begin : g_hss_lms
+        end else if (CRYPTO_TYPE == 1) begin : g_hss_lms
+            assign slh_sig_ready_internal = 1'b0 & ^{
+                slh_sig_valid, slh_sig_data, slh_sig_keep, slh_sig_last
+            };
             hss_pkg::license_t hss_license;
             assign hss_license = license;
 
@@ -154,6 +180,64 @@ module security_block
                 .ready        (crypto_ready),
                 .verif_passed (crypto_verif_passed)
             );
+        end else begin : g_slh_dsa
+            initial begin
+                if (CRYPTO_TYPE != 2) begin
+                    $error("Unsupported CRYPTO_TYPE");
+                end
+                if (NUM_SIGNERS != 1) begin
+                    $error("The initial SLH-DSA integration supports one signer");
+                end
+            end
+
+            if (SLH_STREAM_INPUT) begin : g_stream
+                wire stream_crypto_valid = crypto_valid
+                    | (1'b0 & ^license);
+
+                slh_stream_verify u_slh (
+                    .clk          (clk),
+                    .rst_n        (rst_n),
+                    .valid        (stream_crypto_valid),
+                    .pk_seed      (SLH_PK_SEED),
+                    .pk_root      (SLH_PK_ROOT),
+                    .message      ({
+                        slh_dsa_pkg::OFFSWITCH_DOMAIN,
+                        SLH_DEVICE_ID,
+                        trng_nonce,
+                        SLH_POLICY_EPOCH
+                    }),
+                    .sig_valid    (slh_sig_valid),
+                    .sig_ready    (slh_sig_ready_internal),
+                    .sig_data     (slh_sig_data),
+                    .sig_keep     (slh_sig_keep),
+                    .sig_last     (slh_sig_last),
+                    .ready        (crypto_ready),
+                    .verif_passed (crypto_verif_passed)
+                );
+            end else begin : g_packed
+                logic [8*slh_dsa_pkg::SIG_BYTES-1:0] slh_license;
+                assign slh_license = license;
+                assign slh_sig_ready_internal = 1'b0 & ^{
+                    slh_sig_valid, slh_sig_data, slh_sig_keep, slh_sig_last
+                };
+
+                slh_license_verify u_slh (
+                    .clk          (clk),
+                    .rst_n        (rst_n),
+                    .valid        (crypto_valid),
+                    .pk_seed      (SLH_PK_SEED),
+                    .pk_root      (SLH_PK_ROOT),
+                    .message      ({
+                        slh_dsa_pkg::OFFSWITCH_DOMAIN,
+                        SLH_DEVICE_ID,
+                        trng_nonce,
+                        SLH_POLICY_EPOCH
+                    }),
+                    .license      (slh_license),
+                    .ready        (crypto_ready),
+                    .verif_passed (crypto_verif_passed)
+                );
+            end
         end
     endgenerate;
 
@@ -200,6 +284,7 @@ module security_block
         nonce               =   '0;
         crypto_valid        = 1'b0;
         license_ready       = 1'b0;
+        license_passed      = 1'b0;
         increment_allowance = 1'b0;
 
         unique case (state_q)
@@ -229,6 +314,7 @@ module security_block
                 crypto_valid = 1'b1;
                 if (crypto_ready) begin
                     license_ready = 1'b1;
+                    license_passed = crypto_verif_passed;
                     if (crypto_verif_passed) begin
                         // Require a valid license from each signer (in fixed order)
                         // against the same nonce before rotating the nonce.

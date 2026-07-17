@@ -1,0 +1,58 @@
+{
+  "algorithm": "SLH_DSA_PURE_SHA2_128S",
+  "checks": {
+    "changed_message_rejected": true,
+    "changed_signature_rejected": true,
+    "independent_python_changed_message_rejected": true,
+    "independent_python_changed_signature_rejected": true,
+    "independent_python_verifier_accepted": true,
+    "valid_signature_accepted": true
+  },
+  "format_version": 1,
+  "hmsg": {
+    "bytes": 30,
+    "digest_hex": "2bbcf755c49d9a29ec417d6801a8f7c5c14abdbb7c5b463358bf7412547e",
+    "fors_message_hex": "2bbcf755c49d9a29ec417d6801a8f7c5c14abdbb7c",
+    "leaf_index": 126,
+    "tree_index": 7677010717406226,
+    "tree_index_hex": "1b463358bf7412"
+  },
+  "liboqs": {
+    "claimed_nist_level": 1,
+    "is_euf_cma": true,
+    "version": "0.16.0"
+  },
+  "message": {
+    "bytes": 72,
+    "device_id_hex": "00112233445566778899aabbccddeeff",
+    "domain_ascii": "OFFSWITCH-SLH-V1",
+    "nonce_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+    "policy_epoch": 1,
+    "sha256": "adc3097613bd5c300a3093b4c145c78a173cce8cd19b4082e990733f167c29a0"
+  },
+  "public_key": {
+    "bytes": 32,
+    "sha256": "76c7441603dc7338ef9d69b5f1251864c02189dc98ff467a67d87d043ae33224"
+  },
+  "secret_key_included": false,
+  "signature": {
+    "bytes": 7856,
+    "regions": {
+      "FORS": [
+        16,
+        2928
+      ],
+      "R": [
+        0,
+        16
+      ],
+      "hypertree": [
+        2928,
+        7856
+      ]
+    },
+    "sha256": "94e2b1ea5d553578ba5c234ad6fa7f1a2fce4fd7cbb693c330b9e96ebecb607d",
+    "stream_width_bits": 64,
+    "stream_words": 982
+  }
+}

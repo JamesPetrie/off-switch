@@ -1,4 +1,6 @@
 _build/
+__pycache__/
+*.py[cod]
 docs/EmbeddedOffSwitchControlFlow.pdf
 docs/OffSwitch.aux
 docs/OffSwitch.bbl

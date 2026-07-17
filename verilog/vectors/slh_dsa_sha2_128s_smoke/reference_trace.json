@@ -1,0 +1,3921 @@
+{
+  "computed_root_hex": "a20572446911fc047a357b32679f5c3a",
+  "expected_root_hex": "a20572446911fc047a357b32679f5c3a",
+  "fors": {
+    "indices": [
+      1147,
+      770,
+      1169,
+      3761,
+      3107,
+      1810,
+      3620,
+      2501,
+      1971,
+      2801,
+      2442,
+      713,
+      3794,
+      2013
+    ],
+    "public_key_hex": "e5fd78666bae0183673cd6b59ba6300a",
+    "roots_hex": [
+      "18158adb876cf208fb3beba7e99e28b5",
+      "7977f3f842f635f6708dcfb03b8277b1",
+      "86746babc3cdeabd377e0b5463cf7748",
+      "53a3b636bc3d865a3e212caf0266885e",
+      "bf8894b65cd57a7f893a8abb8786c1e0",
+      "10e2e0608b0f66a65cf4260bd5798ae0",
+      "2ab934432707124c3793703c740879f7",
+      "d601029d51a797d8d838894205598280",
+      "4350a64c64942d27b2d16e6f7793f7be",
+      "89a25fff7537a45694a848b11219cbf6",
+      "459333fcf962149601d2800f9c3c75cd",
+      "b3cedd459509f0eb37e5a79e41011b45",
+      "abf0ef983bc6ff4fd45551496ffda2c3",
+      "36a3895a092ca378621e8590be60b538"
+    ],
+    "trees": [
+      {
+        "authentication_path": [
+          {
+            "auth_hex": "7cc5360f477ad688da6fecc14722adb8",
+            "height": 1,
+            "node_after_hex": "f2cb019c88cbb01f9b8c7c338f0954f3",
+            "node_before_hex": "97dcfdba56f9db4695afc909aec83866",
+            "order": "auth||node",
+            "tree_index": 573
+          },
+          {
+            "auth_hex": "f9a5413d586ea97c7703dca2a4ce67a6",
+            "height": 2,
+            "node_after_hex": "5d859fe426273955b3189699ea9397bd",
+            "node_before_hex": "f2cb019c88cbb01f9b8c7c338f0954f3",
+            "order": "auth||node",
+            "tree_index": 286
+          },
+          {
+            "auth_hex": "afbd4f7dcac0ac4ba35512663553bbb0",
+            "height": 3,
+            "node_after_hex": "0f7c83a8726a3bab277ea4590bca7437",
+            "node_before_hex": "5d859fe426273955b3189699ea9397bd",
+            "order": "node||auth",
+            "tree_index": 143
+          },
+          {
+            "auth_hex": "ed04a5050f07107cc005867ff8bab1f0",
+            "height": 4,
+            "node_after_hex": "f2ee8f875a81885ae2ecd3ddb32c2d59",
+            "node_before_hex": "0f7c83a8726a3bab277ea4590bca7437",
+            "order": "auth||node",
+            "tree_index": 71
+          },
+          {
+            "auth_hex": "e3a758ffd8f28bed85e448871c62c10f",
+            "height": 5,
+            "node_after_hex": "b3fdaaf800fc1ee5c741d423ef047ee6",
+            "node_before_hex": "f2ee8f875a81885ae2ecd3ddb32c2d59",
+            "order": "auth||node",
+            "tree_index": 35
+          },
+          {
+            "auth_hex": "9ee6b031a3858b0588d8a2eac4dee5a2",
+            "height": 6,
+            "node_after_hex": "9f730c8ef9954de8d5f279b67fc6c43c",
+            "node_before_hex": "b3fdaaf800fc1ee5c741d423ef047ee6",
+            "order": "auth||node",
+            "tree_index": 17
+          },
+          {
+            "auth_hex": "b446c92d15aac09cb2e2cb7ab5322d20",
+            "height": 7,
+            "node_after_hex": "9d2460888ae24df0278cd0232bc2043d",
+            "node_before_hex": "9f730c8ef9954de8d5f279b67fc6c43c",
+            "order": "auth||node",
+            "tree_index": 8
+          },
+          {
+            "auth_hex": "4571a4265c02686882181dfda0b0c2c4",
+            "height": 8,
+            "node_after_hex": "7b30306fd0b07944e2faae39c4c99347",
+            "node_before_hex": "9d2460888ae24df0278cd0232bc2043d",
+            "order": "node||auth",
+            "tree_index": 4
+          },
+          {
+            "auth_hex": "368dd87214a0435f56661ffc66e94c05",
+            "height": 9,
+            "node_after_hex": "ba2b6a1c3f20dd02ba78b863373cf0b9",
+            "node_before_hex": "7b30306fd0b07944e2faae39c4c99347",
+            "order": "node||auth",
+            "tree_index": 2
+          },
+          {
+            "auth_hex": "2306a5a191e891f70c40282c37a22e82",
+            "height": 10,
+            "node_after_hex": "a247d2cb1f2905d38447e1d9aaee3512",
+            "node_before_hex": "ba2b6a1c3f20dd02ba78b863373cf0b9",
+            "order": "node||auth",
+            "tree_index": 1
+          },
+          {
+            "auth_hex": "b38ee4ddec73a8de4c627697959c489c",
+            "height": 11,
+            "node_after_hex": "5d1751d5bb41fc71e8447a680e823df1",
+            "node_before_hex": "a247d2cb1f2905d38447e1d9aaee3512",
+            "order": "auth||node",
+            "tree_index": 0
+          },
+          {
+            "auth_hex": "ec3a636a1c54c1ee745f0a8c2ed76dcd",
+            "height": 12,
+            "node_after_hex": "18158adb876cf208fb3beba7e99e28b5",
+            "node_before_hex": "5d1751d5bb41fc71e8447a680e823df1",
+            "order": "node||auth",
+            "tree_index": 0
+          }
+        ],
+        "global_index": 1147,
+        "leaf_hex": "97dcfdba56f9db4695afc909aec83866",
+        "local_index": 1147,
+        "root_hex": "18158adb876cf208fb3beba7e99e28b5",
+        "secret_hex": "d2314bbeb7c7b650be87cbf23e0f0ee9",
+        "tree": 0
+      },
+      {
+        "authentication_path": [
+          {
+            "auth_hex": "c14de781878125d1ec337307c4ebb6e2",
+            "height": 1,
+            "node_after_hex": "77a2f52265d5ff11b1208946c181f24f",
+            "node_before_hex": "ae38627d749551d9b99adcc7dad56631",
+            "order": "node||auth",
+            "tree_index": 2433
+          },
+          {
+            "auth_hex": "d5b29b44d89cc9dc72379c4b02a1dd45",
+            "height": 2,
+            "node_after_hex": "8f993493113c6c80bc29c7da2b7c1289",
+            "node_before_hex": "77a2f52265d5ff11b1208946c181f24f",
+            "order": "auth||node",
+            "tree_index": 1216
+          },
+          {
+            "auth_hex": "6c480e7f2cf51eb17b2715ca0921d7c7",
+            "height": 3,
+            "node_after_hex": "78f46db3352311a108d1d8331a7103bd",
+            "node_before_hex": "8f993493113c6c80bc29c7da2b7c1289",
+            "order": "node||auth",
+            "tree_index": 608
+          },
+          {
+            "auth_hex": "8289b5af6a537a4318427b5f804ec351",
+            "height": 4,
+            "node_after_hex": "0840ab7e96471fb3a357596de6010c78",
+            "node_before_hex": "78f46db3352311a108d1d8331a7103bd",
+            "order": "node||auth",
+            "tree_index": 304
+          },
+          {
+            "auth_hex": "f8adcc212087c8194a649b5c4f9fd3c9",
+            "height": 5,
+            "node_after_hex": "099035e22e310cdd0122304d56aa8fcd",
+            "node_before_hex": "0840ab7e96471fb3a357596de6010c78",
+            "order": "node||auth",
+            "tree_index": 152
+          },
+          {
+            "auth_hex": "75928bc8ee36fe5a59d897ad6e74b354",
+            "height": 6,
+            "node_after_hex": "bcdc1c43ef67d0d05909968072069e58",
+            "node_before_hex": "099035e22e310cdd0122304d56aa8fcd",
+            "order": "node||auth",
+            "tree_index": 76
+          },
+          {
+            "auth_hex": "36d45c6a06bdda7dbf890fc8f2dc6a1d",
+            "height": 7,
+            "node_after_hex": "b86774f6857b16f057d9c8a9d51030ca",
+            "node_before_hex": "bcdc1c43ef67d0d05909968072069e58",
+            "order": "node||auth",
+            "tree_index": 38
+          },
+          {
+            "auth_hex": "f615fcf142fef1b77e38581b717f9025",
+            "height": 8,
+            "node_after_hex": "07c2ef78ae602de7a922829d74b6652e",
+            "node_before_hex": "b86774f6857b16f057d9c8a9d51030ca",
+            "order": "node||auth",
+            "tree_index": 19
+          },
+          {
+            "auth_hex": "f019ec977e697b06500b89d78ef18daa",
+            "height": 9,
+            "node_after_hex": "1e2ba1eac68a6469ad411ab19fe6b909",
+            "node_before_hex": "07c2ef78ae602de7a922829d74b6652e",
+            "order": "auth||node",
+            "tree_index": 9
+          },
+          {
+            "auth_hex": "067f8edfa4a179dd3a3295524415d9b3",
+            "height": 10,
+            "node_after_hex": "47b33b317e0af03e65abff2d01480bd6",
+            "node_before_hex": "1e2ba1eac68a6469ad411ab19fe6b909",
+            "order": "auth||node",
+            "tree_index": 4
+          },
+          {
+            "auth_hex": "50a7446a9098919304b0e773c759aaec",
+            "height": 11,
+            "node_after_hex": "bcb51b8e4dad2446387dc2be247af769",
+            "node_before_hex": "47b33b317e0af03e65abff2d01480bd6",
+            "order": "node||auth",
+            "tree_index": 2
+          },
+          {
+            "auth_hex": "6eec08477ee9466155059e27069893b7",
+            "height": 12,
+            "node_after_hex": "7977f3f842f635f6708dcfb03b8277b1",
+            "node_before_hex": "bcb51b8e4dad2446387dc2be247af769",
+            "order": "node||auth",
+            "tree_index": 1
+          }
+        ],
+        "global_index": 4866,
+        "leaf_hex": "ae38627d749551d9b99adcc7dad56631",
+        "local_index": 770,
+        "root_hex": "7977f3f842f635f6708dcfb03b8277b1",
+        "secret_hex": "c23ae84fc61b5bde1d431aa27a9b3549",
+        "tree": 1
+      },
+      {
+        "authentication_path": [
+          {
+            "auth_hex": "39ea11d361c0670176dac13c49b94403",
+            "height": 1,
+            "node_after_hex": "f300dae9baca888c8da3d055d7241e5d",
+            "node_before_hex": "a726456f3946c78cfe74c276b91fc444",
+            "order": "auth||node",
+            "tree_index": 4680
+          },
+          {
+            "auth_hex": "ac6df16ea9e53e31a1725ed9c0fdb388",
+            "height": 2,
+            "node_after_hex": "551f417c97a108f57a861075ecb99cc2",
+            "node_before_hex": "f300dae9baca888c8da3d055d7241e5d",
+            "order": "node||auth",
+            "tree_index": 2340
+          },
+          {
+            "auth_hex": "a2b7a5fc4aecc63e64a67e50755db5b2",
+            "height": 3,
+            "node_after_hex": "8e9a2732be10a131a87af5359978bd76",
+            "node_before_hex": "551f417c97a108f57a861075ecb99cc2",
+            "order": "node||auth",
+            "tree_index": 1170
+          },
+          {
+            "auth_hex": "20db70a12a240ce737dbf08fe5eb103d",
+            "height": 4,
+            "node_after_hex": "d8e872e5b4b4408134192def1d4d405a",
+            "node_before_hex": "8e9a2732be10a131a87af5359978bd76",
+            "order": "node||auth",
+            "tree_index": 585
+          },
+          {
+            "auth_hex": "436f5aa599b535fb3f537be9108fc5a9",
+            "height": 5,
+            "node_after_hex": "3b78c20fe8755c4bef341771b6c1075f",
+            "node_before_hex": "d8e872e5b4b4408134192def1d4d405a",
+            "order": "auth||node",
+            "tree_index": 292
+          },
+          {
+            "auth_hex": "01b11b91ad64eee81ead81279b5eef3d",
+            "height": 6,
+            "node_after_hex": "24d99cef02fa59baacb254f8dbc5fb8e",
+            "node_before_hex": "3b78c20fe8755c4bef341771b6c1075f",
+            "order": "node||auth",
+            "tree_index": 146
+          },
+          {
+            "auth_hex": "d18924bfdb4f696c732b4d07dec14f0e",
+            "height": 7,
+            "node_after_hex": "1ed429810180c8e9b4735f33e0d96ef7",
+            "node_before_hex": "24d99cef02fa59baacb254f8dbc5fb8e",
+            "order": "node||auth",
+            "tree_index": 73
+          },
+          {
+            "auth_hex": "d6180183ffd33ee726186ff360e5eae2",
+            "height": 8,
+            "node_after_hex": "bf23b71b566904e738a2ebe3df1f8e2c",
+            "node_before_hex": "1ed429810180c8e9b4735f33e0d96ef7",
+            "order": "auth||node",
+            "tree_index": 36
+          },
+          {
+            "auth_hex": "b0af741d0ea32d24b24b34c0a6683911",
+            "height": 9,
+            "node_after_hex": "bd47f9707842b2e416a97bd3bcaf9a14",
+            "node_before_hex": "bf23b71b566904e738a2ebe3df1f8e2c",
+            "order": "node||auth",
+            "tree_index": 18
+          },
+          {
+            "auth_hex": "d2b6b6a133489614ec85270241f46fad",
+            "height": 10,
+            "node_after_hex": "77208398b549005ab7fb579ad4edae00",
+            "node_before_hex": "bd47f9707842b2e416a97bd3bcaf9a14",
+            "order": "node||auth",
+            "tree_index": 9
+          },
+          {
+            "auth_hex": "efba13d2ca07714d7d68f274ee513e4a",
+            "height": 11,
+            "node_after_hex": "d38ea4bc6ebd6451b31edce209442413",
+            "node_before_hex": "77208398b549005ab7fb579ad4edae00",
+            "order": "auth||node",
+            "tree_index": 4
+          },
+          {
+            "auth_hex": "8542c261a5ca03750e7194547381aa8d",
+            "height": 12,
+            "node_after_hex": "86746babc3cdeabd377e0b5463cf7748",
+            "node_before_hex": "d38ea4bc6ebd6451b31edce209442413",
+            "order": "node||auth",
+            "tree_index": 2
+          }
+        ],
+        "global_index": 9361,
+        "leaf_hex": "a726456f3946c78cfe74c276b91fc444",
+        "local_index": 1169,
+        "root_hex": "86746babc3cdeabd377e0b5463cf7748",
+        "secret_hex": "a6be810ca09889044768862e2ff7ef70",
+        "tree": 2
+      },
+      {
+        "authentication_path": [
+          {
+            "auth_hex": "097356ffd3b9611460c49008fbf53974",
+            "height": 1,
+            "node_after_hex": "56f58090be486636bf27d35b7b9b1782",
+            "node_before_hex": "95389cae662df64ffbe89c4d2a114469",
+            "order": "auth||node",
+            "tree_index": 8024
+          },
+          {
+            "auth_hex": "58cc4269bc444b00c16c02af85d5db9b",
+            "height": 2,
+            "node_after_hex": "83cdf68af7349f899531db2bcfd19904",
+            "node_before_hex": "56f58090be486636bf27d35b7b9b1782",
+            "order": "node||auth",
+            "tree_index": 4012
+          },
+          {
+            "auth_hex": "58a802f1cb98e6d62274f4758b7030f3",
+            "height": 3,
+            "node_after_hex": "07193813fb0659c0f498c0e311b76137",
+            "node_before_hex": "83cdf68af7349f899531db2bcfd19904",
+            "order": "node||auth",
+            "tree_index": 2006
+          },
+          {
+            "auth_hex": "50bb3e2ac7443303400f34009d66ea34",
+            "height": 4,
+            "node_after_hex": "815c275a103e3e7181bbacf78dbec58f",
+            "node_before_hex": "07193813fb0659c0f498c0e311b76137",
+            "order": "node||auth",
+            "tree_index": 1003
+          },
+          {
+            "auth_hex": "fde6aba70f0256c124a1fc965b43b9d0",
+            "height": 5,
+            "node_after_hex": "d06cdc8f7db45d04c7d50e9b3987e10c",
+            "node_before_hex": "815c275a103e3e7181bbacf78dbec58f",
+            "order": "auth||node",
+            "tree_index": 501
+          },
+          {
+            "auth_hex": "efa6f209d4960c0577995442bd7e4316",
+            "height": 6,
+            "node_after_hex": "85ec9e9e7d0b1149a7232d97cf0bdeb1",
+            "node_before_hex": "d06cdc8f7db45d04c7d50e9b3987e10c",
+            "order": "auth||node",
+            "tree_index": 250
+          },
+          {
+            "auth_hex": "37b80099e9684e85468c05eb32ce9301",
+            "height": 7,
+            "node_after_hex": "8e37706c50f22bf33c0375d252e648e4",
+            "node_before_hex": "85ec9e9e7d0b1149a7232d97cf0bdeb1",
+            "order": "node||auth",
+            "tree_index": 125
+          },
+          {
+            "auth_hex": "7062308267d5c9123f3b518aa255e37f",
+            "height": 8,
+            "node_after_hex": "edad97fd945509d2b59e3686439a76f8",
+            "node_before_hex": "8e37706c50f22bf33c0375d252e648e4",
+            "order": "auth||node",
+            "tree_index": 62
+          },
+          {
+            "auth_hex": "88051533a14426c8207319ddd5aac059",
+            "height": 9,
+            "node_after_hex": "89aa5204e422f9940dab8ab9f3b0e923",
+            "node_before_hex": "edad97fd945509d2b59e3686439a76f8",
+            "order": "node||auth",
+            "tree_index": 31
+          },
+          {
+            "auth_hex": "106dd4052bac436d3f8c0d60e47b2d23",
+            "height": 10,
+            "node_after_hex": "d09662013e7e2e97524e03224fa39584",
+            "node_before_hex": "89aa5204e422f9940dab8ab9f3b0e923",
+            "order": "auth||node",
+            "tree_index": 15
+          },
+          {
+            "auth_hex": "972762f26c9cc950d5d55a0eb7c899ac",
+            "height": 11,
+            "node_after_hex": "08da2bd1a213859c023183832faa4feb",
+            "node_before_hex": "d09662013e7e2e97524e03224fa39584",
+            "order": "auth||node",
+            "tree_index": 7
+          },
+          {
+            "auth_hex": "067d5fbc9aee7eb76839550f24d4fa69",
+            "height": 12,
+            "node_after_hex": "53a3b636bc3d865a3e212caf0266885e",
+            "node_before_hex": "08da2bd1a213859c023183832faa4feb",
+            "order": "auth||node",
+            "tree_index": 3
+          }
+        ],
+        "global_index": 16049,
+        "leaf_hex": "95389cae662df64ffbe89c4d2a114469",
+        "local_index": 3761,
+        "root_hex": "53a3b636bc3d865a3e212caf0266885e",
+        "secret_hex": "bcaa64d541154232d803c00ce4003509",
+        "tree": 3
+      },
+      {
+        "authentication_path": [
+          {
+            "auth_hex": "9bdb3b2b1bb9e4da2e9ef395a270b89a",
+            "height": 1,
+            "node_after_hex": "6026f134ed7a88d36e14c96297aa0102",
+            "node_before_hex": "48627753e52ff899f89136689400df17",
+            "order": "auth||node",
+            "tree_index": 9745
+          },
+          {
+            "auth_hex": "ab776ce547647676f1a1d4e19d388936",
+            "height": 2,
+            "node_after_hex": "537cc5cb79f8708c808b378d6d907492",
+            "node_before_hex": "6026f134ed7a88d36e14c96297aa0102",
+            "order": "auth||node",
+            "tree_index": 4872
+          },
+          {
+            "auth_hex": "d1205fc6482b88856b7c49d2d843bffc",
+            "height": 3,
+            "node_after_hex": "73967912a6b01d759bc58f681c4e6db5",
+            "node_before_hex": "537cc5cb79f8708c808b378d6d907492",
+            "order": "node||auth",
+            "tree_index": 2436
+          },
+          {
+            "auth_hex": "e4806ca7ebac75f68b6622ce0a81680c",
+            "height": 4,
+            "node_after_hex": "84439bee6fe7ceaed8b4d64e2c865b10",
+            "node_before_hex": "73967912a6b01d759bc58f681c4e6db5",
+            "order": "node||auth",
+            "tree_index": 1218
+          },
+          {
+            "auth_hex": "5771d6f53144b8d7a789988919e54ea8",
+            "height": 5,
+            "node_after_hex": "805ab2fe5c8cd93ee621f01cfcddd200",
+            "node_before_hex": "84439bee6fe7ceaed8b4d64e2c865b10",
+            "order": "node||auth",
+            "tree_index": 609
+          },
+          {
+            "auth_hex": "e76c98ea0921d7d80114f986f9db97a8",
+            "height": 6,
+            "node_after_hex": "43a60bddfa765f214d2ef97b31122ee5",
+            "node_before_hex": "805ab2fe5c8cd93ee621f01cfcddd200",
+            "order": "auth||node",
+            "tree_index": 304
+          },
+          {
+            "auth_hex": "f735d383de472c8aabb3370d4a89146b",
+            "height": 7,
+            "node_after_hex": "3a61ed17a100f5e230c87399abdff3cb",
+            "node_before_hex": "43a60bddfa765f214d2ef97b31122ee5",
+            "order": "node||auth",
+            "tree_index": 152
+          },
+          {
+            "auth_hex": "5898c718377ba6cd37495d813248baad",
+            "height": 8,
+            "node_after_hex": "2ec9f5f0d2b058197de80d9bf6258a65",
+            "node_before_hex": "3a61ed17a100f5e230c87399abdff3cb",
+            "order": "node||auth",
+            "tree_index": 76
+          },
+          {
+            "auth_hex": "dacec8f940dc08a721470dfc052345ad",
+            "height": 9,
+            "node_after_hex": "e2840e731cbac8a72a1177038fdd23c2",
+            "node_before_hex": "2ec9f5f0d2b058197de80d9bf6258a65",
+            "order": "node||auth",
+            "tree_index": 38
+          },
+          {
+            "auth_hex": "42f0e341fda7e762ee6d1cdb5d2f6bd5",
+            "height": 10,
+            "node_after_hex": "149d6c6ccd49942481dcb8f488d22c99",
+            "node_before_hex": "e2840e731cbac8a72a1177038fdd23c2",
+            "order": "node||auth",
+            "tree_index": 19
+          },
+          {
+            "auth_hex": "1f0fb022e91b0ab031578fba87ac1fce",
+            "height": 11,
+            "node_after_hex": "b552bee2d85fbff8ff8b20051ecce701",
+            "node_before_hex": "149d6c6ccd49942481dcb8f488d22c99",
+            "order": "auth||node",
+            "tree_index": 9
+          },
+          {
+            "auth_hex": "160eccca5ed4ac865a7180ecd1ba9877",
+            "height": 12,
+            "node_after_hex": "bf8894b65cd57a7f893a8abb8786c1e0",
+            "node_before_hex": "b552bee2d85fbff8ff8b20051ecce701",
+            "order": "auth||node",
+            "tree_index": 4
+          }
+        ],
+        "global_index": 19491,
+        "leaf_hex": "48627753e52ff899f89136689400df17",
+        "local_index": 3107,
+        "root_hex": "bf8894b65cd57a7f893a8abb8786c1e0",
+        "secret_hex": "ff01914ecb0b3394e36afa59a4945454",
+        "tree": 4
+      },
+      {
+        "authentication_path": [
+          {
+            "auth_hex": "fefb75d1de1ec3d9c2fc86b17eaead6e",
+            "height": 1,
+            "node_after_hex": "e7c0c1366b197218a073d7ff2129caad",
+            "node_before_hex": "1cf645789fc71c2af1637cd02ef81c86",
+            "order": "node||auth",
+            "tree_index": 11145
+          },
+          {
+            "auth_hex": "c0a845332791188b18334dfd9b689dbd",
+            "height": 2,
+            "node_after_hex": "8496c8000480469fe5006668944ac084",
+            "node_before_hex": "e7c0c1366b197218a073d7ff2129caad",
+            "order": "auth||node",
+            "tree_index": 5572
+          },
+          {
+            "auth_hex": "f0a323c19c05a97ad7de2d4d733b37e5",
+            "height": 3,
+            "node_after_hex": "d4715c41f3a368d31e07af24037f725c",
+            "node_before_hex": "8496c8000480469fe5006668944ac084",
+            "order": "node||auth",
+            "tree_index": 2786
+          },
+          {
+            "auth_hex": "849172926d98ea75fdd22f21ddb4f81f",
+            "height": 4,
+            "node_after_hex": "e5ac5c3529afc1761fe43a4c0e8d1a15",
+            "node_before_hex": "d4715c41f3a368d31e07af24037f725c",
+            "order": "node||auth",
+            "tree_index": 1393
+          },
+          {
+            "auth_hex": "2495f540495d11f380ab3dd040c377ee",
+            "height": 5,
+            "node_after_hex": "302e346d9c6143cd2adbb67b0f27b163",
+            "node_before_hex": "e5ac5c3529afc1761fe43a4c0e8d1a15",
+            "order": "auth||node",
+            "tree_index": 696
+          },
+          {
+            "auth_hex": "d39d4608c0142a13b853afba942000b8",
+            "height": 6,
+            "node_after_hex": "d945c181e4699e05f75b674165a9e3cc",
+            "node_before_hex": "302e346d9c6143cd2adbb67b0f27b163",
+            "order": "node||auth",
+            "tree_index": 348
+          },
+          {
+            "auth_hex": "fa24ed119b12e083102ac697f82d0477",
+            "height": 7,
+            "node_after_hex": "429006b11925cfff6f0f0084d19b6314",
+            "node_before_hex": "d945c181e4699e05f75b674165a9e3cc",
+            "order": "node||auth",
+            "tree_index": 174
+          },
+          {
+            "auth_hex": "fc03c5f76d077c5a04122a59cfbd5b1c",
+            "height": 8,
+            "node_after_hex": "1a203a3d065737585cd4716fceb7ad7d",
+            "node_before_hex": "429006b11925cfff6f0f0084d19b6314",
+            "order": "node||auth",
+            "tree_index": 87
+          },
+          {
+            "auth_hex": "a513e8a8966060d6f2b4f688d6668d0e",
+            "height": 9,
+            "node_after_hex": "2d332c1374919f06b798d7c44f7ddbf7",
+            "node_before_hex": "1a203a3d065737585cd4716fceb7ad7d",
+            "order": "auth||node",
+            "tree_index": 43
+          },
+          {
+            "auth_hex": "709837f6c5c434c6f56a647185296f95",
+            "height": 10,
+            "node_after_hex": "1882aa68aa8208c3e87b15cb4bf2a48d",
+            "node_before_hex": "2d332c1374919f06b798d7c44f7ddbf7",
+            "order": "auth||node",
+            "tree_index": 21
+          },
+          {
+            "auth_hex": "9609fb4689b93dbfe500382df15c02c8",
+            "height": 11,
+            "node_after_hex": "cac6e580a3bcffdbadfbfc3b26147d84",
+            "node_before_hex": "1882aa68aa8208c3e87b15cb4bf2a48d",
+            "order": "auth||node",
+            "tree_index": 10
+          },
+          {
+            "auth_hex": "1628ea16d8ffb38e3d42da2ef9eb9dd1",
+            "height": 12,
+            "node_after_hex": "10e2e0608b0f66a65cf4260bd5798ae0",
+            "node_before_hex": "cac6e580a3bcffdbadfbfc3b26147d84",
+            "order": "node||auth",
+            "tree_index": 5
+          }
+        ],
+        "global_index": 22290,
+        "leaf_hex": "1cf645789fc71c2af1637cd02ef81c86",
+        "local_index": 1810,
+        "root_hex": "10e2e0608b0f66a65cf4260bd5798ae0",
+        "secret_hex": "7416c8aaae86414d3e3d852f0b23c7b0",
+        "tree": 5
+      },
+      {
+        "authentication_path": [
+          {
+            "auth_hex": "a85ac58ffcb1e454326300904e6825ab",
+            "height": 1,
+            "node_after_hex": "64b04b3a5de2f43ee1c17cc8ba1d3ec2",
+            "node_before_hex": "973ad6be0f8fdd486685be67e330fdff",
+            "order": "node||auth",
+            "tree_index": 14098
+          },
+          {
+            "auth_hex": "d8ec25b629eccc22c7b3e4d1092f03e1",
+            "height": 2,
+            "node_after_hex": "444af2ce74928d5bfbb9cb69e6b9c9d4",
+            "node_before_hex": "64b04b3a5de2f43ee1c17cc8ba1d3ec2",
+            "order": "node||auth",
+            "tree_index": 7049
+          },
+          {
+            "auth_hex": "b9902ddc956336cbbd7a5ed9c88dcb6c",
+            "height": 3,
+            "node_after_hex": "d60a9ea8b92643b71de1bcbdb81b885e",
+            "node_before_hex": "444af2ce74928d5bfbb9cb69e6b9c9d4",
+            "order": "auth||node",
+            "tree_index": 3524
+          },
+          {
+            "auth_hex": "49c5bc3879567c62b357f551a081ac5e",
+            "height": 4,
+            "node_after_hex": "2065ec7cabd51197c3c298d2fafd2ddf",
+            "node_before_hex": "d60a9ea8b92643b71de1bcbdb81b885e",
+            "order": "node||auth",
+            "tree_index": 1762
+          },
+          {
+            "auth_hex": "4cac8eb5c61f502c6e051f9124aa693c",
+            "height": 5,
+            "node_after_hex": "11f93468046c235f79e1c791ef2f8cd2",
+            "node_before_hex": "2065ec7cabd51197c3c298d2fafd2ddf",
+            "order": "node||auth",
+            "tree_index": 881
+          },
+          {
+            "auth_hex": "49d8b17a09b0e900bd21af957a636133",
+            "height": 6,
+            "node_after_hex": "2c8fb0ef493ee4e04e2f57c6fa651316",
+            "node_before_hex": "11f93468046c235f79e1c791ef2f8cd2",
+            "order": "auth||node",
+            "tree_index": 440
+          },
+          {
+            "auth_hex": "f4d1a34c35766cb01e360cadfc80d504",
+            "height": 7,
+            "node_after_hex": "9f1215d7a897c6c19d6b323514817583",
+            "node_before_hex": "2c8fb0ef493ee4e04e2f57c6fa651316",
+            "order": "node||auth",
+            "tree_index": 220
+          },
+          {
+            "auth_hex": "7e0cb39ac59d4b8961ec0ae35fe14812",
+            "height": 8,
+            "node_after_hex": "2a8a1c3dc4288859de51cfe859dbbdf8",
+            "node_before_hex": "9f1215d7a897c6c19d6b323514817583",
+            "order": "node||auth",
+            "tree_index": 110
+          },
+          {
+            "auth_hex": "b3e94f6c0fc47e06420ba00ae96e2334",
+            "height": 9,
+            "node_after_hex": "f6e622feabc690219d8b90c45aa301fa",
+            "node_before_hex": "2a8a1c3dc4288859de51cfe859dbbdf8",
+            "order": "node||auth",
+            "tree_index": 55
+          },
+          {
+            "auth_hex": "061819e1f1b8627aa35905421f9f437b",
+            "height": 10,
+            "node_after_hex": "4bec80d4880c5eea70ac45f8ec0b1e63",
+            "node_before_hex": "f6e622feabc690219d8b90c45aa301fa",
+            "order": "auth||node",
+            "tree_index": 27
+          },
+          {
+            "auth_hex": "78d02a9a53433f3e487fb7fe0a37d72a",
+            "height": 11,
+            "node_after_hex": "4bf27a5fdc9c787c251c850690eee31d",
+            "node_before_hex": "4bec80d4880c5eea70ac45f8ec0b1e63",
+            "order": "auth||node",
+            "tree_index": 13
+          },
+          {
+            "auth_hex": "16fddaad4bbd947e28285f53372d7c5e",
+            "height": 12,
+            "node_after_hex": "2ab934432707124c3793703c740879f7",
+            "node_before_hex": "4bf27a5fdc9c787c251c850690eee31d",
+            "order": "auth||node",
+            "tree_index": 6
+          }
+        ],
+        "global_index": 28196,
+        "leaf_hex": "973ad6be0f8fdd486685be67e330fdff",
+        "local_index": 3620,
+        "root_hex": "2ab934432707124c3793703c740879f7",
+        "secret_hex": "03dfdb72b03ef92fecb17f47a47c17bb",
+        "tree": 6
+      },
+      {
+        "authentication_path": [
+          {
+            "auth_hex": "b36f3e4024a964fe00ce4417bc8a6cec",
+            "height": 1,
+            "node_after_hex": "9f3f62042408fe8da7e569f96b49ba50",
+            "node_before_hex": "c3dacdfa798602e3ef4c5cf3afca24cd",
+            "order": "auth||node",
+            "tree_index": 15586
+          },
+          {
+            "auth_hex": "229cf4709c0cd44234ce1fad4b9f0ec9",
+            "height": 2,
+            "node_after_hex": "0d978f0e42e5aad4036470dae18a5c3d",
+            "node_before_hex": "9f3f62042408fe8da7e569f96b49ba50",
+            "order": "node||auth",
+            "tree_index": 7793
+          },
+          {
+            "auth_hex": "8b88d9e6d8d854443569f1064051de7f",
+            "height": 3,
+            "node_after_hex": "56b617cc41ac848d53cd7116c4ae9552",
+            "node_before_hex": "0d978f0e42e5aad4036470dae18a5c3d",
+            "order": "auth||node",
+            "tree_index": 3896
+          },
+          {
+            "auth_hex": "26dfdd2423ca0f5521ac582d4fea5434",
+            "height": 4,
+            "node_after_hex": "fb12246d88f9582c71a0edfe0957451a",
+            "node_before_hex": "56b617cc41ac848d53cd7116c4ae9552",
+            "order": "node||auth",
+            "tree_index": 1948
+          },
+          {
+            "auth_hex": "908ec59904b7a674fa62dafe13c37004",
+            "height": 5,
+            "node_after_hex": "7f945e2304e2afbd45060b454a51b1a7",
+            "node_before_hex": "fb12246d88f9582c71a0edfe0957451a",
+            "order": "node||auth",
+            "tree_index": 974
+          },
+          {
+            "auth_hex": "26f249c0ef51ea24e6939eb9d1b7afae",
+            "height": 6,
+            "node_after_hex": "2e1c0e422d77e96e53d0797c2c419a12",
+            "node_before_hex": "7f945e2304e2afbd45060b454a51b1a7",
+            "order": "node||auth",
+            "tree_index": 487
+          },
+          {
+            "auth_hex": "367c631ea4a3c610e67ced237cdefa67",
+            "height": 7,
+            "node_after_hex": "3758f6cf4dcd9ccf86c43d3094e380b9",
+            "node_before_hex": "2e1c0e422d77e96e53d0797c2c419a12",
+            "order": "auth||node",
+            "tree_index": 243
+          },
+          {
+            "auth_hex": "3b61ebc0e7364301fc1a96d8efedfc56",
+            "height": 8,
+            "node_after_hex": "6719dcc1798c400558a0de1095428334",
+            "node_before_hex": "3758f6cf4dcd9ccf86c43d3094e380b9",
+            "order": "auth||node",
+            "tree_index": 121
+          },
+          {
+            "auth_hex": "c6469815fb4e79c4ff2c36e3e898a659",
+            "height": 9,
+            "node_after_hex": "53565817481c057191b9917ef288d754",
+            "node_before_hex": "6719dcc1798c400558a0de1095428334",
+            "order": "auth||node",
+            "tree_index": 60
+          },
+          {
+            "auth_hex": "3dcc9fe5881cac7a36ea3b2f13826017",
+            "height": 10,
+            "node_after_hex": "ceff26081b1cb03b738cb178f6e3b8bb",
+            "node_before_hex": "53565817481c057191b9917ef288d754",
+            "order": "node||auth",
+            "tree_index": 30
+          },
+          {
+            "auth_hex": "4baa43c2dcfec70eff791419146ea4a2",
+            "height": 11,
+            "node_after_hex": "3026854c49fef8fd95be9f8c57bfffaa",
+            "node_before_hex": "ceff26081b1cb03b738cb178f6e3b8bb",
+            "order": "node||auth",
+            "tree_index": 15
+          },
+          {
+            "auth_hex": "7ce1369ad5f3606b9aa94cda2de36ae8",
+            "height": 12,
+            "node_after_hex": "d601029d51a797d8d838894205598280",
+            "node_before_hex": "3026854c49fef8fd95be9f8c57bfffaa",
+            "order": "auth||node",
+            "tree_index": 7
+          }
+        ],
+        "global_index": 31173,
+        "leaf_hex": "c3dacdfa798602e3ef4c5cf3afca24cd",
+        "local_index": 2501,
+        "root_hex": "d601029d51a797d8d838894205598280",
+        "secret_hex": "15e74a527bc630d2b5e76c928e0da608",
+        "tree": 7
+      },
+      {
+        "authentication_path": [
+          {
+            "auth_hex": "affca309624f744641c8e7955b29a6fe",
+            "height": 1,
+            "node_after_hex": "35b79907c257df57aad7c2e9b48b948e",
+            "node_before_hex": "5c5a93b32bcddd6546004c54a1ad44c2",
+            "order": "auth||node",
+            "tree_index": 17369
+          },
+          {
+            "auth_hex": "61280293b7716e0866f62b2e58ed6aae",
+            "height": 2,
+            "node_after_hex": "424ae312e0237cd47ffd71c5a65eb141",
+            "node_before_hex": "35b79907c257df57aad7c2e9b48b948e",
+            "order": "auth||node",
+            "tree_index": 8684
+          },
+          {
+            "auth_hex": "35eae6c5d888c1350829fa404143b335",
+            "height": 3,
+            "node_after_hex": "d1b7971f66abbfbf574b02347129dddc",
+            "node_before_hex": "424ae312e0237cd47ffd71c5a65eb141",
+            "order": "node||auth",
+            "tree_index": 4342
+          },
+          {
+            "auth_hex": "a8168d5730df73b569070b116e20050d",
+            "height": 4,
+            "node_after_hex": "276d63e8bcb54f4a2ac1e3f7a8640793",
+            "node_before_hex": "d1b7971f66abbfbf574b02347129dddc",
+            "order": "node||auth",
+            "tree_index": 2171
+          },
+          {
+            "auth_hex": "b71741371e927d89aa365b09b1172ad6",
+            "height": 5,
+            "node_after_hex": "7caa6e05855be36a6bf86de24654dd3c",
+            "node_before_hex": "276d63e8bcb54f4a2ac1e3f7a8640793",
+            "order": "auth||node",
+            "tree_index": 1085
+          },
+          {
+            "auth_hex": "95fa0ca2ad46999984d53f7a5b365bce",
+            "height": 6,
+            "node_after_hex": "5a1ff07c48bb9c08f5be704ef85de869",
+            "node_before_hex": "7caa6e05855be36a6bf86de24654dd3c",
+            "order": "auth||node",
+            "tree_index": 542
+          },
+          {
+            "auth_hex": "4d352faa3b10d76625a914c337afc3ec",
+            "height": 7,
+            "node_after_hex": "381d8c3ee447859867c48d33a52c2a5e",
+            "node_before_hex": "5a1ff07c48bb9c08f5be704ef85de869",
+            "order": "node||auth",
+            "tree_index": 271
+          },
+          {
+            "auth_hex": "d6e6bf8469ba5cd3d614480b00c7b839",
+            "height": 8,
+            "node_after_hex": "b924ba7922593db37db02f6010e0f750",
+            "node_before_hex": "381d8c3ee447859867c48d33a52c2a5e",
+            "order": "auth||node",
+            "tree_index": 135
+          },
+          {
+            "auth_hex": "7d1f01288dc5d6afe7e6ee872bfd1946",
+            "height": 9,
+            "node_after_hex": "1744c2b91f99863faf08c3f2f18af1f0",
+            "node_before_hex": "b924ba7922593db37db02f6010e0f750",
+            "order": "auth||node",
+            "tree_index": 67
+          },
+          {
+            "auth_hex": "927fcd7d01f9d3f4cd9bcd6cfe850cdd",
+            "height": 10,
+            "node_after_hex": "a259cd73e0f2b21347ae975618fc682e",
+            "node_before_hex": "1744c2b91f99863faf08c3f2f18af1f0",
+            "order": "auth||node",
+            "tree_index": 33
+          },
+          {
+            "auth_hex": "73fcad47592f24d39b4d83e00609de16",
+            "height": 11,
+            "node_after_hex": "530a031129eee0731891326dd48c16b9",
+            "node_before_hex": "a259cd73e0f2b21347ae975618fc682e",
+            "order": "auth||node",
+            "tree_index": 16
+          },
+          {
+            "auth_hex": "5a621591de8763726c3d1d305d276865",
+            "height": 12,
+            "node_after_hex": "4350a64c64942d27b2d16e6f7793f7be",
+            "node_before_hex": "530a031129eee0731891326dd48c16b9",
+            "order": "node||auth",
+            "tree_index": 8
+          }
+        ],
+        "global_index": 34739,
+        "leaf_hex": "5c5a93b32bcddd6546004c54a1ad44c2",
+        "local_index": 1971,
+        "root_hex": "4350a64c64942d27b2d16e6f7793f7be",
+        "secret_hex": "373a70a4b655d80c9bac286d04f48c1d",
+        "tree": 8
+      },
+      {
+        "authentication_path": [
+          {
+            "auth_hex": "41ed8e4043c1fdba1788fbc52d2c11a8",
+            "height": 1,
+            "node_after_hex": "b342f83625a60ac2188dada725e313d5",
+            "node_before_hex": "8d3d8b54bca1fc05497bf7924623dd7a",
+            "order": "auth||node",
+            "tree_index": 19832
+          },
+          {
+            "auth_hex": "36e86ca6b2b6ecfd77f71220e6beba62",
+            "height": 2,
+            "node_after_hex": "08a9128968e82f501ed3760db5fcf0a4",
+            "node_before_hex": "b342f83625a60ac2188dada725e313d5",
+            "order": "node||auth",
+            "tree_index": 9916
+          },
+          {
+            "auth_hex": "aca7079998d9c4788df33346c99b8b77",
+            "height": 3,
+            "node_after_hex": "e0cf83869330dbde20313c3641e56004",
+            "node_before_hex": "08a9128968e82f501ed3760db5fcf0a4",
+            "order": "node||auth",
+            "tree_index": 4958
+          },
+          {
+            "auth_hex": "6b5012f8174d13ea5bf86dd3b684fbcd",
+            "height": 4,
+            "node_after_hex": "aba979cf9e237c93da954f64c87b4a9b",
+            "node_before_hex": "e0cf83869330dbde20313c3641e56004",
+            "order": "node||auth",
+            "tree_index": 2479
+          },
+          {
+            "auth_hex": "68762b6ab51a9c52086fe66bd27e0e63",
+            "height": 5,
+            "node_after_hex": "d66b6f347daf3890702efc2bacf17966",
+            "node_before_hex": "aba979cf9e237c93da954f64c87b4a9b",
+            "order": "auth||node",
+            "tree_index": 1239
+          },
+          {
+            "auth_hex": "4f07f062263d056f3e94fe70e9b8916f",
+            "height": 6,
+            "node_after_hex": "8bd7263e529184a0b03fc8a1ddc2852a",
+            "node_before_hex": "d66b6f347daf3890702efc2bacf17966",
+            "order": "auth||node",
+            "tree_index": 619
+          },
+          {
+            "auth_hex": "a06b9a92f1c8188e48fe897bcc36b6f1",
+            "height": 7,
+            "node_after_hex": "8093c6526621d6083127774b917f9a6b",
+            "node_before_hex": "8bd7263e529184a0b03fc8a1ddc2852a",
+            "order": "auth||node",
+            "tree_index": 309
+          },
+          {
+            "auth_hex": "3edb368d11e0a94b93353a47daf9b1bb",
+            "height": 8,
+            "node_after_hex": "898279433c7376c23eda07c52de310e7",
+            "node_before_hex": "8093c6526621d6083127774b917f9a6b",
+            "order": "auth||node",
+            "tree_index": 154
+          },
+          {
+            "auth_hex": "133ecce6e7ba74d680301b468a97fff2",
+            "height": 9,
+            "node_after_hex": "a591fe9d11c85b309f86c9bf0f1d2220",
+            "node_before_hex": "898279433c7376c23eda07c52de310e7",
+            "order": "node||auth",
+            "tree_index": 77
+          },
+          {
+            "auth_hex": "83ee81db63b30a0ebdbbec0478d6bfdb",
+            "height": 10,
+            "node_after_hex": "7090de3a770001202242fa85a9b2b352",
+            "node_before_hex": "a591fe9d11c85b309f86c9bf0f1d2220",
+            "order": "auth||node",
+            "tree_index": 38
+          },
+          {
+            "auth_hex": "b2ef13a5e236d84f18d83ba27e5d8eb5",
+            "height": 11,
+            "node_after_hex": "f27b664c1767878e0d27bd85f2ae6553",
+            "node_before_hex": "7090de3a770001202242fa85a9b2b352",
+            "order": "node||auth",
+            "tree_index": 19
+          },
+          {
+            "auth_hex": "c884c06f6b3018abeb08f178ce6a9aed",
+            "height": 12,
+            "node_after_hex": "89a25fff7537a45694a848b11219cbf6",
+            "node_before_hex": "f27b664c1767878e0d27bd85f2ae6553",
+            "order": "auth||node",
+            "tree_index": 9
+          }
+        ],
+        "global_index": 39665,
+        "leaf_hex": "8d3d8b54bca1fc05497bf7924623dd7a",
+        "local_index": 2801,
+        "root_hex": "89a25fff7537a45694a848b11219cbf6",
+        "secret_hex": "795ad5fe66b2f1a4f839d1e2ef870c5a",
+        "tree": 9
+      },
+      {
+        "authentication_path": [
+          {
+            "auth_hex": "eff1303f2eeca0b68c54d733f0f68fd6",
+            "height": 1,
+            "node_after_hex": "46f1e777a54560db9fb29a31ea8ea39f",
+            "node_before_hex": "26a2ca0c01b0c27dec793c64eda1bd84",
+            "order": "node||auth",
+            "tree_index": 21701
+          },
+          {
+            "auth_hex": "291f10e10d0befc0d67793f2d247e82b",
+            "height": 2,
+            "node_after_hex": "4c9ac79ec7dd5fa3bc790810b744b4a1",
+            "node_before_hex": "46f1e777a54560db9fb29a31ea8ea39f",
+            "order": "auth||node",
+            "tree_index": 10850
+          },
+          {
+            "auth_hex": "a3b66a08b2bee8d494f505e0bce5e8fa",
+            "height": 3,
+            "node_after_hex": "8a58d5a7c78ba07771c559d192ee77c9",
+            "node_before_hex": "4c9ac79ec7dd5fa3bc790810b744b4a1",
+            "order": "node||auth",
+            "tree_index": 5425
+          },
+          {
+            "auth_hex": "94bc949745b79f448d88f81995023405",
+            "height": 4,
+            "node_after_hex": "d5460e6fcbc05243b308512269176500",
+            "node_before_hex": "8a58d5a7c78ba07771c559d192ee77c9",
+            "order": "auth||node",
+            "tree_index": 2712
+          },
+          {
+            "auth_hex": "45a718bf4877222b3805867cb30f452b",
+            "height": 5,
+            "node_after_hex": "565c80bee36f8fca9420076e19abd323",
+            "node_before_hex": "d5460e6fcbc05243b308512269176500",
+            "order": "node||auth",
+            "tree_index": 1356
+          },
+          {
+            "auth_hex": "ff1e739d77a5cf08dcad893c91724388",
+            "height": 6,
+            "node_after_hex": "b317da59e7184b257873e50c75da7ba0",
+            "node_before_hex": "565c80bee36f8fca9420076e19abd323",
+            "order": "node||auth",
+            "tree_index": 678
+          },
+          {
+            "auth_hex": "edfe7f565674cae52c004e223fd978d4",
+            "height": 7,
+            "node_after_hex": "03369b900a0d417c75496fb563f099f2",
+            "node_before_hex": "b317da59e7184b257873e50c75da7ba0",
+            "order": "node||auth",
+            "tree_index": 339
+          },
+          {
+            "auth_hex": "7f46aecdf1c2a0e3f8ad009a30eef957",
+            "height": 8,
+            "node_after_hex": "68515a55ce12bf5925ed4f61cbe3fd62",
+            "node_before_hex": "03369b900a0d417c75496fb563f099f2",
+            "order": "auth||node",
+            "tree_index": 169
+          },
+          {
+            "auth_hex": "a8c0192daee8e4d86165f3048aac67cd",
+            "height": 9,
+            "node_after_hex": "b63bccea8307b286a6e9a47c80ce9518",
+            "node_before_hex": "68515a55ce12bf5925ed4f61cbe3fd62",
+            "order": "auth||node",
+            "tree_index": 84
+          },
+          {
+            "auth_hex": "780c3c2a142a81ea519da29e03e5fa05",
+            "height": 10,
+            "node_after_hex": "24e5d9896e6837b5c29e7d6c3b16f755",
+            "node_before_hex": "b63bccea8307b286a6e9a47c80ce9518",
+            "order": "node||auth",
+            "tree_index": 42
+          },
+          {
+            "auth_hex": "0fa415ea17ee5f85715c08eff98f01b8",
+            "height": 11,
+            "node_after_hex": "d6d09597cdd17018151338668de6faa5",
+            "node_before_hex": "24e5d9896e6837b5c29e7d6c3b16f755",
+            "order": "node||auth",
+            "tree_index": 21
+          },
+          {
+            "auth_hex": "78a5d6eb7b14eaffc9feed04d5c437a2",
+            "height": 12,
+            "node_after_hex": "459333fcf962149601d2800f9c3c75cd",
+            "node_before_hex": "d6d09597cdd17018151338668de6faa5",
+            "order": "auth||node",
+            "tree_index": 10
+          }
+        ],
+        "global_index": 43402,
+        "leaf_hex": "26a2ca0c01b0c27dec793c64eda1bd84",
+        "local_index": 2442,
+        "root_hex": "459333fcf962149601d2800f9c3c75cd",
+        "secret_hex": "84d7d242a224567ef0068091cbd5a7b5",
+        "tree": 10
+      },
+      {
+        "authentication_path": [
+          {
+            "auth_hex": "f9ade812618b1cb912737f41dd8b8068",
+            "height": 1,
+            "node_after_hex": "fd5aa1611c5df96393156cc4ca1edab5",
+            "node_before_hex": "18d17165326dbcaa68d2360447538735",
+            "order": "auth||node",
+            "tree_index": 22884
+          },
+          {
+            "auth_hex": "2730311ba23d54d67e4552ebe1616eed",
+            "height": 2,
+            "node_after_hex": "1ecc630d7b76b90af59978f2dd6f84b3",
+            "node_before_hex": "fd5aa1611c5df96393156cc4ca1edab5",
+            "order": "node||auth",
+            "tree_index": 11442
+          },
+          {
+            "auth_hex": "4319393075919c54990449b280466e13",
+            "height": 3,
+            "node_after_hex": "ad6f811289f4f164c2e0ea7c4ac6cb4a",
+            "node_before_hex": "1ecc630d7b76b90af59978f2dd6f84b3",
+            "order": "node||auth",
+            "tree_index": 5721
+          },
+          {
+            "auth_hex": "6850fd7765f81f43250ccc75766e2ece",
+            "height": 4,
+            "node_after_hex": "d98083bc606c2240b6d7d1f90aa58c4a",
+            "node_before_hex": "ad6f811289f4f164c2e0ea7c4ac6cb4a",
+            "order": "auth||node",
+            "tree_index": 2860
+          },
+          {
+            "auth_hex": "cbd549e28a4f633d525509fe13d71c32",
+            "height": 5,
+            "node_after_hex": "079a04112f9be0e46b96fb16675d7af8",
+            "node_before_hex": "d98083bc606c2240b6d7d1f90aa58c4a",
+            "order": "node||auth",
+            "tree_index": 1430
+          },
+          {
+            "auth_hex": "59e1d75dd23abbadf3aa111b0db91401",
+            "height": 6,
+            "node_after_hex": "f8ef960b4c56648f8bc4e939a8527793",
+            "node_before_hex": "079a04112f9be0e46b96fb16675d7af8",
+            "order": "node||auth",
+            "tree_index": 715
+          },
+          {
+            "auth_hex": "ac7b6c998219469ddfe8481bbfdf465c",
+            "height": 7,
+            "node_after_hex": "347550d989861d1ef4bbc992637b8cbb",
+            "node_before_hex": "f8ef960b4c56648f8bc4e939a8527793",
+            "order": "auth||node",
+            "tree_index": 357
+          },
+          {
+            "auth_hex": "a3e2c6edf0b7cb3ac038311e4d2de114",
+            "height": 8,
+            "node_after_hex": "69ad043c4ac934ccd01ec73092455316",
+            "node_before_hex": "347550d989861d1ef4bbc992637b8cbb",
+            "order": "auth||node",
+            "tree_index": 178
+          },
+          {
+            "auth_hex": "8b68cda39f7dbce75a725ae04ed707ab",
+            "height": 9,
+            "node_after_hex": "b78a43489edefff9d64425b44f1066bd",
+            "node_before_hex": "69ad043c4ac934ccd01ec73092455316",
+            "order": "node||auth",
+            "tree_index": 89
+          },
+          {
+            "auth_hex": "417d27f033fb73e0d8d7c29609b45147",
+            "height": 10,
+            "node_after_hex": "0af2015f5ad608149070b32f53f650e7",
+            "node_before_hex": "b78a43489edefff9d64425b44f1066bd",
+            "order": "auth||node",
+            "tree_index": 44
+          },
+          {
+            "auth_hex": "8ae98610132ba53b197075119b1b9c9d",
+            "height": 11,
+            "node_after_hex": "b47e4931b3a2f9652f410bbd89cbd0e3",
+            "node_before_hex": "0af2015f5ad608149070b32f53f650e7",
+            "order": "node||auth",
+            "tree_index": 22
+          },
+          {
+            "auth_hex": "982c02594d0a0c2e1e937ef9a5158dde",
+            "height": 12,
+            "node_after_hex": "b3cedd459509f0eb37e5a79e41011b45",
+            "node_before_hex": "b47e4931b3a2f9652f410bbd89cbd0e3",
+            "order": "node||auth",
+            "tree_index": 11
+          }
+        ],
+        "global_index": 45769,
+        "leaf_hex": "18d17165326dbcaa68d2360447538735",
+        "local_index": 713,
+        "root_hex": "b3cedd459509f0eb37e5a79e41011b45",
+        "secret_hex": "db9e0dd6a6c3c55569deafa6f9096002",
+        "tree": 11
+      },
+      {
+        "authentication_path": [
+          {
+            "auth_hex": "2caf0fb0596286b04cdb4bb615e68fb8",
+            "height": 1,
+            "node_after_hex": "cdbb09c512ca312baeaafa2318927b77",
+            "node_before_hex": "05bb03764612c16ac6a9d8614ca8f958",
+            "order": "node||auth",
+            "tree_index": 26473
+          },
+          {
+            "auth_hex": "36ad77af336848982308dd556fdd727a",
+            "height": 2,
+            "node_after_hex": "608b861e8f095b9b08d26c053a9f011b",
+            "node_before_hex": "cdbb09c512ca312baeaafa2318927b77",
+            "order": "auth||node",
+            "tree_index": 13236
+          },
+          {
+            "auth_hex": "158d2599f404ce75139379a058d69922",
+            "height": 3,
+            "node_after_hex": "7364e98402b8a99b808ab13cd27d167a",
+            "node_before_hex": "608b861e8f095b9b08d26c053a9f011b",
+            "order": "node||auth",
+            "tree_index": 6618
+          },
+          {
+            "auth_hex": "8442665612dd9270c96f2b2eab30e6d6",
+            "height": 4,
+            "node_after_hex": "c859ded9cdb0b5a8a1da3ba1d5e7df95",
+            "node_before_hex": "7364e98402b8a99b808ab13cd27d167a",
+            "order": "node||auth",
+            "tree_index": 3309
+          },
+          {
+            "auth_hex": "aef82533f0eab13e0a61ecc34e215ddc",
+            "height": 5,
+            "node_after_hex": "ad6099b34015caac35e71aaa8199f836",
+            "node_before_hex": "c859ded9cdb0b5a8a1da3ba1d5e7df95",
+            "order": "auth||node",
+            "tree_index": 1654
+          },
+          {
+            "auth_hex": "0b1d204198a90cb34186bd5e716ff6db",
+            "height": 6,
+            "node_after_hex": "5818469de038607f81abdfc377d84aaf",
+            "node_before_hex": "ad6099b34015caac35e71aaa8199f836",
+            "order": "node||auth",
+            "tree_index": 827
+          },
+          {
+            "auth_hex": "b08455df4129c16e5fca158530faf2e5",
+            "height": 7,
+            "node_after_hex": "f4c2db948941700c68dc4ba3ce821f27",
+            "node_before_hex": "5818469de038607f81abdfc377d84aaf",
+            "order": "auth||node",
+            "tree_index": 413
+          },
+          {
+            "auth_hex": "c723094f4113e007a482ef940601ffea",
+            "height": 8,
+            "node_after_hex": "39117bc7ed742c8f2f25ec71c83b9120",
+            "node_before_hex": "f4c2db948941700c68dc4ba3ce821f27",
+            "order": "auth||node",
+            "tree_index": 206
+          },
+          {
+            "auth_hex": "64bcd613661033b6073db3e752cefb04",
+            "height": 9,
+            "node_after_hex": "33a7b6d9ac12f966adce22d1bfb83053",
+            "node_before_hex": "39117bc7ed742c8f2f25ec71c83b9120",
+            "order": "node||auth",
+            "tree_index": 103
+          },
+          {
+            "auth_hex": "9263764a96825fc4efd2df3923afb69f",
+            "height": 10,
+            "node_after_hex": "94e2058af6ae7fb326e68ebcc27b725e",
+            "node_before_hex": "33a7b6d9ac12f966adce22d1bfb83053",
+            "order": "auth||node",
+            "tree_index": 51
+          },
+          {
+            "auth_hex": "2577d3eabba4f5a76c8d8339a90c6eea",
+            "height": 11,
+            "node_after_hex": "2369988edd3e4c4938ba31d79a1e48e8",
+            "node_before_hex": "94e2058af6ae7fb326e68ebcc27b725e",
+            "order": "auth||node",
+            "tree_index": 25
+          },
+          {
+            "auth_hex": "fa4c78a3e181fa82459be1d130d30530",
+            "height": 12,
+            "node_after_hex": "abf0ef983bc6ff4fd45551496ffda2c3",
+            "node_before_hex": "2369988edd3e4c4938ba31d79a1e48e8",
+            "order": "auth||node",
+            "tree_index": 12
+          }
+        ],
+        "global_index": 52946,
+        "leaf_hex": "05bb03764612c16ac6a9d8614ca8f958",
+        "local_index": 3794,
+        "root_hex": "abf0ef983bc6ff4fd45551496ffda2c3",
+        "secret_hex": "19482ec3c8fdfcebe7cc2d90efbb1edf",
+        "tree": 12
+      },
+      {
+        "authentication_path": [
+          {
+            "auth_hex": "07a674f1cb611d17cc2eba181d202fd5",
+            "height": 1,
+            "node_after_hex": "58ea375bf7b82ec8c8cc89fdcfd51878",
+            "node_before_hex": "bcb1713d4288dd72234ca8a3e4c8006b",
+            "order": "auth||node",
+            "tree_index": 27630
+          },
+          {
+            "auth_hex": "f4706b78d0a80d796619b7ac9f23f275",
+            "height": 2,
+            "node_after_hex": "c2d6a3dd9274d6d2d9c4d4821caa4c43",
+            "node_before_hex": "58ea375bf7b82ec8c8cc89fdcfd51878",
+            "order": "node||auth",
+            "tree_index": 13815
+          },
+          {
+            "auth_hex": "1e1fdf0386cf0c3157274301a6ac29bd",
+            "height": 3,
+            "node_after_hex": "9c8e7473e3e9a40464c7edd35cb9138e",
+            "node_before_hex": "c2d6a3dd9274d6d2d9c4d4821caa4c43",
+            "order": "auth||node",
+            "tree_index": 6907
+          },
+          {
+            "auth_hex": "4804ac516491a9fd4c3c3cd056b7bd33",
+            "height": 4,
+            "node_after_hex": "6b327c78fd5b207e6accff6ba58fe0d4",
+            "node_before_hex": "9c8e7473e3e9a40464c7edd35cb9138e",
+            "order": "auth||node",
+            "tree_index": 3453
+          },
+          {
+            "auth_hex": "123bfc3ceb99b9f578e5e6975f9bd93d",
+            "height": 5,
+            "node_after_hex": "4fe417fda1ff5a91e825fc302204a8db",
+            "node_before_hex": "6b327c78fd5b207e6accff6ba58fe0d4",
+            "order": "auth||node",
+            "tree_index": 1726
+          },
+          {
+            "auth_hex": "2324d3c613a3f07813144a08e4d13a0f",
+            "height": 6,
+            "node_after_hex": "538a6b1b302fb37b99cfc81a50f59a3e",
+            "node_before_hex": "4fe417fda1ff5a91e825fc302204a8db",
+            "order": "node||auth",
+            "tree_index": 863
+          },
+          {
+            "auth_hex": "44dc7e6a9794e4ec90866c8bd3b2e664",
+            "height": 7,
+            "node_after_hex": "070a616f290ec3d57e0abe39a8140dee",
+            "node_before_hex": "538a6b1b302fb37b99cfc81a50f59a3e",
+            "order": "auth||node",
+            "tree_index": 431
+          },
+          {
+            "auth_hex": "442f7bf1d3334bac1d4ef8a45c833b09",
+            "height": 8,
+            "node_after_hex": "6a8d05a791541b34682799a6f8fe8279",
+            "node_before_hex": "070a616f290ec3d57e0abe39a8140dee",
+            "order": "auth||node",
+            "tree_index": 215
+          },
+          {
+            "auth_hex": "ffe8f62f05c73ba0d5225da97be6f975",
+            "height": 9,
+            "node_after_hex": "5bda1be642dce7088f6319dc2e453875",
+            "node_before_hex": "6a8d05a791541b34682799a6f8fe8279",
+            "order": "auth||node",
+            "tree_index": 107
+          },
+          {
+            "auth_hex": "aa986b9f082c6a7fd5d7ac05d6948377",
+            "height": 10,
+            "node_after_hex": "24fcc05b01b987c39a128428fa520c1b",
+            "node_before_hex": "5bda1be642dce7088f6319dc2e453875",
+            "order": "auth||node",
+            "tree_index": 53
+          },
+          {
+            "auth_hex": "df09867af92e4d405a4d42af9dd91f09",
+            "height": 11,
+            "node_after_hex": "0cfb1bc589dace9155856ff5969c1d8c",
+            "node_before_hex": "24fcc05b01b987c39a128428fa520c1b",
+            "order": "auth||node",
+            "tree_index": 26
+          },
+          {
+            "auth_hex": "952400a1629b58e186bdc3a6a8bc4b24",
+            "height": 12,
+            "node_after_hex": "36a3895a092ca378621e8590be60b538",
+            "node_before_hex": "0cfb1bc589dace9155856ff5969c1d8c",
+            "order": "node||auth",
+            "tree_index": 13
+          }
+        ],
+        "global_index": 55261,
+        "leaf_hex": "bcb1713d4288dd72234ca8a3e4c8006b",
+        "local_index": 2013,
+        "root_hex": "36a3895a092ca378621e8590be60b538",
+        "secret_hex": "89e99807a29a4739848b1c263b3096a4",
+        "tree": 13
+      }
+    ]
+  },
+  "fors_message_hex": "47b302491eb1c23712e249c57b3af198a2c9ed27dd",
+  "hmsg_hex": "47b302491eb1c23712e249c57b3af198a2c9ed27dd07d2c4a67656ff044f",
+  "hypertree_layers": [
+    {
+      "authentication_path": [
+        {
+          "auth_hex": "b10fcd8e10acb45ae2ee7354266f1bc2",
+          "height": 1,
+          "node_after_hex": "5a1aa673503f2590a422f0089662b1dd",
+          "node_before_hex": "81c821533370b2729dfb167f8d30b41f",
+          "order": "auth||node",
+          "tree_index": 39
+        },
+        {
+          "auth_hex": "0b52b606ad2f81df90908b302e2b595b",
+          "height": 2,
+          "node_after_hex": "6a3e81e401ce9392f0fdc935fd2afc64",
+          "node_before_hex": "5a1aa673503f2590a422f0089662b1dd",
+          "order": "auth||node",
+          "tree_index": 19
+        },
+        {
+          "auth_hex": "dca81cd0f9d8bd188a46dc82ebc24794",
+          "height": 3,
+          "node_after_hex": "caaa15b0e131ebe66b5e135ac49379ce",
+          "node_before_hex": "6a3e81e401ce9392f0fdc935fd2afc64",
+          "order": "auth||node",
+          "tree_index": 9
+        },
+        {
+          "auth_hex": "b01905340f9d47f7dd9a74e4cbe04c8c",
+          "height": 4,
+          "node_after_hex": "e8ff1d0eaa1635c4d2edf34b81831d69",
+          "node_before_hex": "caaa15b0e131ebe66b5e135ac49379ce",
+          "order": "auth||node",
+          "tree_index": 4
+        },
+        {
+          "auth_hex": "94b49ba3c73c4db80a4f9dd991aef813",
+          "height": 5,
+          "node_after_hex": "428b0266da75cc5ca6acc14f9d532af6",
+          "node_before_hex": "e8ff1d0eaa1635c4d2edf34b81831d69",
+          "order": "node||auth",
+          "tree_index": 2
+        },
+        {
+          "auth_hex": "b9e50d3b818766f0eac44f1167f7b3ae",
+          "height": 6,
+          "node_after_hex": "5c758b8866e7dd0d990727b054867489",
+          "node_before_hex": "428b0266da75cc5ca6acc14f9d532af6",
+          "order": "node||auth",
+          "tree_index": 1
+        },
+        {
+          "auth_hex": "00cf4361f857a164dbf69fb4a5425d32",
+          "height": 7,
+          "node_after_hex": "85e2f4935241fce73544dbeb363ed34c",
+          "node_before_hex": "5c758b8866e7dd0d990727b054867489",
+          "order": "auth||node",
+          "tree_index": 0
+        },
+        {
+          "auth_hex": "9073e805c30d08c512c7a2dd0a384af6",
+          "height": 8,
+          "node_after_hex": "8bbefffc2a76e041c90c111eb9e8df09",
+          "node_before_hex": "85e2f4935241fce73544dbeb363ed34c",
+          "order": "node||auth",
+          "tree_index": 0
+        },
+        {
+          "auth_hex": "90139d49bb1a78cd63aa88ae3b400d62",
+          "height": 9,
+          "node_after_hex": "50f40acbb44293860f19552f0d9c428f",
+          "node_before_hex": "8bbefffc2a76e041c90c111eb9e8df09",
+          "order": "node||auth",
+          "tree_index": 0
+        }
+      ],
+      "layer": 0,
+      "leaf_index": 79,
+      "root_hex": "50f40acbb44293860f19552f0d9c428f",
+      "tree_index": 2202066885170943,
+      "wots": {
+        "chains": [
+          {
+            "chain_index": 0,
+            "endpoint_hex": "27b18225d0dd8df0f13ef09fa3f2c4de",
+            "message_digit": 14,
+            "signature_hex": "41a7efd4b0ef176bb41b7e82e8fb999e",
+            "steps_hex": [
+              "41a7efd4b0ef176bb41b7e82e8fb999e",
+              "27b18225d0dd8df0f13ef09fa3f2c4de"
+            ]
+          },
+          {
+            "chain_index": 1,
+            "endpoint_hex": "2d1c3129fece4ff042c4da7ceb828550",
+            "message_digit": 5,
+            "signature_hex": "d86195345e35ef90fb10a15c7bbfef3a"
+          },
+          {
+            "chain_index": 2,
+            "endpoint_hex": "38ccc4c4dec459bd34d14cff61e3869e",
+            "message_digit": 15,
+            "signature_hex": "38ccc4c4dec459bd34d14cff61e3869e"
+          },
+          {
+            "chain_index": 3,
+            "endpoint_hex": "5ec8f1e0b937c72b364777cca94cc1bd",
+            "message_digit": 13,
+            "signature_hex": "89cd9160584745e4c43f56fcebb61f92"
+          },
+          {
+            "chain_index": 4,
+            "endpoint_hex": "49606b5a13742eed6139fbc7a730ddda",
+            "message_digit": 7,
+            "signature_hex": "9a8172785194327593594fc2ec7088e4"
+          },
+          {
+            "chain_index": 5,
+            "endpoint_hex": "7728a6f06ca649d96d1c5b512fa96060",
+            "message_digit": 8,
+            "signature_hex": "41d2b69b7238c27e498a2e457c045189"
+          },
+          {
+            "chain_index": 6,
+            "endpoint_hex": "7d90e76b85a35d09d20658ee173202bf",
+            "message_digit": 6,
+            "signature_hex": "6a82cc38a36ead742ddded8e18efc108"
+          },
+          {
+            "chain_index": 7,
+            "endpoint_hex": "2d6b96b618061b43b881082845a1b564",
+            "message_digit": 6,
+            "signature_hex": "ed16598b746e535f277289ec9e34ec03"
+          },
+          {
+            "chain_index": 8,
+            "endpoint_hex": "c94a5532cc0f816367f990315cd42f91",
+            "message_digit": 6,
+            "signature_hex": "cc53ece2b3326dc29a56ac4dd98c87a6"
+          },
+          {
+            "chain_index": 9,
+            "endpoint_hex": "66e3ee0ea245ab3c5efc86c67738f45f",
+            "message_digit": 11,
+            "signature_hex": "917256218fb76b7fc779a8fa08ad3c6e"
+          },
+          {
+            "chain_index": 10,
+            "endpoint_hex": "651c114176857eb93fc573fb0d3a144e",
+            "message_digit": 10,
+            "signature_hex": "94b1d1354429cfd7e5677cbb35bb8cc9"
+          },
+          {
+            "chain_index": 11,
+            "endpoint_hex": "12d86c827f634fdfa77946734bd56c35",
+            "message_digit": 14,
+            "signature_hex": "ccd16107ae802098235dd3e5c8025858"
+          },
+          {
+            "chain_index": 12,
+            "endpoint_hex": "a538806be548cd5bec91ce266f7dc2b6",
+            "message_digit": 0,
+            "signature_hex": "3d23e62ba88bae0a0558a66475e64984"
+          },
+          {
+            "chain_index": 13,
+            "endpoint_hex": "d91d8dfc588bc4dce15a28c41a713130",
+            "message_digit": 1,
+            "signature_hex": "6a566e1d3e643d2c10c496bd0c391153"
+          },
+          {
+            "chain_index": 14,
+            "endpoint_hex": "5f8b71f54936a86582f95cf5deeff12e",
+            "message_digit": 8,
+            "signature_hex": "d3b0e18002e25d2e850b03229518420e"
+          },
+          {
+            "chain_index": 15,
+            "endpoint_hex": "e4b701e61d2f8ee2f3f515b99b6c49c9",
+            "message_digit": 3,
+            "signature_hex": "88f123143789287b43f072e4cd0b4b3b"
+          },
+          {
+            "chain_index": 16,
+            "endpoint_hex": "5af767903e3c1d1f24ca5316a4479b5c",
+            "message_digit": 6,
+            "signature_hex": "19d60a350e5be79ea297bed74b831f50"
+          },
+          {
+            "chain_index": 17,
+            "endpoint_hex": "faae9682688df8d84deb776cbb0e6729",
+            "message_digit": 7,
+            "signature_hex": "634391ffa278ef200f95de5da03aa09b"
+          },
+          {
+            "chain_index": 18,
+            "endpoint_hex": "28d5e1659134702383ec6ea1c979f484",
+            "message_digit": 3,
+            "signature_hex": "3855b04ff52dd65795648856ab052220"
+          },
+          {
+            "chain_index": 19,
+            "endpoint_hex": "07b5fb02d283d56f6cb9609133b82bc9",
+            "message_digit": 12,
+            "signature_hex": "46c505f98810d08566655584e2d368f7"
+          },
+          {
+            "chain_index": 20,
+            "endpoint_hex": "0a6353f9dfdfcc1d2be65e98ce508ee9",
+            "message_digit": 13,
+            "signature_hex": "a114e6b08a635c1a92310f9e2371f7ad"
+          },
+          {
+            "chain_index": 21,
+            "endpoint_hex": "e6a14480810ee9960d9ae5dce38b1415",
+            "message_digit": 6,
+            "signature_hex": "6228eb549e45405c11c918e6caf3311a"
+          },
+          {
+            "chain_index": 22,
+            "endpoint_hex": "968bedeb6eeed7fe94238dde5887911a",
+            "message_digit": 11,
+            "signature_hex": "7f2efd6637f9758327fb9db2209346c9"
+          },
+          {
+            "chain_index": 23,
+            "endpoint_hex": "874969c516c6debe315d854729ae86fa",
+            "message_digit": 5,
+            "signature_hex": "01b953d8927d9145ceabe540cd9e2593"
+          },
+          {
+            "chain_index": 24,
+            "endpoint_hex": "49d04ead31d702543be2c2f96c31f75e",
+            "message_digit": 9,
+            "signature_hex": "20db0fea53805ea1500463a0c61668ce"
+          },
+          {
+            "chain_index": 25,
+            "endpoint_hex": "47cc77ffd8711991f38635f8e1b2ebf0",
+            "message_digit": 11,
+            "signature_hex": "29ed3ca3cc514ef27f4bd66fb0a4b282"
+          },
+          {
+            "chain_index": 26,
+            "endpoint_hex": "bfe64ed0d60a88c15e4ca1b9b97dc355",
+            "message_digit": 10,
+            "signature_hex": "707c3df50613357b7ce1ab6a23bd56e3"
+          },
+          {
+            "chain_index": 27,
+            "endpoint_hex": "72f7f3c07352ee65e00f6c2e1da080d3",
+            "message_digit": 6,
+            "signature_hex": "75dce46b90e1f2ac473d22c367506a73"
+          },
+          {
+            "chain_index": 28,
+            "endpoint_hex": "615f2c2d533dc554937c075658b72f7f",
+            "message_digit": 3,
+            "signature_hex": "62fb005d7342db0afd318ac2b003ed41"
+          },
+          {
+            "chain_index": 29,
+            "endpoint_hex": "8cf558206e7dad777e9cf87341e3f96b",
+            "message_digit": 0,
+            "signature_hex": "f5550a4c0188542b2a4c2c826ca0a7f1"
+          },
+          {
+            "chain_index": 30,
+            "endpoint_hex": "7b1b64bf9f90fb71329659b5eb50d8d8",
+            "message_digit": 0,
+            "signature_hex": "596e0052c63c204a299e000e95600bb2"
+          },
+          {
+            "chain_index": 31,
+            "endpoint_hex": "05f12388d37b89e69d59e76f36719b88",
+            "message_digit": 10,
+            "signature_hex": "676a503adcc88d0bfb69b7f10b4f6fff"
+          },
+          {
+            "chain_index": 32,
+            "endpoint_hex": "7d8053c8031ec9d89e45bcd7e5831a14",
+            "message_digit": 0,
+            "signature_hex": "f5d149a87dce286966d75956a8151fae"
+          },
+          {
+            "chain_index": 33,
+            "endpoint_hex": "fdb9d18874329a03edd52d6cc29135ff",
+            "message_digit": 15,
+            "signature_hex": "fdb9d18874329a03edd52d6cc29135ff"
+          },
+          {
+            "chain_index": 34,
+            "endpoint_hex": "1f5ed21d2880aeb11bbeca68264c2200",
+            "message_digit": 1,
+            "signature_hex": "8ee0a61bb647b592b7f245916399a0df"
+          }
+        ],
+        "digits": [
+          14,
+          5,
+          15,
+          13,
+          7,
+          8,
+          6,
+          6,
+          6,
+          11,
+          10,
+          14,
+          0,
+          1,
+          8,
+          3,
+          6,
+          7,
+          3,
+          12,
+          13,
+          6,
+          11,
+          5,
+          9,
+          11,
+          10,
+          6,
+          3,
+          0,
+          0,
+          10,
+          0,
+          15,
+          1
+        ],
+        "message_hex": "e5fd78666bae0183673cd6b59ba6300a",
+        "public_key_hex": "81c821533370b2729dfb167f8d30b41f"
+      }
+    },
+    {
+      "authentication_path": [
+        {
+          "auth_hex": "45938954d2f8371f46a88cb94753311d",
+          "height": 1,
+          "node_after_hex": "a16fd6b631a13cc87d2cef68c7df9d38",
+          "node_before_hex": "1ebf03e36b0cca136f73cb78393300bc",
+          "order": "auth||node",
+          "tree_index": 127
+        },
+        {
+          "auth_hex": "0e609d1287024ff1407a228e02e2b95f",
+          "height": 2,
+          "node_after_hex": "d0ea27a013e94ebc9f5d55e69d270ac3",
+          "node_before_hex": "a16fd6b631a13cc87d2cef68c7df9d38",
+          "order": "auth||node",
+          "tree_index": 63
+        },
+        {
+          "auth_hex": "fd43b7da6f0055b8e0410d64761cc3fc",
+          "height": 3,
+          "node_after_hex": "a9977003e2206139fcdf930f71dd1082",
+          "node_before_hex": "d0ea27a013e94ebc9f5d55e69d270ac3",
+          "order": "auth||node",
+          "tree_index": 31
+        },
+        {
+          "auth_hex": "73fbe42d0fabea58d6fb3b00f95a0740",
+          "height": 4,
+          "node_after_hex": "8519ff7f52b53c2656567bc077678438",
+          "node_before_hex": "a9977003e2206139fcdf930f71dd1082",
+          "order": "auth||node",
+          "tree_index": 15
+        },
+        {
+          "auth_hex": "99ef3aa7e605ae0954a64af368d84577",
+          "height": 5,
+          "node_after_hex": "5042e6f6e0932cbf251d4ac74dd38d3d",
+          "node_before_hex": "8519ff7f52b53c2656567bc077678438",
+          "order": "auth||node",
+          "tree_index": 7
+        },
+        {
+          "auth_hex": "a44254db1ce115d088a2ff918d9e95c8",
+          "height": 6,
+          "node_after_hex": "4a6babb2ecc465da44593533c536c90f",
+          "node_before_hex": "5042e6f6e0932cbf251d4ac74dd38d3d",
+          "order": "auth||node",
+          "tree_index": 3
+        },
+        {
+          "auth_hex": "a7e3e13fd264ca3928d298e3b34f8912",
+          "height": 7,
+          "node_after_hex": "d6ed966d4a43fd3d7a36841fd3e1ac24",
+          "node_before_hex": "4a6babb2ecc465da44593533c536c90f",
+          "order": "auth||node",
+          "tree_index": 1
+        },
+        {
+          "auth_hex": "3961580dd0beccabe0704656f48f244b",
+          "height": 8,
+          "node_after_hex": "4ff86f0fdc852a12505633bc765738b3",
+          "node_before_hex": "d6ed966d4a43fd3d7a36841fd3e1ac24",
+          "order": "auth||node",
+          "tree_index": 0
+        },
+        {
+          "auth_hex": "2454a36e749dab9daa2ed298e7a87d95",
+          "height": 9,
+          "node_after_hex": "ea4af949c5d0f71b4e23b6def8f0b92a",
+          "node_before_hex": "4ff86f0fdc852a12505633bc765738b3",
+          "order": "node||auth",
+          "tree_index": 0
+        }
+      ],
+      "layer": 1,
+      "leaf_index": 255,
+      "root_hex": "ea4af949c5d0f71b4e23b6def8f0b92a",
+      "tree_index": 4300911885099,
+      "wots": {
+        "chains": [
+          {
+            "chain_index": 0,
+            "endpoint_hex": "63d689d21b4acfbc74f5d4ad3e550365",
+            "message_digit": 5,
+            "signature_hex": "ea771ac7c2d855b0f2ac576fc109423d",
+            "steps_hex": [
+              "ea771ac7c2d855b0f2ac576fc109423d",
+              "1c1109e94048f9a32e17fc40f0672142",
+              "4665315c9ab1c482b9969e88767c38a6",
+              "282b85d4ff9d9f8effe81a9b7028e0fd",
+              "54526a3c2fb608cdcfad73a77b1f72fa",
+              "cc45a8ac441c669ebc92fdf3c08693a2",
+              "38406a4ef0fa4bfd3b57f3df79a1d0db",
+              "caed694226068a642322114c30dbec4e",
+              "618cd1da388fd35a30876c195043df9b",
+              "1846957acfef1f6a3f2f93ff420172ac",
+              "63d689d21b4acfbc74f5d4ad3e550365"
+            ]
+          },
+          {
+            "chain_index": 1,
+            "endpoint_hex": "2eacae07d138c4a231cf36961ecbceca",
+            "message_digit": 0,
+            "signature_hex": "a7e6546aba38877fae7fc1a9274011eb"
+          },
+          {
+            "chain_index": 2,
+            "endpoint_hex": "3e7ad80d469cd7f75d38dc9ea131765f",
+            "message_digit": 15,
+            "signature_hex": "3e7ad80d469cd7f75d38dc9ea131765f"
+          },
+          {
+            "chain_index": 3,
+            "endpoint_hex": "a2166ec1a1366a9d7b44e48a83ba2b3e",
+            "message_digit": 4,
+            "signature_hex": "0d8ca6c09c3d3df8fae05f7196221a9e"
+          },
+          {
+            "chain_index": 4,
+            "endpoint_hex": "381dbd296bf0d57c1870f9d27031314b",
+            "message_digit": 0,
+            "signature_hex": "e58f4ed2a6c6dc0143a8e0bf64a0fc1e"
+          },
+          {
+            "chain_index": 5,
+            "endpoint_hex": "1b99dfbad399fad499e4d3bce144b845",
+            "message_digit": 10,
+            "signature_hex": "c35b79f49fb4bb610acd1ab7c65bea3b"
+          },
+          {
+            "chain_index": 6,
+            "endpoint_hex": "28c5d7257e0419ba3bafe016c25888b9",
+            "message_digit": 12,
+            "signature_hex": "71b2b5d33524b8cfdd13aad2f3dc70e0"
+          },
+          {
+            "chain_index": 7,
+            "endpoint_hex": "409a701831f28d69a8b0bce48406d038",
+            "message_digit": 11,
+            "signature_hex": "5ccb21332808a5c4b0bb3f00a3cab107"
+          },
+          {
+            "chain_index": 8,
+            "endpoint_hex": "d5fd2a9e3b2385aa4ebb0e7b0cc7f27f",
+            "message_digit": 11,
+            "signature_hex": "c9a3bf44ae31bffef22e9800271caac9"
+          },
+          {
+            "chain_index": 9,
+            "endpoint_hex": "c8585c0d9149169bc34955202afd286b",
+            "message_digit": 4,
+            "signature_hex": "1fa8d2e2de10d0946f387f3d8a3a850f"
+          },
+          {
+            "chain_index": 10,
+            "endpoint_hex": "11eec163919a8c7b25543dc2e5169e5a",
+            "message_digit": 4,
+            "signature_hex": "6d42c7bdcfe588a7f4dced160ad2e315"
+          },
+          {
+            "chain_index": 11,
+            "endpoint_hex": "0abe2abded4131d6d9b34c2dab37ab95",
+            "message_digit": 2,
+            "signature_hex": "7cd3d807cff67c345449e9245d107099"
+          },
+          {
+            "chain_index": 12,
+            "endpoint_hex": "b7a97546df0afc578f4ecdc0b72e0d9d",
+            "message_digit": 9,
+            "signature_hex": "7ddecc1592feb69b7887ca9730230473"
+          },
+          {
+            "chain_index": 13,
+            "endpoint_hex": "86eef7ce1a758f4882e30a20b62fcd6a",
+            "message_digit": 3,
+            "signature_hex": "98c6abbcf8dcaeb171e4b9cdeddc25a6"
+          },
+          {
+            "chain_index": 14,
+            "endpoint_hex": "be6433287ac54d47b506309970b13614",
+            "message_digit": 8,
+            "signature_hex": "599ad37364bfa83ea558bb06dec196c3"
+          },
+          {
+            "chain_index": 15,
+            "endpoint_hex": "ca788d7cbaf60b52fdd12dd3dba42a2f",
+            "message_digit": 6,
+            "signature_hex": "1615057647fd24b27813b575afaa58a5"
+          },
+          {
+            "chain_index": 16,
+            "endpoint_hex": "d36f42e3da11bf7e96a303ce6ef8bfaa",
+            "message_digit": 0,
+            "signature_hex": "21e3e6ef1d5b696a23128e425dfd711c"
+          },
+          {
+            "chain_index": 17,
+            "endpoint_hex": "f76230e37ca71d7f219d98d127edfddd",
+            "message_digit": 15,
+            "signature_hex": "f76230e37ca71d7f219d98d127edfddd"
+          },
+          {
+            "chain_index": 18,
+            "endpoint_hex": "8acb53638c788a074d79d705b3c3907b",
+            "message_digit": 1,
+            "signature_hex": "3fe8048e8810d0fc7561d72c2f2bfbb7"
+          },
+          {
+            "chain_index": 19,
+            "endpoint_hex": "7fd812dd26a17bbae10fe5f3a32f0010",
+            "message_digit": 9,
+            "signature_hex": "591fb8d81a01c8f76959915b43c3d070"
+          },
+          {
+            "chain_index": 20,
+            "endpoint_hex": "37753befbee283b6f0c8d6456032cf1f",
+            "message_digit": 5,
+            "signature_hex": "4f7801522ae3a677ab633d9e4bbf822c"
+          },
+          {
+            "chain_index": 21,
+            "endpoint_hex": "424b2046279deb95839bb4b6ad0f2f4d",
+            "message_digit": 5,
+            "signature_hex": "1e257eda588cf0cc590ddffcd3017833"
+          },
+          {
+            "chain_index": 22,
+            "endpoint_hex": "6dfbba0a2ec2d3721e9b69ffa38f78bc",
+            "message_digit": 2,
+            "signature_hex": "dd3206970fcd0e3fb79f6323a0e0d6d9"
+          },
+          {
+            "chain_index": 23,
+            "endpoint_hex": "06ac8a672347ff4ed6fc4e303b042b00",
+            "message_digit": 15,
+            "signature_hex": "06ac8a672347ff4ed6fc4e303b042b00"
+          },
+          {
+            "chain_index": 24,
+            "endpoint_hex": "fb76d860fb8e39aa3e11e01227a11ae5",
+            "message_digit": 0,
+            "signature_hex": "8741502acfcc6326e23eae3514b9ecbb"
+          },
+          {
+            "chain_index": 25,
+            "endpoint_hex": "9dad58e407093d05d967f9fc15d9b8aa",
+            "message_digit": 13,
+            "signature_hex": "53b6a6c76df7214bf2a443fb41edbb75"
+          },
+          {
+            "chain_index": 26,
+            "endpoint_hex": "d180026274b59fd3d93e428ccdc6f8cc",
+            "message_digit": 9,
+            "signature_hex": "07d150ff38e937f0a7c1e0b77cfeb689"
+          },
+          {
+            "chain_index": 27,
+            "endpoint_hex": "f6d46d4fa49684c643ecd8052b752783",
+            "message_digit": 12,
+            "signature_hex": "d8105530943a5bd75ec6b706e7ce19a9"
+          },
+          {
+            "chain_index": 28,
+            "endpoint_hex": "74f88d8722e0afa552142cf187a8fb9b",
+            "message_digit": 4,
+            "signature_hex": "f1d2e9d328303718262225bface38444"
+          },
+          {
+            "chain_index": 29,
+            "endpoint_hex": "c0cb37105e07fe689abddec766b1f122",
+            "message_digit": 2,
+            "signature_hex": "50ed3488cf08f5c820b63f9db18b5567"
+          },
+          {
+            "chain_index": 30,
+            "endpoint_hex": "a7337114fdcc366b67bf86de180a598b",
+            "message_digit": 8,
+            "signature_hex": "16c53a03a0bf24979310e0a973a5a6ae"
+          },
+          {
+            "chain_index": 31,
+            "endpoint_hex": "aaa4a3087af176eec61ac5e37b84df96",
+            "message_digit": 15,
+            "signature_hex": "aaa4a3087af176eec61ac5e37b84df96"
+          },
+          {
+            "chain_index": 32,
+            "endpoint_hex": "2867550855a9b7dd5fd78d49a1f6436f",
+            "message_digit": 1,
+            "signature_hex": "7ceff2ce3d90b9c584305935341c5a2d"
+          },
+          {
+            "chain_index": 33,
+            "endpoint_hex": "fa43e0c2d8ac2b91f864f9ced1532ddb",
+            "message_digit": 0,
+            "signature_hex": "36eb830f52e0652a96eb14f7a2d85d65"
+          },
+          {
+            "chain_index": 34,
+            "endpoint_hex": "d39f48cb4acdba60927afe4a03195644",
+            "message_digit": 5,
+            "signature_hex": "5f98eecfa2d6e3779580df46eb0ab19b"
+          }
+        ],
+        "digits": [
+          5,
+          0,
+          15,
+          4,
+          0,
+          10,
+          12,
+          11,
+          11,
+          4,
+          4,
+          2,
+          9,
+          3,
+          8,
+          6,
+          0,
+          15,
+          1,
+          9,
+          5,
+          5,
+          2,
+          15,
+          0,
+          13,
+          9,
+          12,
+          4,
+          2,
+          8,
+          15,
+          1,
+          0,
+          5
+        ],
+        "message_hex": "50f40acbb44293860f19552f0d9c428f",
+        "public_key_hex": "1ebf03e36b0cca136f73cb78393300bc"
+      }
+    },
+    {
+      "authentication_path": [
+        {
+          "auth_hex": "f45022caff3cfb009bd41ecb560111eb",
+          "height": 1,
+          "node_after_hex": "47d7fd44d5c39bedcf20393fd522dd49",
+          "node_before_hex": "417999e0f800533fef028b7134745005",
+          "order": "auth||node",
+          "tree_index": 149
+        },
+        {
+          "auth_hex": "114b90b7c5fe915582391d7fb6a7eddb",
+          "height": 2,
+          "node_after_hex": "957dc4762885acffcf15e744e9c2ca57",
+          "node_before_hex": "47d7fd44d5c39bedcf20393fd522dd49",
+          "order": "auth||node",
+          "tree_index": 74
+        },
+        {
+          "auth_hex": "aeff14b602470b6a45a318c828084d71",
+          "height": 3,
+          "node_after_hex": "37fec006ec8722e60ec3d07474ea5fce",
+          "node_before_hex": "957dc4762885acffcf15e744e9c2ca57",
+          "order": "node||auth",
+          "tree_index": 37
+        },
+        {
+          "auth_hex": "c45084835fa524d90c259c9978fd1cf5",
+          "height": 4,
+          "node_after_hex": "0e0e8ee3279e9da96e66f9d78946ab07",
+          "node_before_hex": "37fec006ec8722e60ec3d07474ea5fce",
+          "order": "auth||node",
+          "tree_index": 18
+        },
+        {
+          "auth_hex": "6e13105efc3fc827455d3fb9394dcfbe",
+          "height": 5,
+          "node_after_hex": "e6263eb0d4d3945206521e409ecab9ff",
+          "node_before_hex": "0e0e8ee3279e9da96e66f9d78946ab07",
+          "order": "node||auth",
+          "tree_index": 9
+        },
+        {
+          "auth_hex": "b9b0eb3f4b42bdd8a160eb2e7985ea4a",
+          "height": 6,
+          "node_after_hex": "ffef780184a0314805c57e087c7b89f1",
+          "node_before_hex": "e6263eb0d4d3945206521e409ecab9ff",
+          "order": "auth||node",
+          "tree_index": 4
+        },
+        {
+          "auth_hex": "8bfa929c79fcac76acf6be386a9697e9",
+          "height": 7,
+          "node_after_hex": "6c669dc9ed395789e1ea7c9b38cccb62",
+          "node_before_hex": "ffef780184a0314805c57e087c7b89f1",
+          "order": "node||auth",
+          "tree_index": 2
+        },
+        {
+          "auth_hex": "7e72b493c099587d1795cde84b177ed8",
+          "height": 8,
+          "node_after_hex": "58cd4b1643d6d99c920a34cc1e332389",
+          "node_before_hex": "6c669dc9ed395789e1ea7c9b38cccb62",
+          "order": "node||auth",
+          "tree_index": 1
+        },
+        {
+          "auth_hex": "25ee4d73311b63ddc76ab685a355c2d4",
+          "height": 9,
+          "node_after_hex": "f38f1c2e747283670bde9c7e7429c325",
+          "node_before_hex": "58cd4b1643d6d99c920a34cc1e332389",
+          "order": "auth||node",
+          "tree_index": 0
+        }
+      ],
+      "layer": 2,
+      "leaf_index": 299,
+      "root_hex": "f38f1c2e747283670bde9c7e7429c325",
+      "tree_index": 8400218525,
+      "wots": {
+        "chains": [
+          {
+            "chain_index": 0,
+            "endpoint_hex": "367ae5c4fda31bf8f9ce547d88c7a525",
+            "message_digit": 14,
+            "signature_hex": "2d4b00444cc0a7e14b4d0448925d3536",
+            "steps_hex": [
+              "2d4b00444cc0a7e14b4d0448925d3536",
+              "367ae5c4fda31bf8f9ce547d88c7a525"
+            ]
+          },
+          {
+            "chain_index": 1,
+            "endpoint_hex": "4ffa950e9d57e995e5685ccf4e9e233c",
+            "message_digit": 10,
+            "signature_hex": "060bdbb53a37e1e3be135a57af237e27"
+          },
+          {
+            "chain_index": 2,
+            "endpoint_hex": "0328b2a20c4951ed98f0e79c8268aabf",
+            "message_digit": 4,
+            "signature_hex": "2348c14ddd76617afef73b08de473477"
+          },
+          {
+            "chain_index": 3,
+            "endpoint_hex": "ff283c850d8c558f6f606ef863340584",
+            "message_digit": 10,
+            "signature_hex": "71135ddc862d2d56cf1b91d85006a090"
+          },
+          {
+            "chain_index": 4,
+            "endpoint_hex": "dc6791f0a18aac7c26e1d3f7f6277ac0",
+            "message_digit": 15,
+            "signature_hex": "dc6791f0a18aac7c26e1d3f7f6277ac0"
+          },
+          {
+            "chain_index": 5,
+            "endpoint_hex": "728bb777aab12f387ff1b7565de00180",
+            "message_digit": 9,
+            "signature_hex": "e5f7015376513d5950f0fae4d21dec8a"
+          },
+          {
+            "chain_index": 6,
+            "endpoint_hex": "717bde1fa282d1ebdf66b6fd85dd7103",
+            "message_digit": 4,
+            "signature_hex": "83c6dad95b8405f143681e99ee54610b"
+          },
+          {
+            "chain_index": 7,
+            "endpoint_hex": "3c8c07b1259599bf325d4215c97c5145",
+            "message_digit": 9,
+            "signature_hex": "fb8658f0e3cc284481e2e40c07a0ad3f"
+          },
+          {
+            "chain_index": 8,
+            "endpoint_hex": "63f6f1185e0e490c67cd4415d1e5e50a",
+            "message_digit": 12,
+            "signature_hex": "dd8fee55e83fd7f9509e7e0d3b7c63f6"
+          },
+          {
+            "chain_index": 9,
+            "endpoint_hex": "106723c408531153bbd20f53ef5230be",
+            "message_digit": 5,
+            "signature_hex": "84b0a5d6cf213311f6c607cdfb19ed5b"
+          },
+          {
+            "chain_index": 10,
+            "endpoint_hex": "8a25f179b758e85c02cef4a45141c3d7",
+            "message_digit": 13,
+            "signature_hex": "7649d8b9c882f88a74c86018cc041989"
+          },
+          {
+            "chain_index": 11,
+            "endpoint_hex": "0fcc07acc55fe65114b0d9fc0c94eb9f",
+            "message_digit": 0,
+            "signature_hex": "3dfccb9120b8550bed66e594c05165b4"
+          },
+          {
+            "chain_index": 12,
+            "endpoint_hex": "535deee13859ab87a93ced0cc9881dbd",
+            "message_digit": 15,
+            "signature_hex": "535deee13859ab87a93ced0cc9881dbd"
+          },
+          {
+            "chain_index": 13,
+            "endpoint_hex": "5bc322c7b2c3a1f954247f75319642c6",
+            "message_digit": 7,
+            "signature_hex": "2e34d099bf2c93b6cdbd752059d3fe46"
+          },
+          {
+            "chain_index": 14,
+            "endpoint_hex": "a025fd83f397a4f075d87c3ccca1dd0a",
+            "message_digit": 1,
+            "signature_hex": "c2e29d65a70c7f7c26767c8e746d9eb6"
+          },
+          {
+            "chain_index": 15,
+            "endpoint_hex": "68b36dfe5505848d0c4ecacf5d3027ff",
+            "message_digit": 11,
+            "signature_hex": "a32087c0443b2b4dccc5ff9eea580844"
+          },
+          {
+            "chain_index": 16,
+            "endpoint_hex": "0f5193483d00a8e15d7ab4a147b95351",
+            "message_digit": 4,
+            "signature_hex": "1541637880e65fd45ed4312a2cbcafe6"
+          },
+          {
+            "chain_index": 17,
+            "endpoint_hex": "5be80ae94303a98572c040d06c8de9d7",
+            "message_digit": 14,
+            "signature_hex": "994e4f766eec07ba321e5be051edccac"
+          },
+          {
+            "chain_index": 18,
+            "endpoint_hex": "b08c129521af0c25fa5e26164d04d788",
+            "message_digit": 2,
+            "signature_hex": "4726ddd48f22fdf2c3889f7280700d66"
+          },
+          {
+            "chain_index": 19,
+            "endpoint_hex": "05b3913011fb1af30445321267e05211",
+            "message_digit": 3,
+            "signature_hex": "aaebe703d75862967fdc0b330ca410bb"
+          },
+          {
+            "chain_index": 20,
+            "endpoint_hex": "93d7a64a141d4d3f819b3be152f8651c",
+            "message_digit": 11,
+            "signature_hex": "1b5c7714db28928d98c1a3a90673deba"
+          },
+          {
+            "chain_index": 21,
+            "endpoint_hex": "c3255e52fed97d24805b993aa8449ec7",
+            "message_digit": 6,
+            "signature_hex": "bd21c64bb7c38427a00a59f89a10f633"
+          },
+          {
+            "chain_index": 22,
+            "endpoint_hex": "103d6af0a707005fbee19cbee434c219",
+            "message_digit": 13,
+            "signature_hex": "b65d4a9f4a64db75bd1a217d70ad5026"
+          },
+          {
+            "chain_index": 23,
+            "endpoint_hex": "342b263a7acd6c113d84bf7927449dd6",
+            "message_digit": 14,
+            "signature_hex": "c4f5a8b890636a5e90600c51588ec41c"
+          },
+          {
+            "chain_index": 24,
+            "endpoint_hex": "097ba0ab13cfa119fd9314ad787f1143",
+            "message_digit": 15,
+            "signature_hex": "097ba0ab13cfa119fd9314ad787f1143"
+          },
+          {
+            "chain_index": 25,
+            "endpoint_hex": "e1c9d45e24ec0879052add0b5d47d386",
+            "message_digit": 8,
+            "signature_hex": "d5585769e8258ef8399d4803f6494ee7"
+          },
+          {
+            "chain_index": 26,
+            "endpoint_hex": "a58489d9988dd5d68d4579b0d1e375ea",
+            "message_digit": 15,
+            "signature_hex": "a58489d9988dd5d68d4579b0d1e375ea"
+          },
+          {
+            "chain_index": 27,
+            "endpoint_hex": "28a670b75575213e549cd7921f08c609",
+            "message_digit": 0,
+            "signature_hex": "7e319e40f9a79664663a0dc358fb7297"
+          },
+          {
+            "chain_index": 28,
+            "endpoint_hex": "2b6dfb66bae3f9f379e5af3ccb528b62",
+            "message_digit": 11,
+            "signature_hex": "d8e2d23792c6830a85c206a0c68ba859"
+          },
+          {
+            "chain_index": 29,
+            "endpoint_hex": "995708341d0c5a93d8272d757372b1e5",
+            "message_digit": 9,
+            "signature_hex": "f5b827e4f232688e91fc9a8bb67961db"
+          },
+          {
+            "chain_index": 30,
+            "endpoint_hex": "5cc6cd55fb30dd1137a82081c6dd1194",
+            "message_digit": 2,
+            "signature_hex": "32376ce6156b0d63112e2b5a24f12186"
+          },
+          {
+            "chain_index": 31,
+            "endpoint_hex": "b6c132e59311461f4cc094d1b13925bd",
+            "message_digit": 10,
+            "signature_hex": "62f789db559f1c2845b5676daf8d9ec0"
+          },
+          {
+            "chain_index": 32,
+            "endpoint_hex": "9278522ff3e3f9ec46d34ded2b5db67d",
+            "message_digit": 0,
+            "signature_hex": "68e65abea71bd7ed6ca29ee68887d470"
+          },
+          {
+            "chain_index": 33,
+            "endpoint_hex": "25685ede5dad8e4003729e9183494f28",
+            "message_digit": 12,
+            "signature_hex": "9b8a0d79caea71bf3d98eb5d8586fd67"
+          },
+          {
+            "chain_index": 34,
+            "endpoint_hex": "dd0f8bd6648f731d4b32d9944caf4a07",
+            "message_digit": 12,
+            "signature_hex": "52c0bb8739a6ae69819240eca220ec96"
+          }
+        ],
+        "digits": [
+          14,
+          10,
+          4,
+          10,
+          15,
+          9,
+          4,
+          9,
+          12,
+          5,
+          13,
+          0,
+          15,
+          7,
+          1,
+          11,
+          4,
+          14,
+          2,
+          3,
+          11,
+          6,
+          13,
+          14,
+          15,
+          8,
+          15,
+          0,
+          11,
+          9,
+          2,
+          10,
+          0,
+          12,
+          12
+        ],
+        "message_hex": "ea4af949c5d0f71b4e23b6def8f0b92a",
+        "public_key_hex": "417999e0f800533fef028b7134745005"
+      }
+    },
+    {
+      "authentication_path": [
+        {
+          "auth_hex": "a59767421ce64f1f740bbbe59aff8b5d",
+          "height": 1,
+          "node_after_hex": "841889fb1369f098344538d522f3964e",
+          "node_before_hex": "67f27d1a965f72a8c1a94019350cfc15",
+          "order": "auth||node",
+          "tree_index": 206
+        },
+        {
+          "auth_hex": "285487191f2c557833ec5ae746a89c0e",
+          "height": 2,
+          "node_after_hex": "f57dc3f45cbe45c25b0a3c7431437f77",
+          "node_before_hex": "841889fb1369f098344538d522f3964e",
+          "order": "node||auth",
+          "tree_index": 103
+        },
+        {
+          "auth_hex": "c3d5f82e9ae9e11bc8a7832e203296a2",
+          "height": 3,
+          "node_after_hex": "aa7717f113c4ed8e4cddde64ed1f3248",
+          "node_before_hex": "f57dc3f45cbe45c25b0a3c7431437f77",
+          "order": "auth||node",
+          "tree_index": 51
+        },
+        {
+          "auth_hex": "ec757d137576435b5a29dcca4be99d38",
+          "height": 4,
+          "node_after_hex": "27c029003dfc800f0e904d8ae1cba1ff",
+          "node_before_hex": "aa7717f113c4ed8e4cddde64ed1f3248",
+          "order": "auth||node",
+          "tree_index": 25
+        },
+        {
+          "auth_hex": "ac8c6c83c6497fcb6c3d7929c27f326b",
+          "height": 5,
+          "node_after_hex": "66acf7adb50d94272cce5ce9ba6330c9",
+          "node_before_hex": "27c029003dfc800f0e904d8ae1cba1ff",
+          "order": "auth||node",
+          "tree_index": 12
+        },
+        {
+          "auth_hex": "8e4810ac688034efef2e776bf2d9720a",
+          "height": 6,
+          "node_after_hex": "cf3b01ae14e942c9d7fdad6483e2af2b",
+          "node_before_hex": "66acf7adb50d94272cce5ce9ba6330c9",
+          "order": "node||auth",
+          "tree_index": 6
+        },
+        {
+          "auth_hex": "f5c833852bd91578fd174a568bf2c98b",
+          "height": 7,
+          "node_after_hex": "108b72b7b50ddb06ede0467ba6fe5655",
+          "node_before_hex": "cf3b01ae14e942c9d7fdad6483e2af2b",
+          "order": "node||auth",
+          "tree_index": 3
+        },
+        {
+          "auth_hex": "abf2fbc01cc63c3e8d07541c6a73de1b",
+          "height": 8,
+          "node_after_hex": "1c2529ba80a007335913630637802a14",
+          "node_before_hex": "108b72b7b50ddb06ede0467ba6fe5655",
+          "order": "auth||node",
+          "tree_index": 1
+        },
+        {
+          "auth_hex": "9cf501b6dd4f4a156c98454a1696d10b",
+          "height": 9,
+          "node_after_hex": "c7fe874e94bf33dfd457f17cb78b419d",
+          "node_before_hex": "1c2529ba80a007335913630637802a14",
+          "order": "auth||node",
+          "tree_index": 0
+        }
+      ],
+      "layer": 3,
+      "leaf_index": 413,
+      "root_hex": "c7fe874e94bf33dfd457f17cb78b419d",
+      "tree_index": 16406676,
+      "wots": {
+        "chains": [
+          {
+            "chain_index": 0,
+            "endpoint_hex": "b7b145cecfefdcc0a60a8c27e8a66568",
+            "message_digit": 15,
+            "signature_hex": "b7b145cecfefdcc0a60a8c27e8a66568",
+            "steps_hex": [
+              "b7b145cecfefdcc0a60a8c27e8a66568"
+            ]
+          },
+          {
+            "chain_index": 1,
+            "endpoint_hex": "d1a24125e83ad6108a578a6e5814c3ec",
+            "message_digit": 3,
+            "signature_hex": "3117d31f0f3e00f9fb24f7eea0c6e2dd"
+          },
+          {
+            "chain_index": 2,
+            "endpoint_hex": "1eeb7adc0e8d636bcf7c817cf0716cd9",
+            "message_digit": 8,
+            "signature_hex": "3b0a814c201b10a21f5f1fbe5f8c9f49"
+          },
+          {
+            "chain_index": 3,
+            "endpoint_hex": "c71b6c7ba9009eefda66a5ba755fa295",
+            "message_digit": 15,
+            "signature_hex": "c71b6c7ba9009eefda66a5ba755fa295"
+          },
+          {
+            "chain_index": 4,
+            "endpoint_hex": "a202f856cbace515b2bbb1b489bda66d",
+            "message_digit": 1,
+            "signature_hex": "5f926e06438c80f714088730ed52cf12"
+          },
+          {
+            "chain_index": 5,
+            "endpoint_hex": "ad273c33674d59475a90860040e6c89f",
+            "message_digit": 12,
+            "signature_hex": "dd4749ae2879e1b029df23d8c4177157"
+          },
+          {
+            "chain_index": 6,
+            "endpoint_hex": "b47f92bd24fb0770a10ee0c3910edfe0",
+            "message_digit": 2,
+            "signature_hex": "6b58e47215196198011335b7b3e1833f"
+          },
+          {
+            "chain_index": 7,
+            "endpoint_hex": "d1e28c625c5baddae241fd9e1a5114c4",
+            "message_digit": 14,
+            "signature_hex": "42e69e57f3132623bd880654cb015dd0"
+          },
+          {
+            "chain_index": 8,
+            "endpoint_hex": "3cae642f152fef788e0650d08fb7e928",
+            "message_digit": 7,
+            "signature_hex": "36c9044c4e4c582a51ea2748aa913541"
+          },
+          {
+            "chain_index": 9,
+            "endpoint_hex": "789f01b9de9a24e822c0af9fd90bc7e4",
+            "message_digit": 4,
+            "signature_hex": "d6cadb71d95d4eab84ce77c4216b4cf0"
+          },
+          {
+            "chain_index": 10,
+            "endpoint_hex": "eb299036d32ef85620e6305970736fe4",
+            "message_digit": 7,
+            "signature_hex": "8862993d5e9cc04b4691bef0ef70c0e8"
+          },
+          {
+            "chain_index": 11,
+            "endpoint_hex": "8a378e5bc197c26bcde2f26709b66a1b",
+            "message_digit": 2,
+            "signature_hex": "241b8762ba3998c79d25039f6cf4b2cd"
+          },
+          {
+            "chain_index": 12,
+            "endpoint_hex": "63d33e38b661a2d7f157c90026c73903",
+            "message_digit": 8,
+            "signature_hex": "b9ef34f13f20de36a9c6eab65346da5c"
+          },
+          {
+            "chain_index": 13,
+            "endpoint_hex": "6c679f6fc428c9fa2bc0a2cf5dbbc44e",
+            "message_digit": 3,
+            "signature_hex": "639f662af9f6a712914b065ee7b24385"
+          },
+          {
+            "chain_index": 14,
+            "endpoint_hex": "a5647b7dfc85a58491e9b4f121569168",
+            "message_digit": 6,
+            "signature_hex": "020174053ce5511283117b5d832388a8"
+          },
+          {
+            "chain_index": 15,
+            "endpoint_hex": "96b41218741549ecd9eb821959a1e097",
+            "message_digit": 7,
+            "signature_hex": "ab7e0dfd041a82445119bddb10c70eb4"
+          },
+          {
+            "chain_index": 16,
+            "endpoint_hex": "51eeac76101c4c9332b9aed7b5ac4187",
+            "message_digit": 0,
+            "signature_hex": "ab8040d0b52df8bf318c538d4aea5038"
+          },
+          {
+            "chain_index": 17,
+            "endpoint_hex": "2c65cd54429cd9aa983d91e0bf0df806",
+            "message_digit": 11,
+            "signature_hex": "95fd0b10007f0d0f25ff92fdb3a1d0be"
+          },
+          {
+            "chain_index": 18,
+            "endpoint_hex": "63635bf27f4bbb0210625fde99698c0d",
+            "message_digit": 13,
+            "signature_hex": "cb6421726e1418c1aeabf169233ecf66"
+          },
+          {
+            "chain_index": 19,
+            "endpoint_hex": "e14c67df8d523278a7aeed128eae5313",
+            "message_digit": 14,
+            "signature_hex": "899593592f1af8833fa722c37ac4c502"
+          },
+          {
+            "chain_index": 20,
+            "endpoint_hex": "728c24aa0de2bf4753ca945cddb6ae99",
+            "message_digit": 9,
+            "signature_hex": "9d804511d74f97eb397fe5ea376a4eef"
+          },
+          {
+            "chain_index": 21,
+            "endpoint_hex": "15c3f1ff9b5872c141fb937b2ad68a31",
+            "message_digit": 12,
+            "signature_hex": "7cf283f36921ec153d8fbb6feef080fe"
+          },
+          {
+            "chain_index": 22,
+            "endpoint_hex": "c8df76dbc5f2d7e1968ae36c3e6a65c9",
+            "message_digit": 7,
+            "signature_hex": "0721ed7ddf26f16983bc4902b3803dba"
+          },
+          {
+            "chain_index": 23,
+            "endpoint_hex": "d1c4149bd675e4d98f1f14590f0c2683",
+            "message_digit": 14,
+            "signature_hex": "fdc9b9c93fcfd69264294dcfa3dbb4bc"
+          },
+          {
+            "chain_index": 24,
+            "endpoint_hex": "288a24ec852ef8a351cb64dbe02f4726",
+            "message_digit": 7,
+            "signature_hex": "fa39b53346d235337b8a750c95e135a1"
+          },
+          {
+            "chain_index": 25,
+            "endpoint_hex": "86d9111e72c90a9fd80211e3e179db99",
+            "message_digit": 4,
+            "signature_hex": "b01e26b19b75103da794ce334bf26b70"
+          },
+          {
+            "chain_index": 26,
+            "endpoint_hex": "3540beba14169ca47b616dbde57b7548",
+            "message_digit": 2,
+            "signature_hex": "ece7dd0b306b5c1188c0065898cd6edb"
+          },
+          {
+            "chain_index": 27,
+            "endpoint_hex": "866b57cd4814431b5a6ac6f2a44e31e3",
+            "message_digit": 9,
+            "signature_hex": "ba284bba029d32e7a5624cc2239620b6"
+          },
+          {
+            "chain_index": 28,
+            "endpoint_hex": "a54ffdef37f2139b6f24d14453664589",
+            "message_digit": 12,
+            "signature_hex": "68fd224aa884776f03e7a6e96ce891cf"
+          },
+          {
+            "chain_index": 29,
+            "endpoint_hex": "bac6b2db3e95574dcc709de82b328a6d",
+            "message_digit": 3,
+            "signature_hex": "3edf3669f9f7d522acef8164bcd40bf4"
+          },
+          {
+            "chain_index": 30,
+            "endpoint_hex": "0e6f5367855d97809a30ad9ca83a9d66",
+            "message_digit": 2,
+            "signature_hex": "6c1654e465b64c8d9444d50666d78f93"
+          },
+          {
+            "chain_index": 31,
+            "endpoint_hex": "c37798214257e612c4f42d6a766c7183",
+            "message_digit": 5,
+            "signature_hex": "5391cabf6f3ae7c4facebad11425f316"
+          },
+          {
+            "chain_index": 32,
+            "endpoint_hex": "fa8f5ef13dcb424f286e929f8ca9bf7e",
+            "message_digit": 0,
+            "signature_hex": "373e2b36057f67512ff5a3a8893e22d4"
+          },
+          {
+            "chain_index": 33,
+            "endpoint_hex": "3f611c95153de07eb1ef4ca03954bcbf",
+            "message_digit": 15,
+            "signature_hex": "3f611c95153de07eb1ef4ca03954bcbf"
+          },
+          {
+            "chain_index": 34,
+            "endpoint_hex": "9aad2e921405015ae0d36c2e29815d15",
+            "message_digit": 2,
+            "signature_hex": "83e3339b4ba68de1488ff64b565d9dc7"
+          }
+        ],
+        "digits": [
+          15,
+          3,
+          8,
+          15,
+          1,
+          12,
+          2,
+          14,
+          7,
+          4,
+          7,
+          2,
+          8,
+          3,
+          6,
+          7,
+          0,
+          11,
+          13,
+          14,
+          9,
+          12,
+          7,
+          14,
+          7,
+          4,
+          2,
+          9,
+          12,
+          3,
+          2,
+          5,
+          0,
+          15,
+          2
+        ],
+        "message_hex": "f38f1c2e747283670bde9c7e7429c325",
+        "public_key_hex": "67f27d1a965f72a8c1a94019350cfc15"
+      }
+    },
+    {
+      "authentication_path": [
+        {
+          "auth_hex": "fa97d3f9658f8f02074ea228d4137e07",
+          "height": 1,
+          "node_after_hex": "81616c4997ddb723ede3fa436e60b0ba",
+          "node_before_hex": "e86a2ecf88edc88cfc85eae0bd855010",
+          "order": "node||auth",
+          "tree_index": 74
+        },
+        {
+          "auth_hex": "f3d8b864fd6f5e7db929e211b70e8a32",
+          "height": 2,
+          "node_after_hex": "8fdc98ede799ad663029511b7e7b817a",
+          "node_before_hex": "81616c4997ddb723ede3fa436e60b0ba",
+          "order": "node||auth",
+          "tree_index": 37
+        },
+        {
+          "auth_hex": "5afa0a7c44d7c6b95e84fa24d98cbe93",
+          "height": 3,
+          "node_after_hex": "2d522b59c034128d927bf6a878b39fe9",
+          "node_before_hex": "8fdc98ede799ad663029511b7e7b817a",
+          "order": "auth||node",
+          "tree_index": 18
+        },
+        {
+          "auth_hex": "a50cb3192b55d17adc6100768f64e15b",
+          "height": 4,
+          "node_after_hex": "884ae1a837e4ff6d3aa929b392cda3b4",
+          "node_before_hex": "2d522b59c034128d927bf6a878b39fe9",
+          "order": "node||auth",
+          "tree_index": 9
+        },
+        {
+          "auth_hex": "5188880e2632766ed928a0274c0c61c6",
+          "height": 5,
+          "node_after_hex": "45ecc54e80ccfc57214769a1bbec1670",
+          "node_before_hex": "884ae1a837e4ff6d3aa929b392cda3b4",
+          "order": "auth||node",
+          "tree_index": 4
+        },
+        {
+          "auth_hex": "10bed334c64af80d1746208cf8d2755b",
+          "height": 6,
+          "node_after_hex": "ae0651bd5547e0da16aad82001cbc78f",
+          "node_before_hex": "45ecc54e80ccfc57214769a1bbec1670",
+          "order": "node||auth",
+          "tree_index": 2
+        },
+        {
+          "auth_hex": "8f50d71b16dca897d3234b439fcc2d1f",
+          "height": 7,
+          "node_after_hex": "c0fc3381eaa5cb3ff1b4d72082765462",
+          "node_before_hex": "ae0651bd5547e0da16aad82001cbc78f",
+          "order": "node||auth",
+          "tree_index": 1
+        },
+        {
+          "auth_hex": "bb88f0b7363402260b61fde6a70ca736",
+          "height": 8,
+          "node_after_hex": "b07bcffeb5b4a1d3ff194a1b6ce2a62f",
+          "node_before_hex": "c0fc3381eaa5cb3ff1b4d72082765462",
+          "order": "auth||node",
+          "tree_index": 0
+        },
+        {
+          "auth_hex": "0d42f0ba6ef54d74377af17fd0a4c754",
+          "height": 9,
+          "node_after_hex": "5ddb4d71d7a8102e16e31c78e0f6bb72",
+          "node_before_hex": "b07bcffeb5b4a1d3ff194a1b6ce2a62f",
+          "order": "node||auth",
+          "tree_index": 0
+        }
+      ],
+      "layer": 4,
+      "leaf_index": 148,
+      "root_hex": "5ddb4d71d7a8102e16e31c78e0f6bb72",
+      "tree_index": 32044,
+      "wots": {
+        "chains": [
+          {
+            "chain_index": 0,
+            "endpoint_hex": "aae5613e61db37d5f8de6303cb288d9a",
+            "message_digit": 12,
+            "signature_hex": "48556d565bc682a48556f1721a26ffe9",
+            "steps_hex": [
+              "48556d565bc682a48556f1721a26ffe9",
+              "10344d146d28d35fa684862cb5b324bc",
+              "424d3b9813c7599299f8b0111d2a6fb6",
+              "aae5613e61db37d5f8de6303cb288d9a"
+            ]
+          },
+          {
+            "chain_index": 1,
+            "endpoint_hex": "43635b8e3db9285e0595f9937f07eadf",
+            "message_digit": 7,
+            "signature_hex": "8c535df3773a12086e362d1e0b0e6c46"
+          },
+          {
+            "chain_index": 2,
+            "endpoint_hex": "de18db010bc9b5860258426a61300006",
+            "message_digit": 15,
+            "signature_hex": "de18db010bc9b5860258426a61300006"
+          },
+          {
+            "chain_index": 3,
+            "endpoint_hex": "a7d90ff23e21b5cd1a808314d8532bad",
+            "message_digit": 14,
+            "signature_hex": "93c7ac8310e8f9871c6bd467fdf0ca70"
+          },
+          {
+            "chain_index": 4,
+            "endpoint_hex": "003cd1d9100026ca858cfe4cfd0ffe4c",
+            "message_digit": 8,
+            "signature_hex": "a6f5d559cd97130a4a5f49d381a8839a"
+          },
+          {
+            "chain_index": 5,
+            "endpoint_hex": "96e48a50e3b33dc27444f0eb2d7baaee",
+            "message_digit": 7,
+            "signature_hex": "ec7bfc60b482e64907112fac3f2f1e3a"
+          },
+          {
+            "chain_index": 6,
+            "endpoint_hex": "3eacc1ba0cbc0144d8e47c99af6b0c96",
+            "message_digit": 4,
+            "signature_hex": "b7cf7847aa75e196061a121a7874f2e9"
+          },
+          {
+            "chain_index": 7,
+            "endpoint_hex": "a923389a5654faaea27c341a317496bc",
+            "message_digit": 14,
+            "signature_hex": "e37d8bc35770edb3bb930cd0825256fb"
+          },
+          {
+            "chain_index": 8,
+            "endpoint_hex": "571b89dc7c37f10d0b99a16861844985",
+            "message_digit": 9,
+            "signature_hex": "2824cde13e632d4f6d8cc3ef390fe4ff"
+          },
+          {
+            "chain_index": 9,
+            "endpoint_hex": "e2ee46915980a6492bc854798cd0bcde",
+            "message_digit": 4,
+            "signature_hex": "31e9450696056fc0a9a302122f3cebdb"
+          },
+          {
+            "chain_index": 10,
+            "endpoint_hex": "339de5a934331526734892982ddcd5c4",
+            "message_digit": 11,
+            "signature_hex": "324a35a40213696fd500d7cfa798c78e"
+          },
+          {
+            "chain_index": 11,
+            "endpoint_hex": "02a5d9aba6531daed5413b47bc750643",
+            "message_digit": 15,
+            "signature_hex": "02a5d9aba6531daed5413b47bc750643"
+          },
+          {
+            "chain_index": 12,
+            "endpoint_hex": "88956fd3add2fef9377578790f30d99f",
+            "message_digit": 3,
+            "signature_hex": "44d1e6f476e2bff5c2d6f60b92e4e563"
+          },
+          {
+            "chain_index": 13,
+            "endpoint_hex": "f7be6db74799981d163fc5d1dbc5c759",
+            "message_digit": 3,
+            "signature_hex": "0d64e459da8a172593c543e7cc501cf1"
+          },
+          {
+            "chain_index": 14,
+            "endpoint_hex": "433d239d5a11e3a3f096259373350f09",
+            "message_digit": 13,
+            "signature_hex": "14e333880ec260dd9fc819b8f3fa1001"
+          },
+          {
+            "chain_index": 15,
+            "endpoint_hex": "0e21254e6ac187595468cf0b394d1ba5",
+            "message_digit": 15,
+            "signature_hex": "0e21254e6ac187595468cf0b394d1ba5"
+          },
+          {
+            "chain_index": 16,
+            "endpoint_hex": "8a8601ad143cb06acd640eb084a6f11a",
+            "message_digit": 13,
+            "signature_hex": "38459e9b30972452c08bdbfa20a59bc5"
+          },
+          {
+            "chain_index": 17,
+            "endpoint_hex": "0462bfadfa888c452e633b899ccca30a",
+            "message_digit": 4,
+            "signature_hex": "fe043c51f795201674c1be5ce5103dc2"
+          },
+          {
+            "chain_index": 18,
+            "endpoint_hex": "70c55f4a14a7a61a84916fcadccf8fb5",
+            "message_digit": 5,
+            "signature_hex": "2f020bfc8dd9bb8405d1aaeeddcaf6f9"
+          },
+          {
+            "chain_index": 19,
+            "endpoint_hex": "ba1d3538d6d34cd248320a7305cb88c5",
+            "message_digit": 7,
+            "signature_hex": "9c3afa697b4dc048d31e37efba11575c"
+          },
+          {
+            "chain_index": 20,
+            "endpoint_hex": "4fd2ba3a98bbe051253a41697021e754",
+            "message_digit": 15,
+            "signature_hex": "4fd2ba3a98bbe051253a41697021e754"
+          },
+          {
+            "chain_index": 21,
+            "endpoint_hex": "4ec41bdb4cadc9c89d9dfae1a36eb925",
+            "message_digit": 1,
+            "signature_hex": "5e8c53a7ba84c92ed8501b7869002307"
+          },
+          {
+            "chain_index": 22,
+            "endpoint_hex": "2cd367861e2cd822626ecd24e5c0b6de",
+            "message_digit": 7,
+            "signature_hex": "a014dfa115d011d2860a7c3157d8f4ab"
+          },
+          {
+            "chain_index": 23,
+            "endpoint_hex": "22392d457323bf8543f61ca0935d2111",
+            "message_digit": 12,
+            "signature_hex": "392b89e9bc79cac5bc84f99ea7290d57"
+          },
+          {
+            "chain_index": 24,
+            "endpoint_hex": "f66db3f69240f6a88671beb65964b475",
+            "message_digit": 11,
+            "signature_hex": "df455854cd330c7d1c0db0fa8742b5c6"
+          },
+          {
+            "chain_index": 25,
+            "endpoint_hex": "f37ec87308eb88458eba025e7fddfeb4",
+            "message_digit": 7,
+            "signature_hex": "96a8e6587d8cb1a5124c4185b5f33236"
+          },
+          {
+            "chain_index": 26,
+            "endpoint_hex": "268392d0907ac08f22a472c8f0d1ed98",
+            "message_digit": 8,
+            "signature_hex": "4df8fda453840bd412724498915dba5e"
+          },
+          {
+            "chain_index": 27,
+            "endpoint_hex": "7a4aa1c5b687167b122e8be179171b48",
+            "message_digit": 11,
+            "signature_hex": "f1b76cf765bc6f77019dbeb38ce9e8a2"
+          },
+          {
+            "chain_index": 28,
+            "endpoint_hex": "7613788ce27163e0ad27e89e89da343e",
+            "message_digit": 4,
+            "signature_hex": "486b8927190fac27085324bbcede5644"
+          },
+          {
+            "chain_index": 29,
+            "endpoint_hex": "accd543173c9d8ac67b04f0a12790dac",
+            "message_digit": 1,
+            "signature_hex": "d01d29fc2389c5bc2c445e62ba409398"
+          },
+          {
+            "chain_index": 30,
+            "endpoint_hex": "b94e7ad7746bc1c8e2d5a2fbf7277803",
+            "message_digit": 9,
+            "signature_hex": "90b3ab498e624aa681835357e34504a0"
+          },
+          {
+            "chain_index": 31,
+            "endpoint_hex": "b5d74f5f0a290104aa5f525f2bfc1538",
+            "message_digit": 13,
+            "signature_hex": "1cbcb9d1cc7c6ac0a28f1113db2617dc"
+          },
+          {
+            "chain_index": 32,
+            "endpoint_hex": "4941fb1b6b1d1281d0fc68b5fafd3a8f",
+            "message_digit": 0,
+            "signature_hex": "9862d9e812d818adae7f03867cd9ab4a"
+          },
+          {
+            "chain_index": 33,
+            "endpoint_hex": "3a0382bc06e5545d6eabb701365ab284",
+            "message_digit": 12,
+            "signature_hex": "e8cb5638b57f52c51d1d5c755cb0057c"
+          },
+          {
+            "chain_index": 34,
+            "endpoint_hex": "609c955d57e1bf7a3fe51c55d5323c1a",
+            "message_digit": 6,
+            "signature_hex": "0496b96fdf49be3722ebb095dc9bba0e"
+          }
+        ],
+        "digits": [
+          12,
+          7,
+          15,
+          14,
+          8,
+          7,
+          4,
+          14,
+          9,
+          4,
+          11,
+          15,
+          3,
+          3,
+          13,
+          15,
+          13,
+          4,
+          5,
+          7,
+          15,
+          1,
+          7,
+          12,
+          11,
+          7,
+          8,
+          11,
+          4,
+          1,
+          9,
+          13,
+          0,
+          12,
+          6
+        ],
+        "message_hex": "c7fe874e94bf33dfd457f17cb78b419d",
+        "public_key_hex": "e86a2ecf88edc88cfc85eae0bd855010"
+      }
+    },
+    {
+      "authentication_path": [
+        {
+          "auth_hex": "f2ee39bb2439eb9127a69ae64f228b18",
+          "height": 1,
+          "node_after_hex": "6169414918a6eebec842e17632d360d7",
+          "node_before_hex": "ecec4a2b1bf6bed86bdaee6956deb61a",
+          "order": "node||auth",
+          "tree_index": 150
+        },
+        {
+          "auth_hex": "c24eac712937146e81869a526ebab467",
+          "height": 2,
+          "node_after_hex": "2ccc9069a0a60378400de2e4167c93c3",
+          "node_before_hex": "6169414918a6eebec842e17632d360d7",
+          "order": "node||auth",
+          "tree_index": 75
+        },
+        {
+          "auth_hex": "ffbb50198ae6fcfc6c7b6caa2e346172",
+          "height": 3,
+          "node_after_hex": "d299ab9431ab8d8103cb3c74a104ef0d",
+          "node_before_hex": "2ccc9069a0a60378400de2e4167c93c3",
+          "order": "auth||node",
+          "tree_index": 37
+        },
+        {
+          "auth_hex": "e02b3abfd8a7532b748b4da3d51c5fb2",
+          "height": 4,
+          "node_after_hex": "b92ac25216f46d3167d52512b0d08a48",
+          "node_before_hex": "d299ab9431ab8d8103cb3c74a104ef0d",
+          "order": "auth||node",
+          "tree_index": 18
+        },
+        {
+          "auth_hex": "dcc49795cb68d90b06a9e8517e8389b7",
+          "height": 5,
+          "node_after_hex": "882c2a49150c48eb955ad59ef1eedd0d",
+          "node_before_hex": "b92ac25216f46d3167d52512b0d08a48",
+          "order": "node||auth",
+          "tree_index": 9
+        },
+        {
+          "auth_hex": "8312d20227267c4a0a4857a5e48b46fa",
+          "height": 6,
+          "node_after_hex": "a9b68f96bf53d2ba8436aecd7217a39b",
+          "node_before_hex": "882c2a49150c48eb955ad59ef1eedd0d",
+          "order": "auth||node",
+          "tree_index": 4
+        },
+        {
+          "auth_hex": "9e06c0fc179a526ab768bc228d502f2d",
+          "height": 7,
+          "node_after_hex": "51fb3723e75c8b6585f9b66416298ec4",
+          "node_before_hex": "a9b68f96bf53d2ba8436aecd7217a39b",
+          "order": "node||auth",
+          "tree_index": 2
+        },
+        {
+          "auth_hex": "00440181a8668727b12d167262a86ce0",
+          "height": 8,
+          "node_after_hex": "9b079c66fb6c72cafabb947abccaf012",
+          "node_before_hex": "51fb3723e75c8b6585f9b66416298ec4",
+          "order": "node||auth",
+          "tree_index": 1
+        },
+        {
+          "auth_hex": "c58696a52dfdd368b556eb7f351ddad2",
+          "height": 9,
+          "node_after_hex": "3b236830aba1734e92cb1a7b4113c0cc",
+          "node_before_hex": "9b079c66fb6c72cafabb947abccaf012",
+          "order": "auth||node",
+          "tree_index": 0
+        }
+      ],
+      "layer": 5,
+      "leaf_index": 300,
+      "root_hex": "3b236830aba1734e92cb1a7b4113c0cc",
+      "tree_index": 62,
+      "wots": {
+        "chains": [
+          {
+            "chain_index": 0,
+            "endpoint_hex": "508405b016dc6c4afa6136e4dadb6f45",
+            "message_digit": 5,
+            "signature_hex": "30b97e972301972f25e0879111704ac9",
+            "steps_hex": [
+              "30b97e972301972f25e0879111704ac9",
+              "9842ee5bfb145228d5930aef2c72411d",
+              "a3e36c36aea23897a0c61d2b3443c9bb",
+              "2447fa4f108ff65c8eed67264a6525cc",
+              "31169ca890d5b469dd6fe48cdbdc1912",
+              "bce444a52d23f3dfa3ec6f2947c0861e",
+              "174e96d2a3261be1352b9dc08465532f",
+              "82a8147ead939d978df58aafe07c49ed",
+              "4fe3138114608e2ca33e79fc29feba04",
+              "87f38bf3de8a590c3b407f04454b79d4",
+              "508405b016dc6c4afa6136e4dadb6f45"
+            ]
+          },
+          {
+            "chain_index": 1,
+            "endpoint_hex": "d1939fd98f3ee6bb5ff47de129f4d3a4",
+            "message_digit": 13,
+            "signature_hex": "389561e0d1608268deb9ca310f2a72cb"
+          },
+          {
+            "chain_index": 2,
+            "endpoint_hex": "f4fd2cea1da32b9ed3b51baadb97f211",
+            "message_digit": 13,
+            "signature_hex": "dcb0ffa478a72bb6adc69b20904333e3"
+          },
+          {
+            "chain_index": 3,
+            "endpoint_hex": "1db38a0e1f10fb98b83542770a0a7759",
+            "message_digit": 11,
+            "signature_hex": "37a41575145c9105782f11cf2f29c291"
+          },
+          {
+            "chain_index": 4,
+            "endpoint_hex": "7829136064f31e6b9b146152f138ac27",
+            "message_digit": 4,
+            "signature_hex": "15193d0d186776b0e03132679cb171c3"
+          },
+          {
+            "chain_index": 5,
+            "endpoint_hex": "e5144d2acceca4a4630ca9d500d0b0ce",
+            "message_digit": 13,
+            "signature_hex": "1fa1b0242aec9f308551989054fcbeb7"
+          },
+          {
+            "chain_index": 6,
+            "endpoint_hex": "da2b470943e9472ccceea2c96427db64",
+            "message_digit": 7,
+            "signature_hex": "76fbaa57fb0b9a5e9057cabfe33d8ffb"
+          },
+          {
+            "chain_index": 7,
+            "endpoint_hex": "d6cc8fe049c914c841eb8bcf93bed08d",
+            "message_digit": 1,
+            "signature_hex": "5284abb61d0966996b41f887c64653ec"
+          },
+          {
+            "chain_index": 8,
+            "endpoint_hex": "247f6766a1804f3005d842d44c533c17",
+            "message_digit": 13,
+            "signature_hex": "94e138ccc6924f2160732acf1de0f011"
+          },
+          {
+            "chain_index": 9,
+            "endpoint_hex": "f144df7c8265d11c6ebecac56b4d9111",
+            "message_digit": 7,
+            "signature_hex": "0f690ed55af97c5fba4c91b00a62b887"
+          },
+          {
+            "chain_index": 10,
+            "endpoint_hex": "ff53fa54ca04f7bd76a5867a9177e51c",
+            "message_digit": 10,
+            "signature_hex": "feb5d1faa4023244a12730b083c02dc2"
+          },
+          {
+            "chain_index": 11,
+            "endpoint_hex": "8459622bad0fbcaa31190400bee8ec99",
+            "message_digit": 8,
+            "signature_hex": "065e205d95d3f44e465df1b151a2b8a6"
+          },
+          {
+            "chain_index": 12,
+            "endpoint_hex": "f1b51e943d2ce0269e2ed53e44780986",
+            "message_digit": 1,
+            "signature_hex": "4e21db4206b3bf3c0d589911d573d917"
+          },
+          {
+            "chain_index": 13,
+            "endpoint_hex": "0804ed4a917300d3c6adb7e998b62080",
+            "message_digit": 0,
+            "signature_hex": "36d90cb364922ccab3f0e462203244fc"
+          },
+          {
+            "chain_index": 14,
+            "endpoint_hex": "3fcd2f5f3b3de3f25f2525d5dd9461c0",
+            "message_digit": 2,
+            "signature_hex": "118f7fcab7a37ab5b8b2641e5d93cdd8"
+          },
+          {
+            "chain_index": 15,
+            "endpoint_hex": "34ed6de93bc52a2ac2a076f76611fb11",
+            "message_digit": 14,
+            "signature_hex": "641e0b76e71da930060e3e7289892af4"
+          },
+          {
+            "chain_index": 16,
+            "endpoint_hex": "cfc500fe15896d069a0b6df4c020c8dc",
+            "message_digit": 1,
+            "signature_hex": "e7fd1cbab41d111f42cb69c2f89576e1"
+          },
+          {
+            "chain_index": 17,
+            "endpoint_hex": "5aa0cb6a315084743494b23381f2a1a9",
+            "message_digit": 6,
+            "signature_hex": "62b35ed9bd5166e0ee9087161fab366d"
+          },
+          {
+            "chain_index": 18,
+            "endpoint_hex": "2a63ca972616eccc5e651a98ae4afc42",
+            "message_digit": 14,
+            "signature_hex": "91ed3d60bbeb8c8542a7399321b7440b"
+          },
+          {
+            "chain_index": 19,
+            "endpoint_hex": "a4e5921d99fefb4ad27b85d4528e8b98",
+            "message_digit": 3,
+            "signature_hex": "91a0005f32e084df0b52567116e0a028"
+          },
+          {
+            "chain_index": 20,
+            "endpoint_hex": "035c70526f73fd12d896e2611ab8aba9",
+            "message_digit": 1,
+            "signature_hex": "ada1e5a3f7b1351167bb886250d2bc1d"
+          },
+          {
+            "chain_index": 21,
+            "endpoint_hex": "fb1d640cd96a7330cfe0cdbf2db8f0bd",
+            "message_digit": 12,
+            "signature_hex": "e9ac2036232f730d427a5f46ace5622b"
+          },
+          {
+            "chain_index": 22,
+            "endpoint_hex": "369019974512710e30b31d5048bd47c2",
+            "message_digit": 7,
+            "signature_hex": "7d0e882067d1697bca4d94b726d074b1"
+          },
+          {
+            "chain_index": 23,
+            "endpoint_hex": "892fe2f60ecdbcd6a70cb14e75afc288",
+            "message_digit": 8,
+            "signature_hex": "d235ae0cdad7e69a00fc207979546881"
+          },
+          {
+            "chain_index": 24,
+            "endpoint_hex": "6faa5a90bfbe66d52143e296febd6c23",
+            "message_digit": 14,
+            "signature_hex": "5da887fb9334cf21523053e87caacd07"
+          },
+          {
+            "chain_index": 25,
+            "endpoint_hex": "7ce100ed03943dc0045db1e43fac7dd0",
+            "message_digit": 0,
+            "signature_hex": "af8391bfc12aed515da8a0720868452e"
+          },
+          {
+            "chain_index": 26,
+            "endpoint_hex": "7ef32a74fb0bb4f17969f5269ec192ed",
+            "message_digit": 15,
+            "signature_hex": "7ef32a74fb0bb4f17969f5269ec192ed"
+          },
+          {
+            "chain_index": 27,
+            "endpoint_hex": "f39a242b4f12e0ace24288f0f86f8949",
+            "message_digit": 6,
+            "signature_hex": "cab6673e3bca751b3e9c2d2f5ff56d7f"
+          },
+          {
+            "chain_index": 28,
+            "endpoint_hex": "18a33f0c5e8af70ab0861c04660d5616",
+            "message_digit": 11,
+            "signature_hex": "8368f7d35b47a4bcc9198ec35c0d41f1"
+          },
+          {
+            "chain_index": 29,
+            "endpoint_hex": "fe936e6fd20ff60f11dcd4445c3dac5a",
+            "message_digit": 11,
+            "signature_hex": "5f76447a1f4cf4330f5a101760249dfe"
+          },
+          {
+            "chain_index": 30,
+            "endpoint_hex": "d192df9dbb20f39015f98128f8ab09b1",
+            "message_digit": 7,
+            "signature_hex": "93d1036f2cd2b76d7e2d109930574efa"
+          },
+          {
+            "chain_index": 31,
+            "endpoint_hex": "935fba50e1a3b1e9d6a7b96815152027",
+            "message_digit": 2,
+            "signature_hex": "4594dc975c07d176f47b57e5649e2a3e"
+          },
+          {
+            "chain_index": 32,
+            "endpoint_hex": "9dbfff75c9942ad0b59b7c1125ff36ef",
+            "message_digit": 0,
+            "signature_hex": "2c2241f09a299f48b16be7bdb503124e"
+          },
+          {
+            "chain_index": 33,
+            "endpoint_hex": "fa8fa04decac585de5e9e725157f35fc",
+            "message_digit": 15,
+            "signature_hex": "fa8fa04decac585de5e9e725157f35fc"
+          },
+          {
+            "chain_index": 34,
+            "endpoint_hex": "0d7ab0e9b9bfc21fa2f9f6a7223a34e5",
+            "message_digit": 0,
+            "signature_hex": "aa7e657832840033dff207feae55ba0b"
+          }
+        ],
+        "digits": [
+          5,
+          13,
+          13,
+          11,
+          4,
+          13,
+          7,
+          1,
+          13,
+          7,
+          10,
+          8,
+          1,
+          0,
+          2,
+          14,
+          1,
+          6,
+          14,
+          3,
+          1,
+          12,
+          7,
+          8,
+          14,
+          0,
+          15,
+          6,
+          11,
+          11,
+          7,
+          2,
+          0,
+          15,
+          0
+        ],
+        "message_hex": "5ddb4d71d7a8102e16e31c78e0f6bb72",
+        "public_key_hex": "ecec4a2b1bf6bed86bdaee6956deb61a"
+      }
+    },
+    {
+      "authentication_path": [
+        {
+          "auth_hex": "fd9671274bbdc5561ef0b8e7e5e6cee7",
+          "height": 1,
+          "node_after_hex": "645cf6345c86a30bc2f9061cd15bdfe7",
+          "node_before_hex": "50e49be46d2fb18dd7c5a8df9488710b",
+          "order": "node||auth",
+          "tree_index": 31
+        },
+        {
+          "auth_hex": "49b49ac409cb44f6fdfe994072dacb5a",
+          "height": 2,
+          "node_after_hex": "29f467aedefb2e18a424233a3abd9797",
+          "node_before_hex": "645cf6345c86a30bc2f9061cd15bdfe7",
+          "order": "auth||node",
+          "tree_index": 15
+        },
+        {
+          "auth_hex": "c57181d7d915aa45874e0b926d49c31f",
+          "height": 3,
+          "node_after_hex": "3077af8e47111374772c5467e69aeb7e",
+          "node_before_hex": "29f467aedefb2e18a424233a3abd9797",
+          "order": "auth||node",
+          "tree_index": 7
+        },
+        {
+          "auth_hex": "05d1baf9cfde80395bf2d8f2f0441cf6",
+          "height": 4,
+          "node_after_hex": "ac281f4905ff23a354c92b6708349449",
+          "node_before_hex": "3077af8e47111374772c5467e69aeb7e",
+          "order": "auth||node",
+          "tree_index": 3
+        },
+        {
+          "auth_hex": "ae269df48bdb40d1618e47649ffe2674",
+          "height": 5,
+          "node_after_hex": "35a758831022d3e8f7a8ae881ed6ef42",
+          "node_before_hex": "ac281f4905ff23a354c92b6708349449",
+          "order": "auth||node",
+          "tree_index": 1
+        },
+        {
+          "auth_hex": "879f22e101f5ff481d765276d3e4c1f1",
+          "height": 6,
+          "node_after_hex": "18904320f02aca5cc290fef87e7df120",
+          "node_before_hex": "35a758831022d3e8f7a8ae881ed6ef42",
+          "order": "auth||node",
+          "tree_index": 0
+        },
+        {
+          "auth_hex": "88c3ee7a54b3a34a19d7dbd86187d8f7",
+          "height": 7,
+          "node_after_hex": "119334f469d3d98a67cf8b07543579fe",
+          "node_before_hex": "18904320f02aca5cc290fef87e7df120",
+          "order": "node||auth",
+          "tree_index": 0
+        },
+        {
+          "auth_hex": "07deaf8c396182b6f5bad298f48605de",
+          "height": 8,
+          "node_after_hex": "9f42daf3b71d354962eac92560ad497a",
+          "node_before_hex": "119334f469d3d98a67cf8b07543579fe",
+          "order": "node||auth",
+          "tree_index": 0
+        },
+        {
+          "auth_hex": "c1720a8e73fe851952ddca145322c2b4",
+          "height": 9,
+          "node_after_hex": "a20572446911fc047a357b32679f5c3a",
+          "node_before_hex": "9f42daf3b71d354962eac92560ad497a",
+          "order": "node||auth",
+          "tree_index": 0
+        }
+      ],
+      "layer": 6,
+      "leaf_index": 62,
+      "root_hex": "a20572446911fc047a357b32679f5c3a",
+      "tree_index": 0,
+      "wots": {
+        "chains": [
+          {
+            "chain_index": 0,
+            "endpoint_hex": "c5b68ad31b0e1f1dcc3ccb5a6d14f96e",
+            "message_digit": 3,
+            "signature_hex": "30cd818f3204a4f5d01485989d55aaba",
+            "steps_hex": [
+              "30cd818f3204a4f5d01485989d55aaba",
+              "9129ad3a297daa4fa3f07ea19ab5bc4a",
+              "eef5c52d12ee29644b02a24e86e51b29",
+              "7e2e0cae83ea9d00a9d7408a687713fc",
+              "7c17af7af78c89371a9881f2d5e6fd3c",
+              "1b0da0249804daf4fa1901861aed46de",
+              "16ec75ec5e4e0b376a4777277186cf5b",
+              "00500a4e4c61b051a0acb72160b97b6e",
+              "a918fc1597708b30767067b254d62766",
+              "665e376da019f849d84960f8ee723088",
+              "635c002053097a5ae74553ddedbe665c",
+              "03e5e3d826e49c220323bf6a894f3ce1",
+              "c5b68ad31b0e1f1dcc3ccb5a6d14f96e"
+            ]
+          },
+          {
+            "chain_index": 1,
+            "endpoint_hex": "a7aaac4638eb162c33ec99e3f0c8b9c3",
+            "message_digit": 11,
+            "signature_hex": "0974d937e00ade4af86e8770f6525bfc"
+          },
+          {
+            "chain_index": 2,
+            "endpoint_hex": "693dec2d7134dbb56d96dd08133b6f7f",
+            "message_digit": 2,
+            "signature_hex": "2a5226f795324adca8d1e55bfaab69f3"
+          },
+          {
+            "chain_index": 3,
+            "endpoint_hex": "f07f8213ac96b5e7ff5e90b2d0d08c7f",
+            "message_digit": 3,
+            "signature_hex": "2853ace6b1f4067a35eea2dc290b0fa5"
+          },
+          {
+            "chain_index": 4,
+            "endpoint_hex": "746b57ac2f4d36a6c459358824213e1d",
+            "message_digit": 6,
+            "signature_hex": "b2d1ad2e0574aed49d3df3a26f7d347d"
+          },
+          {
+            "chain_index": 5,
+            "endpoint_hex": "1cc2052f99cd642ed50a5eef95895f73",
+            "message_digit": 8,
+            "signature_hex": "2f0e1d406412e07fa330e307353972cd"
+          },
+          {
+            "chain_index": 6,
+            "endpoint_hex": "94ba8b5a86d3a5c4f3052ec78f3d0916",
+            "message_digit": 3,
+            "signature_hex": "104a96cad4a13657c89bdd7365094d93"
+          },
+          {
+            "chain_index": 7,
+            "endpoint_hex": "dddcf5b596e44105581b65dfab31da49",
+            "message_digit": 0,
+            "signature_hex": "23eb112f5a0a31cbb926bb3ea17ba8ca"
+          },
+          {
+            "chain_index": 8,
+            "endpoint_hex": "6ef8029091d589676fc28c754d3794b6",
+            "message_digit": 10,
+            "signature_hex": "681a9679fe18cbbfe458339adb06a302"
+          },
+          {
+            "chain_index": 9,
+            "endpoint_hex": "61804371e6a46785f768e98272c6eb0d",
+            "message_digit": 11,
+            "signature_hex": "5d4be7ac6ac88fce989f75809679bc8c"
+          },
+          {
+            "chain_index": 10,
+            "endpoint_hex": "fd3f854b4105d88c1cc9d0054c5933fd",
+            "message_digit": 10,
+            "signature_hex": "ca1cb0ba1355a78c9fbcd04bb21de0fb"
+          },
+          {
+            "chain_index": 11,
+            "endpoint_hex": "6a70e0c036d51f3b2567c668ffabb382",
+            "message_digit": 1,
+            "signature_hex": "41c0264029c5246eaa215c2c079711fc"
+          },
+          {
+            "chain_index": 12,
+            "endpoint_hex": "f07b79f818916020464c686c8dd2ee96",
+            "message_digit": 7,
+            "signature_hex": "9371208ed8f0a0db1b837273150bf2e5"
+          },
+          {
+            "chain_index": 13,
+            "endpoint_hex": "44d9640c80f5b3b5821487b1df175573",
+            "message_digit": 3,
+            "signature_hex": "c7f7777dbd72391d32ab590104d0d33c"
+          },
+          {
+            "chain_index": 14,
+            "endpoint_hex": "9e6b481d0231dde244fd1c1c656bfe51",
+            "message_digit": 4,
+            "signature_hex": "c92d693a38278b21a7e422c5748c6c8b"
+          },
+          {
+            "chain_index": 15,
+            "endpoint_hex": "a4da9a5b64904548662e1bc633805821",
+            "message_digit": 14,
+            "signature_hex": "7b8e863ceca92e78d8a05315beff2435"
+          },
+          {
+            "chain_index": 16,
+            "endpoint_hex": "b4312bfbc457719ac9c534aad411859a",
+            "message_digit": 9,
+            "signature_hex": "ddf4078c02c49bb74e4c0cf85121ca24"
+          },
+          {
+            "chain_index": 17,
+            "endpoint_hex": "8f3df56b40457c0338ce2ac2f20d3393",
+            "message_digit": 2,
+            "signature_hex": "cf01b476b69d67f390a75a7be55392da"
+          },
+          {
+            "chain_index": 18,
+            "endpoint_hex": "0e7cbe16126be6fe50e88d06ccf205fa",
+            "message_digit": 12,
+            "signature_hex": "0f37ecd725cc63640888d741fbe5e09a"
+          },
+          {
+            "chain_index": 19,
+            "endpoint_hex": "c3505f4cce8fd0eb0a3cbba1a1419b3d",
+            "message_digit": 11,
+            "signature_hex": "966c99680184008e8b56621ed7156057"
+          },
+          {
+            "chain_index": 20,
+            "endpoint_hex": "54065698f5fe810bc6aba76c329ffee8",
+            "message_digit": 1,
+            "signature_hex": "976a43f0a411565fa223a5b1fe06e9d7"
+          },
+          {
+            "chain_index": 21,
+            "endpoint_hex": "36a70e3503283ddbe8bb9f217005cba3",
+            "message_digit": 10,
+            "signature_hex": "a2a225c697f3f6150a7d0ad9ba447f16"
+          },
+          {
+            "chain_index": 22,
+            "endpoint_hex": "174c6c29c57ae89730f93e77a40a015f",
+            "message_digit": 7,
+            "signature_hex": "ff84cc21bef4b377fd3f79603aa52a69"
+          },
+          {
+            "chain_index": 23,
+            "endpoint_hex": "fd95a306bd30d9c9d26fd98f10f8f86d",
+            "message_digit": 11,
+            "signature_hex": "ff1fbfd3133b045106b91675072a2af7"
+          },
+          {
+            "chain_index": 24,
+            "endpoint_hex": "69c59d36804c061afe378b76861aa651",
+            "message_digit": 4,
+            "signature_hex": "d8447552a49362c247cc86d647898b19"
+          },
+          {
+            "chain_index": 25,
+            "endpoint_hex": "e2628e523d6b1d5ce07aff50292fac6f",
+            "message_digit": 1,
+            "signature_hex": "5a52aa435dc159a39f9e5d1489fc1c56"
+          },
+          {
+            "chain_index": 26,
+            "endpoint_hex": "ceb32645a22b8d5fd99b7734079805ec",
+            "message_digit": 1,
+            "signature_hex": "682a10720daf584b0e07830f3f2f53df"
+          },
+          {
+            "chain_index": 27,
+            "endpoint_hex": "9fdd59f7ae17a2ce6b17ba1c3130fbd2",
+            "message_digit": 3,
+            "signature_hex": "5479238384b6cb4678d1f008d3e6bdcd"
+          },
+          {
+            "chain_index": 28,
+            "endpoint_hex": "f4327b992762b7941e9d4b0eb8481172",
+            "message_digit": 12,
+            "signature_hex": "a149b1a0687c2d44c24fe7e1b6761ff9"
+          },
+          {
+            "chain_index": 29,
+            "endpoint_hex": "b8186d18d79b4a95678e27dcd93cf39a",
+            "message_digit": 0,
+            "signature_hex": "e8cc482c91740a75f7c29bbe40aeedf9"
+          },
+          {
+            "chain_index": 30,
+            "endpoint_hex": "7a357d1a123c377745af376e9df888d0",
+            "message_digit": 12,
+            "signature_hex": "3e85e56a24662ab9df2c44cdc84e3647"
+          },
+          {
+            "chain_index": 31,
+            "endpoint_hex": "82b66707b3f1633fe17b31d57cfe5287",
+            "message_digit": 12,
+            "signature_hex": "b908fc6f5fbf23e5eb5ba7f8b3d0dd3a"
+          },
+          {
+            "chain_index": 32,
+            "endpoint_hex": "5609a5765cd189b54fabb6062582abe1",
+            "message_digit": 1,
+            "signature_hex": "7fdc6b64c4be7d44f9c59c0be41b7f4f"
+          },
+          {
+            "chain_index": 33,
+            "endpoint_hex": "d90115942272d5aa79931d58a65832e6",
+            "message_digit": 1,
+            "signature_hex": "128369f6e9a7a09e82ce68c4c86773f3"
+          },
+          {
+            "chain_index": 34,
+            "endpoint_hex": "59f09df58043d82249925d611ef46042",
+            "message_digit": 4,
+            "signature_hex": "af2d447ebd8a8cf08ae24b8d16857af3"
+          }
+        ],
+        "digits": [
+          3,
+          11,
+          2,
+          3,
+          6,
+          8,
+          3,
+          0,
+          10,
+          11,
+          10,
+          1,
+          7,
+          3,
+          4,
+          14,
+          9,
+          2,
+          12,
+          11,
+          1,
+          10,
+          7,
+          11,
+          4,
+          1,
+          1,
+          3,
+          12,
+          0,
+          12,
+          12,
+          1,
+          1,
+          4
+        ],
+        "message_hex": "3b236830aba1734e92cb1a7b4113c0cc",
+        "public_key_hex": "50e49be46d2fb18dd7c5a8df9488710b"
+      }
+    }
+  ],
+  "initial_leaf_index": 79,
+  "initial_tree_index": 2202066885170943,
+  "valid": true
+}

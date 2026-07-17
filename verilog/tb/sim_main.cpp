@@ -52,6 +52,13 @@ int main(int argc, char** argv) {
         tb->clk = 0; tb->eval(); ctx->timeInc(1); WAVE_DUMP(ctx->time());
     }
 
+    if (!ctx->gotFinish()) {
+        std::cerr << "ERROR: simulation reached the harness cycle limit without $finish\n";
+        delete tb;
+        delete ctx;
+        return 1;
+    }
+
 #if VM_TRACE
     fst->close();
     delete fst;

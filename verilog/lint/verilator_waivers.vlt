@@ -2,3 +2,8 @@
 
 // Waive lint warnings in the third-party SHA-256 core.
 lint_off -file "*/sha256/*"
+
+// The shared SLH-DSA profile package is present in every design file list.
+// Some constants are intentionally unused when lint elaborates a legacy
+// ECDSA or HSS/LMS generate configuration.
+lint_off -rule UNUSEDPARAM -file "*/slh_dsa_pkg.sv"

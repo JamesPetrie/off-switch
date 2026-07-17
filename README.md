@@ -27,9 +27,12 @@ This security block implements a hardware-level "deadman's switch" for AI accele
 The paper proposes embedding thousands of these security blocks throughout an AI chip, each independently verifying authorization. This prototype implements a single security block in SystemVerilog with a parameterised verification engine — at compile time it can be built with either:
 
 - **ECDSA** over secp256k1 — the conventional choice analysed in the paper.
-- **HSS/LMS** hash-based signatures (RFC 8554) — post-quantum-secure.
+- **HSS/LMS** hash-based signatures (RFC 8554) — stateful and post-quantum-secure.
+- **SLH-DSA-SHA2-128s** (FIPS 205) — stateless and post-quantum-secure.
 
-Both flavours are wired into the same `security_block` module via a `CRYPTO_TYPE` parameter (`0` = ECDSA, `1` = HSS-LMS), so the surrounding TRNG / allowance counter / workload-gating logic is identical.
+All three are wired into the same `security_block` module via `CRYPTO_TYPE`
+(`0` = ECDSA, `1` = HSS-LMS, `2` = SLH-DSA), so the surrounding TRNG,
+allowance counter, and workload-gating logic are shared.
 
 ### Design Goals
 
@@ -68,9 +71,17 @@ make sim TB=top_ecdsa
 
 # HSS-LMS top-level (CRYPTO_TYPE=1)
 make sim TB=top_hss
+
+# Stateless SLH-DSA, direct 64-bit signature stream (CRYPTO_TYPE=2)
+make sim TB=top_slh_stream
+
+# PYNQ-Z2 AXI-Lite stream bridge
+make sim TB=pynq_axi_slh
 ```
 
-The two top-level testbenches (`tb_top_ecdsa.sv`, `tb_top_hss.sv`) instantiate `security_block` with the appropriate `CRYPTO_TYPE` parameter and run the same suite of integration tests.
+See [the PYNQ-Z2 prototype guide](pynq-z2/README.md) for the board register map,
+Vivado build, external authority, and client workflow. The detailed SLH-DSA
+profile is in [docs/slh_dsa_sha2_128s_profile.md](docs/slh_dsa_sha2_128s_profile.md).
 
 ---
 
@@ -89,7 +100,7 @@ flowchart TB
         subgraph submodules[" "]
             direction LR
             TRNG["TRNG<br/>256-bit"]:::trng
-            CRYPTO["Crypto Verify<br/>ECDSA or HSS-LMS<br/>(CRYPTO_TYPE)"]:::crypto
+            CRYPTO["Crypto Verify<br/>ECDSA, HSS-LMS, or SLH-DSA<br/>(CRYPTO_TYPE)"]:::crypto
             ALLOW["Allowance<br/>64-bit"]:::allowance
         end
 
@@ -135,6 +146,7 @@ flowchart TB
 | `trng` | Submodule | Nonce generation (256-bit LFSR in prototype; ring oscillator in production) |
 | `ecdsa` | Submodule (CRYPTO_TYPE=0) | Signature verification using secp256k1 curve |
 | `hss_verify` | Submodule (CRYPTO_TYPE=1) | RFC 8554 HSS/LMS verification (L=1, w=8, n=32, p=34) |
+| `slh_dsa_verify` | Submodule (CRYPTO_TYPE=2) | FIPS 205 SLH-DSA-SHA2-128s streamed verification |
 | Security Logic | Inline | State machine orchestration |
 | Usage Allowance | Inline | 64-bit authorization counter |
 | Workload | Inline | Gated essential operation (Int8 Add example) |
@@ -237,12 +249,14 @@ The paper's Section 4 discusses attack vectors against these assumptions in deta
 |---------------|--------|------------------------------|-------|
 | 0 | `ecdsa` (secp256k1) | `{r[256], s[256]}` | 512 bits |
 | 1 | `hss_verify` (HSS/LMS) | `{leaf_index[32], randomizer[256], N x sig_chains[256], M x auth_path[256]}` | 10k+ bits |
+| 2 | `slh_dsa_verify` | Direct 64-bit valid-ready stream when `SLH_STREAM_INPUT=1`; packed compatibility adapter otherwise | 64-bit stream or 62,848 packed bits |
 
 ### Top-Level Outputs
 
 | Signal | Width | Description |
 |--------|-------|-------------|
 | `license_ready` | 1 | License verification complete (pulse) |
+| `license_passed` | 1 | Result paired with `license_ready` |
 | `nonce` | 256 | Current nonce value |
 | `nonce_ready` | 1 | Nonce is stable and ready for signing |
 | `workload_result` | 8 | Gated workload output |
@@ -653,6 +667,7 @@ At 1 GHz, verification completes in ~0.3 ms, well within the licensing interval 
 | Nonce generation | 2 | Request + latch |
 | License verification ECDSA | ~5×10⁶ | scalar multiplication dominates |
 | License verification HSS-LMS | ~3×10⁵ | WOTS+ chains dominate |
+| License verification SLH-DSA | Profile- and implementation-dependent | Measure from RTL/Vivado reports; no optimized-throughput claim yet |
 | Workload operation | 1 | Combinational add + output register |
 | Allowance per license | 10¹² | Configurable via `ALLOWANCE_INCREMENT` |
 
@@ -725,6 +740,8 @@ This is a proof-of-concept implementation. The paper discusses broader limitatio
 | ECDSA Input validation | Minimal | Full range checking |
 | HSS levels | `L = 1` | `L ≥ 2` for larger key space |
 | HSS license delivery | Single wide packed port | Streaming / serial interface with on-chip buffering |
+| SLH-DSA signer count | One public key | Multiple independent authority keys |
+| SLH-DSA delivery | 64-bit valid-ready stream; one-entry AXI FIFO on PYNQ-Z2 | DMA/AXI-Stream with measured bandwidth |
 | Redundancy | Single block | Thousands of independent blocks per chip |
 
 ---
