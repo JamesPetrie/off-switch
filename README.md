@@ -43,11 +43,11 @@ Both flavours are wired into the same `security_block` module via a `CRYPTO_TYPE
 
 ## Quickstart
 
-#### Prerequisites
+### Prerequisites
 
 - **Verilator** (5.x+)
 
-#### Installation
+### Installation
 
 ```bash
 # Install verilator if needed (macOS: brew install verilator, Ubuntu: apt install verilator)
@@ -58,7 +58,7 @@ git clone --recursive https://github.com/JamesPetrie/off-switch
 cd off-switch
 ```
 
-#### Run Tests
+### Run Tests
 
 ```bash
 cd verilog
