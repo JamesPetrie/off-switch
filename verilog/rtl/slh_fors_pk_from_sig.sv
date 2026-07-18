@@ -54,7 +54,7 @@ module slh_fors_pk_from_sig
     logic [8*N_BYTES-1:0]           secret_q;
     logic [8*N_BYTES-1:0]           auth_q;
     logic [8*N_BYTES-1:0]           node_q;
-    logic [8*N_BYTES-1:0]           roots_q [0:K-1];
+    logic [8*N_BYTES-1:0]           roots_q [K];
 
     logic [A-1:0]                   local_index;
     logic [15:0]                    global_index;

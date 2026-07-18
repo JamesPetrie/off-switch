@@ -53,7 +53,7 @@ module slh_wots_pk_from_sig
     logic [3:0]                     hash_address_q;
     logic [5:0]                     tl_index_q;
     logic [8*N_BYTES-1:0]           node_q;
-    logic [8*N_BYTES-1:0]           endpoints_q [0:WOTS_LEN-1];
+    logic [8*N_BYTES-1:0]           endpoints_q [WOTS_LEN];
 
     integer                         checksum_accumulator;
     integer                         digit_index;

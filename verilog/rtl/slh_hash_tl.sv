@@ -53,7 +53,7 @@ module slh_hash_tl
     logic [5:0]                 element_count_q;
     logic [5:0]                 load_index_q;
     logic [BLOCK_INDEX_BITS-1:0] block_index_q;
-    logic [8*N_BYTES-1:0]       elements_q [0:MAX_ELEMENTS-1];
+    logic [8*N_BYTES-1:0]       elements_q [MAX_ELEMENTS];
 
     logic                       sha_valid;
     logic [511:0]               sha_block;
