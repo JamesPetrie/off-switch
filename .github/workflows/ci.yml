@@ -42,7 +42,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        tb: [top_ecdsa, top_hss]
+        tb: [top_ecdsa, top_hss, license_stream]
 
     steps:
       - uses: actions/checkout@v4

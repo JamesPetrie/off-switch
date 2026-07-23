@@ -3,6 +3,6 @@
 // package (e.g. ecdsa_pkg / hss_pkg).
 package base_pkg;
 
-    // Intentionally empty for now
+    localparam int unsigned LICENSE_STREAM_W = 256;
 
 endpackage

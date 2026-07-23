@@ -12,3 +12,4 @@
 ./sha256_wrap.sv
 ./hss_verify.sv
 ./security_block.sv
+./security_block_stream.sv

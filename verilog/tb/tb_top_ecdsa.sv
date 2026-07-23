@@ -5,6 +5,7 @@
 //   TRNG state = TRNG_SEED after that edge, then advances from that.
 
 `include "tb_math_pkg.sv"
+`include "tb_license_stream_adapter.sv"
 
 module tb (
     input logic clk,
@@ -21,6 +22,9 @@ module tb (
     logic             license_valid  = 1'b0;
     logic             license_ready;
     license_t         license        = '0;
+    logic             license_stream_valid;
+    logic             license_stream_ready;
+    logic [255:0]     license_stream_word;
     logic             workload_valid = 1'b0;
     logic [7:0]       workload_a     = '0;
     logic [7:0]       workload_b     = '0;
@@ -37,15 +41,28 @@ module tb (
     // Note: number of signers is hardcoded in the testcases!
     localparam int unsigned NUM_SIGNERS = 2;
 
-    security_block #(
+    tb_license_stream_adapter #(
+        .LICENSE_W($bits(license_t))
+    ) u_license_stream (
+        .clk            (clk),
+        .rst_n          (rst_n),
+        .license_valid  (license_valid),
+        .license_ready  (license_ready),
+        .license_packed (license),
+        .stream_valid   (license_stream_valid),
+        .stream_ready   (license_stream_ready),
+        .stream_word    (license_stream_word)
+    );
+
+    security_block_stream #(
         .CRYPTO_TYPE(0),
         .NUM_SIGNERS(NUM_SIGNERS)
     ) u_dut (
         .clk            (clk),
         .rst_n          (rst_n),
-        .license_valid  (license_valid),
-        .license_ready  (license_ready),
-        .license        (license),
+        .license_valid  (license_stream_valid),
+        .license_ready  (license_stream_ready),
+        .license        (license_stream_word),
         .workload_valid (workload_valid),
         .workload_a     (workload_a),
         .workload_b     (workload_b),

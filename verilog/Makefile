@@ -6,6 +6,7 @@ TOOL        ?= verilator
 TB          ?= demo
 GUI         ?= 0
 CRYPTO_TYPE ?= 0
+RTL_TOP     ?= security_block_stream
 
 # ---------------------------------------------------------------------------
 # Constant variables
@@ -59,7 +60,7 @@ ifeq ($(GUI),1)
 endif
 ifeq ($(TOOL),verilator)
 	@echo "-- RUN VERILATOR LINT (CRYPTO_TYPE=$(CRYPTO_TYPE)) --"
-	verilator --lint-only -Wall -F $(RTL_VC) lint/verilator_waivers.vlt --top-module security_block -GCRYPTO_TYPE=$(CRYPTO_TYPE)
+	verilator --lint-only -Wall -F $(RTL_VC) lint/verilator_waivers.vlt --top-module $(RTL_TOP) -GCRYPTO_TYPE=$(CRYPTO_TYPE)
 	@echo "-- DONE --------------------"
 else ifeq ($(TOOL),verible)
 	@echo "-- RUN VERIBLE LINT --------"

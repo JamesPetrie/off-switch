@@ -10,6 +10,7 @@
 //     - License #2 accepted, workloads resume
 
 `include "tb_math_pkg.sv"
+`include "tb_license_stream_adapter.sv"
 
 module tb (
     input logic clk,
@@ -26,6 +27,9 @@ module tb (
     logic             license_valid  = 1'b0;
     logic             license_ready;
     license_t         license        = '0;
+    logic             license_stream_valid;
+    logic             license_stream_ready;
+    logic [255:0]     license_stream_word;
     logic             workload_valid;
     logic [7:0]       workload_a;
     logic [7:0]       workload_b;
@@ -45,15 +49,28 @@ module tb (
 
     localparam logic [63:0] DEMO_INCREMENT = 64'd5_000_000;
 
-    security_block #(
+    tb_license_stream_adapter #(
+        .LICENSE_W($bits(license_t))
+    ) u_license_stream (
+        .clk            (clk),
+        .rst_n          (rst_n),
+        .license_valid  (license_valid),
+        .license_ready  (license_ready),
+        .license_packed (license),
+        .stream_valid   (license_stream_valid),
+        .stream_ready   (license_stream_ready),
+        .stream_word    (license_stream_word)
+    );
+
+    security_block_stream #(
         .NUM_SIGNERS         (1),
         .ALLOWANCE_INCREMENT (DEMO_INCREMENT)
     ) u_dut (
         .clk            (clk),
         .rst_n          (rst_n),
-        .license_valid  (license_valid),
-        .license_ready  (license_ready),
-        .license        (license),
+        .license_valid  (license_stream_valid),
+        .license_ready  (license_stream_ready),
+        .license        (license_stream_word),
         .workload_valid (workload_valid),
         .workload_a     (workload_a),
         .workload_b     (workload_b),

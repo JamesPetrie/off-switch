@@ -14,12 +14,16 @@ if {$argc != 3} {
 set RTL_VC      [lindex $argv 0]
 set CRYPTO_TYPE [lindex $argv 1]
 set OUT_DIR     [lindex $argv 2]
+set TOP_MODULE security_block
+if {[info exists ::env(SYNTH_TOP)]} {
+    set TOP_MODULE $::env(SYNTH_TOP)
+}
 
 yosys plugin -i slang
 
 # Read all RTL via slang (handles both Verilog-2005 and SystemVerilog).
-yosys read_slang --top security_block -F $RTL_VC -G CRYPTO_TYPE=$CRYPTO_TYPE
-yosys synth -top security_block
+yosys read_slang --top $TOP_MODULE -F $RTL_VC -G CRYPTO_TYPE=$CRYPTO_TYPE
+yosys synth -top $TOP_MODULE
 
 # Map to standard cells
 yosys dfflibmap -liberty $::env(CELL_LIB)
