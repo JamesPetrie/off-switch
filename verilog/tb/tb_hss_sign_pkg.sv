@@ -162,12 +162,11 @@ package tb_hss_sign_pkg;
     );
         int node_idx;
         node_idx = NUM_LEAVES + leaf_q;
+        path = '0;
         for (int level = 0; level < TREE_H; level++) begin
             path[level] = TREE[signer_id][lv][node_idx ^ 1];
             node_idx = node_idx >> 1;
         end
-        for (int level = TREE_H; level < TREE_H_MAX; level++)
-            path[level] = '0;
     endfunction
 
     // -------------------------------------------------------------------------
@@ -177,6 +176,57 @@ package tb_hss_sign_pkg;
     // -------------------------------------------------------------------------
 
     int cur_leaf [NUM_SIGNERS][HSS_LEVELS];
+
+    // -------------------------------------------------------------------------
+    // License format
+    //
+    // Kept in the shape of the standard signature format. The RTL no longer
+    // takes it as a packed word: license_beat() below serialises it onto the
+    // verifier's beat stream.
+    // -------------------------------------------------------------------------
+
+    typedef struct packed {
+        // Per-layer OTS + Merkle material. lv=0 is the top tree; lv=HSS_LEVELS-1
+        // is the leaf tree that signs the user message.
+        //    Dimension 3     Dimension 2     Dimension 1
+        logic [HSS_LEVELS-1:0]                [31:0]       leaf_index;
+        logic [HSS_LEVELS-1:0]                [WIDTH-1:0]  randomizer;
+        logic [HSS_LEVELS-1:0]                [127:0]      sub_I;
+        logic [HSS_LEVELS-1:0][WOTS_P-1:0]    [WIDTH-1:0]  sig_chains;
+        logic [HSS_LEVELS-1:0][TREE_H_MAX-1:0][WIDTH-1:0]  auth_path;
+    } license_t;
+
+    // -------------------------------------------------------------------------
+    // Beat stream layout (must match hss_verify / hss_pkg):
+    //   per layer, from HSS_LEVELS-1 down to 0:
+    //     beat 0        {leaf_index[32], sub_I[128], padding}
+    //     beat 1        randomizer
+    //     beats 2..     WOTS_P chain signatures
+    //     last TREE_H   auth path siblings
+    // -------------------------------------------------------------------------
+
+    localparam int unsigned BEATS_PER_LAYER = LAYER_HDR_BEATS + WOTS_P + TREE_H;
+    localparam int unsigned TOTAL_BEATS     = HSS_LEVELS * BEATS_PER_LAYER;
+
+    function automatic logic [WIDTH-1:0] license_beat(input license_t lic,
+                                                     input int       idx);
+        int lv, off;
+
+        lv  = int'(HSS_LEVELS) - 1 - (idx / int'(BEATS_PER_LAYER));
+        off = idx % int'(BEATS_PER_LAYER);
+        if (lv < 0 || lv >= int'(HSS_LEVELS)) return '0;
+
+        case (off)
+            0:       return {lic.leaf_index[lv], lic.sub_I[lv],
+                             {(WIDTH - 32 - 128){1'b0}}};
+            1:       return lic.randomizer[lv];
+            default: begin
+                off = off - int'(LAYER_HDR_BEATS);
+                return (off < int'(WOTS_P)) ? lic.sig_chains[lv][off]
+                                            : lic.auth_path[lv][off - int'(WOTS_P)];
+            end
+        endcase
+    endfunction
 
     function automatic void init_leaves();
         for (int s = 0; s < int'(NUM_SIGNERS); s++) begin
@@ -266,6 +316,7 @@ package tb_hss_sign_pkg;
         license_t lic;
         logic [255:0] q_hash;
         int q;
+
 
         // One-shot initialisation on first sign across all signers.
         if (!leaves_initialised) begin

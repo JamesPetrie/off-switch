@@ -112,18 +112,18 @@ package hss_pkg;
     // -------------------------------------------------------------------------
     // HSS-LMS license format
     // -------------------------------------------------------------------------
-
-    typedef struct packed {
-        // Per-layer OTS + Merkle material. lv=0 is the top tree; lv=HSS_LEVELS-1
-        // is the leaf tree that signs the user message.
-        //    Dimension 3     Dimension 2     Dimension 1
-        logic [HSS_LEVELS-1:0]                [31:0]       leaf_index;
-        logic [HSS_LEVELS-1:0]                [WIDTH-1:0]  randomizer;
-        logic [HSS_LEVELS-1:0][WOTS_P-1:0]    [WIDTH-1:0]  sig_chains;
-        logic [HSS_LEVELS-1:0][TREE_H_MAX-1:0][WIDTH-1:0]  auth_path;
-        // Subtree identifiers. sub_I[0] is unused
-        // (the top tree uses TOP_IDENTIFIER)
-        logic [HSS_LEVELS-1:0]                [127:0]      sub_I;
-    } license_t;
+    // The license is streamed into hss_verify one WIDTH-bit beat at a time, in
+    // the field order of the standard signature format. Per layer, from
+    // HSS_LEVELS-1 down to 0:
+    //
+    //   beat 0        {leaf_index[32], sub_I[128], padding}   (RFC: q and I)
+    //   beat 1        randomizer                              (RFC: C)
+    //   beats 2..     WOTS_P chain signatures                 (RFC: y[])
+    //   last TREE_H   authentication path siblings            (RFC: path[])
+    //
+    // Nothing is buffered up front: each beat is consumed where it is needed,
+    // so the verifier only holds the current layer's identity. The full struct
+    // lives with the signer in tb/tb_hss_sign_pkg.sv.
+    localparam int unsigned LAYER_HDR_BEATS = 2;
 
 endpackage

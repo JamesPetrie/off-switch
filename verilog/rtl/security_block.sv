@@ -7,13 +7,17 @@
 // Protocol:
 //   1. On startup, waits INIT_DELAY then generates an initial nonce
 //   2. nonce_ready pulses when a fresh nonce is available in nonce[]
-//   3. Submit a license via valid-ready handshake: assert license_valid with
-//      license; transfer completes when license_ready is high.
+//   3. Submit the license as a beat stream on license_valid/ready/data:
+//      one 512-bit beat for ECDSA, metadata then elements for HSS-LMS.
 //      The signature must be over the current nonce as the message hash.
-//   4. On valid license: allowance += ALLOWANCE_INCREMENT (saturating), new nonce
+//   4. nonce_ready marks the verification cycle, falling on the first beat and
+//      rising when it ends; the outcome is read from nonce/allowance. The
+//      producer sends a fixed number of beats and releases license_valid once
+//      the last one is accepted.
+//   5. On valid license: allowance += ALLOWANCE_INCREMENT (saturating), new nonce
 //      On invalid license: same nonce retained, can retry
-//   5. Workload (signed 8-bit add) is gated: result is zeroed when allowance == 0
-//   6. Allowance decrements by 1 every cycle while > 0
+//   6. Workload (signed 8-bit add) is gated: result is zeroed when allowance == 0
+//   7. Allowance decrements by 1 every cycle while > 0
 
 module security_block
     import arith_pkg::*;
@@ -22,9 +26,9 @@ module security_block
     parameter bit          CRYPTO_TYPE = 0,  // 1 = HSS-LMS, 0 = ECDSA
     parameter int unsigned NUM_SIGNERS = 2,  // Number of signers
 
-    // License width depends on crypto type
-    localparam int unsigned LICENSE_W    = CRYPTO_TYPE ? $bits(hss_pkg::license_t)
-                                                       : $bits(ecdsa_pkg::license_t),
+    // ECDSA delivers its whole license in one beat; HSS-LMS streams elements.
+    localparam int unsigned LICENSE_BEAT_W = CRYPTO_TYPE ? WIDTH
+                                                         : $bits(ecdsa_pkg::license_t),
     localparam int unsigned SIGNER_IDX_W = (NUM_SIGNERS > 1) ? $clog2(NUM_SIGNERS) : 1,
     localparam int unsigned ALLOW_W      = 64,
     localparam int unsigned WORKLD_W     =  8,
@@ -34,10 +38,10 @@ module security_block
     input  logic             clk,
     input  logic             rst_n,
 
-    // License interface (valid-ready)
-    input  logic                  license_valid,
-    output logic                  license_ready,
-    input  logic [LICENSE_W-1:0]  license,
+    // License beat stream (valid-ready, one beat per accepted cycle)
+    input  logic                        license_valid,
+    output logic                        license_ready,
+    input  logic [LICENSE_BEAT_W-1:0]   license_data,
 
     // Workload interface
     input  logic                workload_valid,
@@ -113,17 +117,25 @@ module security_block
     // Crypto verification engine
     // -------------------------------------------------------------------------
 
-    // Input valid to be driven from the FSM
+    // Passed straight through to the crypto backend while a verification is
+    // in flight. crypto_input_ready paces the license beats; crypto_done marks
+    // the end of the verification.
     logic             crypto_valid;
-
-    // Outputs
-    logic             crypto_ready;
+    logic             crypto_input_ready;
+    logic             crypto_done;
     logic             crypto_verif_passed;
 
     generate
         if (CRYPTO_TYPE == 0) begin : g_ecdsa
+            // One beat is the whole license and, as before, must stay stable
+            // until the engine is done -- so accepting the beat and finishing
+            // the verification are the same event.
             ecdsa_pkg::license_t ecdsa_license;
-            assign ecdsa_license = license;
+            wire                 ecdsa_ready;
+
+            assign ecdsa_license       = license_data;
+            assign crypto_input_ready  = ecdsa_ready;
+            assign crypto_done         = ecdsa_ready;
 
             ecdsa u_ecdsa (
                 .clk          (clk),
@@ -136,22 +148,21 @@ module security_block
                 .q_y          (ecdsa_pkg::PUBKEYS[signer_q].q_y),
                 .gpq_x        (ecdsa_pkg::PUBKEYS[signer_q].gpq_x),
                 .gpq_y        (ecdsa_pkg::PUBKEYS[signer_q].gpq_y),
-                .ready        (crypto_ready),
+                .ready        (ecdsa_ready),
                 .verif_passed (crypto_verif_passed)
             );
         end else begin : g_hss_lms
-            hss_pkg::license_t hss_license;
-            assign hss_license = license;
 
             hss_verify u_hss (
                 .clk          (clk),
                 .rst_n        (rst_n),
-                .valid        (crypto_valid),
                 .message      (trng_nonce),
-                .license      (hss_license),
+                .valid        (crypto_valid),
+                .ready        (crypto_input_ready),
+                .data         (license_data),
                 .identifier   (hss_pkg::PUBKEYS[signer_q].identifier),
                 .root_pub_key (hss_pkg::PUBKEYS[signer_q].root_pub_key),
-                .ready        (crypto_ready),
+                .verify_done  (crypto_done),
                 .verif_passed (crypto_verif_passed)
             );
         end
@@ -219,6 +230,8 @@ module security_block
                 if (trng_nonce_valid) begin
                     nonce_ready = 1;
                     nonce       = trng_nonce;
+                    // Recognise that a transaction is starting; the beats
+                    // themselves are taken by the engine from StWaitVerify.
                     if (license_valid) begin
                         state_d = StWaitVerify;
                     end
@@ -226,9 +239,16 @@ module security_block
             end
 
             StWaitVerify: begin
-                crypto_valid = 1'b1;
-                if (crypto_ready) begin
-                    license_ready = 1'b1;
+                // Hand the stream straight to the crypto backend. The
+                // external ready is gated by valid in the RTL rather than
+                // relying on the producer: the ECDSA engine reports ready from
+                // its own state, so it would otherwise assert after an early
+                // release. crypto_done stays ungated -- completion is a fact
+                // about the backend, not part of the handshake.
+                crypto_valid  = license_valid;
+                license_ready = license_valid && crypto_input_ready;
+
+                if (crypto_done) begin
                     if (crypto_verif_passed) begin
                         // Require a valid license from each signer (in fixed order)
                         // against the same nonce before rotating the nonce.

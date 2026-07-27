@@ -20,9 +20,13 @@
 // This is the opposite direction of the standard but allows area saving.
 //
 // Protocol:
-//   1. Assert valid and hold message, license stable until ready pulses
-//   2. ready pulses high for one cycle when verification completes
-//   3. When ready, check verif_passed: 1 = valid, 0 = invalid
+//   1. Hold message stable for the whole verification
+//   2. Supply the license on valid/ready/data, one beat per accepted cycle.
+//      The first beat starts the verification; there is no separate start
+//      signal. ready is only asserted while a beat is actually wanted, so the
+//      state machine keeps running between beats (hashing does not stall).
+//   3. verify_done pulses high for one cycle when verification completes
+//   4. With verify_done, check verif_passed: 1 = valid, 0 = invalid
 
 module hss_verify
     import arith_pkg::*;
@@ -30,14 +34,21 @@ module hss_verify
 (
     input  logic               clk,
     input  logic               rst_n,
-    input  logic               valid,
     input  logic [WIDTH-1:0]   message,
-    input  license_t           license,
     // TODO replace individual public key inputs with the struct
     input  logic [IDENT_W-1:0] identifier,   // tree identifier
     input  logic [WIDTH-1:0]   root_pub_key,
 
+    // License beat stream, in the field order of the standard signature
+    // format (see hss_pkg). Per layer, from HSS_LEVELS-1 down to 0: a header
+    // beat carrying {leaf_index, sub_I}, the randomizer, WOTS_P chain
+    // signatures, then TREE_H auth path siblings. Each beat is consumed where
+    // it is needed, so only the current layer's identity is held.
+    input  logic               valid,
     output logic               ready,
+    input  logic [WIDTH-1:0]   data,
+
+    output logic               verify_done,
     output logic               verif_passed
 );
 
@@ -49,13 +60,17 @@ module hss_verify
         StIdle, StQ, StWots, StKc, StLeaf, StMerkle, StDone
     } seq_state_e;
 
+    // Header beats per layer: {leaf_index, sub_I} then the randomizer.
+    localparam int unsigned HDR_CNT_W = $clog2(LAYER_HDR_BEATS + 1);
+    localparam logic [HDR_CNT_W-1:0] HDR_DONE = HDR_CNT_W'(LAYER_HDR_BEATS);
+
     typedef enum logic [1:0] {
         StWotsInit, StWotsLoad, StWotsHash, StWotsPkStore
     } wots_state_e;
 
 
-    typedef enum logic [0:0] {
-        StMrklInit, StMrklHash
+    typedef enum logic [1:0] {
+        StMrklInit, StMrklLoad, StMrklHash
     } mrkl_state_e;
 
     // -------------------------------------------------------------------------
@@ -63,6 +78,21 @@ module hss_verify
     // -------------------------------------------------------------------------
 
     seq_state_e   seq_q,   seq_d;
+
+    // Current layer's identity, taken from the header beat. sub_I is kept one
+    // layer deep: the layer above signs the public key of the one below, so
+    // its Q hash needs the identifier this layer used.
+    //
+    // REVISIT: the randomizer avoids storage by borrowing aux_reg, but neither
+    // identifier can do the same. Q_SUB_DATA needs prev_I alongside aux_reg
+    // (the randomizer) and hash_reg (the root from the layer below) in one
+    // hash input, and cur_I parameterises every hash of the layer, so the only
+    // register idle at that point is pk_store. Worth another look if HSS-LMS
+    // is picked up again.
+    logic [31:0]            leaf_index_q, leaf_index_d;
+    logic [IDENT_W-1:0]     cur_I_q,      cur_I_d;
+    logic [IDENT_W-1:0]     prev_I_q,     prev_I_d;
+    logic [HDR_CNT_W-1:0]   hdr_cnt_q,    hdr_cnt_d;
     wots_state_e  wots_q,  wots_d;
     mrkl_state_e  mrkl_q,  mrkl_d;
 
@@ -82,7 +112,7 @@ module hss_verify
     logic [7:0]       wots_step_q,   wots_step_d;   // step within chain
 
     // Merkle tree level (driven by Merkle sub-FSM)
-    logic [5:0]       mrkl_level_q,  mrkl_level_d;
+    logic [$clog2(TREE_H_MAX)-1:0] mrkl_level_q,  mrkl_level_d;
 
     // pk storage (34 x 256 bits) — filled by WOTS, read by Kc
     logic [WIDTH-1:0] pk_store_q [WOTS_P];
@@ -128,16 +158,14 @@ module hss_verify
     // Top-tree identifier is the package constant; lower trees carry theirs
     // in the license as sub_I[lv] (≥1). sub_I[0] is unused for the top layer.
     wire [127:0] cur_I = is_pk_layer  ? identifier
-                                      : license.sub_I[layer_q];
+                                      : cur_I_q;
 
     // -------------------------------------------------------------------------
     // Data indexed by WOTS chain / Merkle level
     // -------------------------------------------------------------------------
 
-    wire [WIDTH-1:0] cur_sig_chain = license.sig_chains[layer_q][wots_chain_q];
     wire             last_chain    = (int'(wots_chain_q) == WOTS_P-1) ? 1'b1 : 1'b0;
 
-    wire [WIDTH-1:0] cur_auth_node = license.auth_path[layer_q][mrkl_level_q];
     wire             last_level    = (int'(mrkl_level_q) == TREE_H-1) ? 1'b1 : 1'b0;
 
     // -------------------------------------------------------------------------
@@ -222,14 +250,14 @@ module hss_verify
     //                                 just computed by the layer below)
     // -------------------------------------------------------------------------
 
-`define Q_PREFIX {cur_I, license.leaf_index[layer_q], D_MESG, license.randomizer[layer_q]}
+`define Q_PREFIX {cur_I, leaf_index_q, D_MESG, aux_reg_q}
 
 `define Q_MSG_DATA {`Q_PREFIX, message}
     wire [$bits(`Q_MSG_DATA)-1 : 0] q_msg_data = `Q_MSG_DATA;
 `undef Q_MSG_DATA
 
     // sub_I is indexed at layer_q+1 (identity of the tree below)
-`define Q_SUB_DATA {`Q_PREFIX, LMS_TYPE, LMOTS_TYPE, license.sub_I[layer_q + 1'b1], hash_reg_q}
+`define Q_SUB_DATA {`Q_PREFIX, LMS_TYPE, LMOTS_TYPE, prev_I_q, hash_reg_q}
     wire [$bits(`Q_SUB_DATA)-1 : 0] q_sub_data = `Q_SUB_DATA;
 `undef Q_SUB_DATA
 
@@ -247,7 +275,7 @@ module hss_verify
     // WOTS chain: H(I || q || i || j || tmp)
     // -------------------------------------------------------------------------
 
-`define WOTS_DATA {cur_I, license.leaf_index[layer_q], 16'(wots_chain_q), \
+`define WOTS_DATA {cur_I, leaf_index_q, 16'(wots_chain_q), \
                    8'(wots_step_q), hash_reg_q}
     wire [$bits(`WOTS_DATA)-1 : 0] wots_data = `WOTS_DATA;
 `undef WOTS_DATA
@@ -263,7 +291,7 @@ module hss_verify
     // Kc: H(I || q || D_PBLC || pk0..pk33)
     // -------------------------------------------------------------------------
 
-`define KC_DATA {cur_I, license.leaf_index[layer_q], D_PBLC, pk_concat}
+`define KC_DATA {cur_I, leaf_index_q, D_PBLC, pk_concat}
     wire [$bits(`KC_DATA)-1 : 0] kc_data = `KC_DATA;
 `undef KC_DATA
 
@@ -277,7 +305,7 @@ module hss_verify
     // Leaf: H(I || q || D_LEAF || Kc)
     // -------------------------------------------------------------------------
 
-`define LEAF_DATA {cur_I, license.leaf_index[layer_q], D_LEAF, hash_reg_q}
+`define LEAF_DATA {cur_I, leaf_index_q, D_LEAF, hash_reg_q}
     wire [$bits(`LEAF_DATA)-1 : 0] leaf_data = `LEAF_DATA;
 `undef LEAF_DATA
 
@@ -291,6 +319,9 @@ module hss_verify
     // Merkle helpers
     // -------------------------------------------------------------------------
 
+    wire mrkl_wants = (seq_q == StMerkle) && (mrkl_q == StMrklLoad);
+    wire mrkl_loading = mrkl_wants && valid;
+
     // Nodes are indexed as 2n (left) and 2n+1 (right) from their parent
     wire [31:0]      parent_num = node_index_q >> 1; // node / 2
     wire             is_right   = node_index_q[0];
@@ -299,8 +330,8 @@ module hss_verify
     logic [WIDTH-1:0] left_node;
     logic [WIDTH-1:0] right_node;
 
-    assign {left_node, right_node} = is_right ? {cur_auth_node, hash_reg_q}
-                                              : {hash_reg_q,    cur_auth_node};
+    assign {left_node, right_node} = is_right ? {aux_reg_q,  hash_reg_q}
+                                              : {hash_reg_q, aux_reg_q};
 
     // -------------------------------------------------------------------------
     // Merkle: H(I || parent || D_INTR || left || right)
@@ -402,10 +433,16 @@ module hss_verify
     // hash_reg — captures sha_digest on completion, or sig chain on WOTS load
     // -------------------------------------------------------------------------
 
-    wire wots_loading = (seq_q == StWots) && (wots_q == StWotsLoad);
+    wire hdr_wants  = (seq_q == StQ) && (hdr_cnt_q != HDR_DONE);
+    wire wots_wants = (seq_q == StWots) && (wots_q == StWotsLoad);
+    wire wots_loading = wots_wants && valid;
+    wire wants_data = hdr_wants || wots_wants || mrkl_wants;
+
+    // Qualified by valid so ready is never asserted on its own.
+    assign ready = valid && wants_data;
     wire hash_reg_en  = wots_loading | hash_complete;
 
-    assign hash_reg_d = (!wots_loading) ? sha_digest : cur_sig_chain;
+    assign hash_reg_d = (!wots_loading) ? sha_digest : data;
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -421,12 +458,18 @@ module hss_verify
 
     wire wots_init  = (seq_q == StWots) && (wots_q == StWotsInit);
 
-    assign aux_reg_d = hash_reg_q;
+    // Scratch register, three time-disjoint producers: the randomizer while Q
+    // is being set up, the Q digest through WOTS, and each auth sibling during
+    // Merkle. Reusing it keeps the randomizer out of storage entirely -- it is
+    // only ever read by the Q hash.
+    wire rand_loading = (seq_q == StQ) && (hdr_cnt_q == HDR_CNT_W'(1)) && valid;
+
+    assign aux_reg_d = (mrkl_loading || rand_loading) ? data : hash_reg_q;
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             aux_reg_q <= '0;
-        end else if (wots_init) begin
+        end else if (wots_init || mrkl_loading || rand_loading) begin
             aux_reg_q <= aux_reg_d;
         end
     end
@@ -473,13 +516,15 @@ module hss_verify
                 end
 
                 StWotsLoad: begin
-                    wots_step_d = cur_digit; // load step counter from the signed digit
-                    // hash_reg captures chain signature this cycle also
-                    // (outside this always_comb since hash_reg is shared)
+                    // Stall until the next chain element arrives.
+                    if (valid) begin
+                        wots_step_d = cur_digit; // load step counter from the signed digit
+                        // hash_reg captures the chain signature this cycle too
+                        // (outside this always_comb since hash_reg is shared)
 
-                    // start hashing if the digit is not the maximum value,
-                    // otherwise move to store right away
-                    wots_d = (cur_digit != WOTS_MAX_COEF) ? StWotsHash : StWotsPkStore;
+                        // hash unless the digit is already the maximum value
+                        wots_d = (cur_digit != WOTS_MAX_COEF) ? StWotsHash : StWotsPkStore;
+                    end
                 end
 
                 StWotsHash: begin
@@ -534,9 +579,18 @@ module hss_verify
                     // initialize node_index from license
                     // set bit h to convert leaf index to node index
                     // (nodes above might use leaf_index but with bit[h]=0)
-                    node_index_d = (32'd1 << TREE_H) | license.leaf_index[layer_q];
+                    node_index_d = (32'd1 << TREE_H) | leaf_index_q;
 
-                    mrkl_d = StMrklHash;
+                    mrkl_d = StMrklLoad;
+                end
+
+                StMrklLoad: begin
+                    // The sibling must stay stable for the whole two-block
+                    // hash, so it is latched into aux_reg rather than used
+                    // straight off the bus.
+                    if (valid) begin
+                        mrkl_d = StMrklHash;
+                    end
                 end
 
                 StMrklHash: begin
@@ -547,7 +601,7 @@ module hss_verify
                         // or clear counter and node index
                         mrkl_level_d = ~last_level ? mrkl_level_q+1 : '0;
                         node_index_d = ~last_level ? parent_num     : '0;
-                        mrkl_d = ~last_level ? StMrklHash : StMrklInit;
+                        mrkl_d = ~last_level ? StMrklLoad : StMrklInit;
 
                         // signal completion to main FSM on last level
                         mrkl_complete = last_level;
@@ -566,17 +620,25 @@ module hss_verify
     always_comb begin
         seq_d         = seq_q;
         layer_d       = layer_q;
+        leaf_index_d  = leaf_index_q;
+        cur_I_d       = cur_I_q;
+        prev_I_d      = prev_I_q;
+        hdr_cnt_d     = hdr_cnt_q;
         sha_valid     = 1'b0;
-        ready         = 1'b0;
+        verify_done   = 1'b0;
         verif_passed  = 1'b0;
 
         unique case (seq_q)
 
             StIdle: begin
+                // The first beat offered starts the verification; it is not
+                // consumed here (wants_data is low), so the producer holds it
+                // until StQ takes it.
                 if (valid) begin
                     // Start at the bottom layer (signs the user message)
-                    layer_d = LAYER_CNT_W'(HSS_LEVELS - 1);
-                    seq_d   = StQ;
+                    layer_d   = LAYER_CNT_W'(HSS_LEVELS - 1);
+                    hdr_cnt_d = '0;
+                    seq_d     = StQ;
                 end
             end
 
@@ -585,10 +647,27 @@ module hss_verify
             // always_comb block based on the FSM state and sub-FSM states
 
             StQ: begin
-                // Start Q hash and wait to complete
-                sha_valid = 1'b1;
-                if (hash_complete) begin
-                    seq_d = StWots;
+                // Take this layer's header off the stream first: beat 0 is
+                // {leaf_index, sub_I}, beat 1 the randomizer (latched into
+                // aux_reg outside this block). Hashing starts once both are in.
+                if (hdr_cnt_q != HDR_DONE) begin
+                    if (valid) begin
+                        if (hdr_cnt_q == '0) begin
+                            leaf_index_d = data[WIDTH-1 -: 32];
+                            // Keep the identifier this layer used: the layer
+                            // above signs our public key and needs it.
+                            prev_I_d     = cur_I_q;
+                            cur_I_d      = data[WIDTH-33 -: IDENT_W];
+                        end
+                        hdr_cnt_d = hdr_cnt_q + 1'b1;
+                    end
+                end else begin
+                    // Start Q hash and wait to complete
+                    sha_valid = 1'b1;
+                    if (hash_complete) begin
+                        hdr_cnt_d = '0;
+                        seq_d     = StWots;
+                    end
                 end
             end
 
@@ -626,7 +705,7 @@ module hss_verify
             end
 
             StDone: begin
-                ready        = 1'b1;
+                verify_done  = 1'b1;
                 verif_passed = (hash_reg_q == root_pub_key);
                 seq_d        = StIdle;
             end
@@ -638,6 +717,20 @@ module hss_verify
     // -------------------------------------------------------------------------
     // Sequential
     // -------------------------------------------------------------------------
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            leaf_index_q <= '0;
+            cur_I_q      <= '0;
+            prev_I_q     <= '0;
+            hdr_cnt_q    <= '0;
+        end else begin
+            leaf_index_q <= leaf_index_d;
+            cur_I_q      <= cur_I_d;
+            prev_I_q     <= prev_I_d;
+            hdr_cnt_q    <= hdr_cnt_d;
+        end
+    end
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

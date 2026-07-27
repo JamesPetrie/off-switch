@@ -3,6 +3,8 @@
 // Uses tb_hss_sign_pkg to sign the message at runtime across HSS_LEVELS
 // layers, then pulses valid and checks verif_passed.
 
+`include "tb_hss_sign_pkg.sv"
+
 module tb (
     input logic clk,
     input logic rst_n
@@ -29,15 +31,30 @@ module tb (
     logic             saved_verif_passed = 1'b0;
     license_t         dut_license;
 
+    // License beat stream
+    int  beat_idx = 0;
+    wire dut_sig_ready;
+    // Producer contract: offer beats until the last one is accepted, then
+    // release valid.
+    wire dut_sig_valid = dut_valid && (beat_idx < int'(TOTAL_BEATS));
+    wire [WIDTH-1:0] dut_sig_data = license_beat(dut_license, beat_idx);
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)                              beat_idx <= 0;
+        else if (phase == PH_INIT)               beat_idx <= 0;
+        else if (dut_sig_valid && dut_sig_ready) beat_idx <= beat_idx + 1;
+    end
+
     hss_verify u_dut (
-        .clk          (clk),
-        .rst_n        (rst_n),
-        .valid        (dut_valid),
-        .message      (MESSAGE),
-        .license      (dut_license),
+        .clk             (clk),
+        .rst_n           (rst_n),
+        .message         (MESSAGE),
+        .valid           (dut_sig_valid),
+        .ready           (dut_sig_ready),
+        .data            (dut_sig_data),
         .identifier   (hss_pkg::PUBKEYS[0].identifier),
         .root_pub_key (hss_pkg::PUBKEYS[0].root_pub_key),
-        .ready        (dut_ready),
+        .verify_done  (dut_ready),
         .verif_passed (dut_verif_passed)
     );
 
@@ -79,10 +96,11 @@ module tb (
                 end
 
                 PH_WAIT: begin
-                    dut_valid <= 1'b0;
-                    wait_cnt  <= wait_cnt + 1;
+                    // Protocol: hold valid until ready pulses.
+                    wait_cnt <= wait_cnt + 1;
 
                     if (dut_ready) begin
+                        dut_valid <= 1'b0;
                         $display("  Completed in %0d cycles", wait_cnt);
                         saved_verif_passed <= dut_verif_passed;
                         phase <= PH_CHECK;
