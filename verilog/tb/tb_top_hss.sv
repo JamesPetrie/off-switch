@@ -4,6 +4,8 @@
 // The WOTS+ secret keys are derived at runtime; the Merkle tree is
 // pre-built by reference_lms.py and loaded from tb_hss_tree_pkg.
 
+`include "tb_hss_sign_pkg.sv"
+
 module tb (
     input logic clk,
     input logic rst_n
@@ -18,7 +20,6 @@ module tb (
     // -------------------------------------------------------------------------
 
     logic             license_valid  = 1'b0;
-    logic             license_ready;
     license_t         license        = 0;
     logic             workload_valid = 1'b0;
     logic [7:0]       workload_a     = '0;
@@ -36,15 +37,62 @@ module tb (
     // Note: number of signers is hardcoded in the testcases!
     localparam int unsigned NUM_SIGNERS = 2;
 
+    // ---- License beat stream ----
+    // license_valid is held for the whole licence; the pointer rewinds between
+    // transactions so a rejected licence can simply be resubmitted.
+    int  beat_idx = 0;
+    wire license_ready;
+
+    // A new transaction starts when the sequencer first raises license_valid;
+    // that is when the beat pointer rewinds.
+    logic license_valid_q = 1'b0;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) license_valid_q <= 1'b0;
+        else        license_valid_q <= license_valid;
+    end
+    wire new_transaction = license_valid && !license_valid_q;
+
+    // Qualified by license_valid_q: on the first cycle of a transaction the
+    // pointer has not rewound yet, and a stale count must not look done.
+    wire beats_done = license_valid_q && (beat_idx == int'(TOTAL_BEATS));
+
+    // nonce_ready falls when the block takes the first beat and rises again
+    // when the verification cycle ends -- that rising edge is the completion
+    // event the sequencer waits on.
+    logic nonce_ready_q;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) nonce_ready_q <= 1'b0;
+        else        nonce_ready_q <= nonce_ready;
+    end
+    wire cycle_done = nonce_ready && !nonce_ready_q;
+
+    // Producer contract: a license is a fixed number of beats; release valid
+    // once the last one has been accepted. Dropping valid mid-license is
+    // legal -- the verifier keeps hashing between beats -- so the pointer only
+    // rewinds when a transaction is actually finished or abandoned.
+
+    // T16 drives a deliberate gap in the middle of a license.
+    logic gap_stall = 1'b0;
+    logic gap_done  = 1'b0;
+    int   gap_cnt   = 0;
+    int   gap_beat  = 0;
+    wire  beat_valid = license_valid && !gap_stall && !beats_done;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)                            beat_idx <= 0;
+        else if (new_transaction)              beat_idx <= 0;
+        else if (beat_valid && license_ready)  beat_idx <= beat_idx + 1;
+    end
+
     security_block #(
         .CRYPTO_TYPE(1),
         .NUM_SIGNERS(NUM_SIGNERS)
     ) u_dut (
         .clk            (clk),
         .rst_n          (rst_n),
-        .license_valid  (license_valid),
+        .license_valid  (beat_valid),
         .license_ready  (license_ready),
-        .license        (license),
+        .license_data   (license_beat(license, beat_idx)),
         .workload_valid (workload_valid),
         .workload_a     (workload_a),
         .workload_b     (workload_b),
@@ -97,6 +145,8 @@ module tb (
         PH_T15A_SUBMIT, PH_T15A_WAIT,
         PH_T15B_SUBMIT, PH_T15B_WAIT,
         PH_T15_RESIGN,  PH_T15_CHECK,
+        PH_T16_A_SUBMIT, PH_T16_A_GAP, PH_T16_A_CHECK,
+        PH_T16_B_SUBMIT, PH_T16_B_CHECK,
         PH_DONE
     } ph_e;
 
@@ -227,12 +277,12 @@ module tb (
                 end
 
                 PH_T4A_CHECK: begin
-                    if (license_ready) begin
+                    if (beats_done) begin
                         license_valid <= 1'b0;
                         license       <= 0;
                     end
 
-                    if (!license_valid) begin
+                    if (cycle_done) begin
                         if (allowance == '0 && nonce == saved_nonce) begin
                             $display("PASS  [T4A signer-0 license] allowance still 0, nonce unchanged");
                             pass_count <= pass_count + 1;
@@ -262,12 +312,12 @@ module tb (
                 end
 
                 PH_T4B_CHECK: begin
-                    if (license_ready) begin
+                    if (beats_done) begin
                         license_valid <= 1'b0;
                         license       <= 0;
                     end
 
-                    if (!license_valid) begin
+                    if (cycle_done) begin
                         if (allowance != '0) begin
                             $display("PASS  [T4B signer-1 license] allowance=%0d", allowance);
                             pass_count <= pass_count + 1;
@@ -323,12 +373,12 @@ module tb (
                 end
 
                 PH_T6_CHECK: begin
-                    if (license_ready) begin
+                    if (beats_done) begin
                         license_valid <= 1'b0;
                         license       <= 0;
                     end
 
-                    if (!license_valid) begin
+                    if (cycle_done) begin
                         if (allowance <= saved_allow && nonce == saved_nonce) begin
                             $display("PASS  [T6  invalid license] rejected");
                             pass_count <= pass_count + 1;
@@ -463,11 +513,11 @@ module tb (
                 end
 
                 PH_T12A_CHECK: begin
-                    if (license_ready) begin
+                    if (beats_done) begin
                         license_valid <= 1'b0;
                         license       <= 0;
                     end
-                    if (!license_valid) begin
+                    if (cycle_done) begin
                         if (nonce == saved_nonce) begin
                             $display("PASS  [T12A signer-0] nonce held across first signer's license");
                             pass_count <= pass_count + 1;
@@ -497,7 +547,7 @@ module tb (
                 end
 
                 PH_T12B_CHECK: begin
-                    if (license_ready) begin
+                    if (beats_done) begin
                         license_valid <= 1'b0;
                         license       <= 0;
                     end
@@ -534,12 +584,12 @@ module tb (
                 end
 
                 PH_T13_CHECK: begin
-                    if (license_ready) begin
+                    if (beats_done) begin
                         license_valid <= 1'b0;
                         license       <= 0;
                     end
 
-                    if (!license_valid) begin
+                    if (cycle_done) begin
                         if (allowance <= saved_allow && nonce == saved_nonce) begin
                             $display("PASS  [T13 wrong nonce] rejected");
                             pass_count <= pass_count + 1;
@@ -569,7 +619,7 @@ module tb (
                 end
 
                 PH_T14A_WAIT: begin
-                    if (license_ready) begin
+                    if (beats_done) begin
                         license_valid <= 1'b0;
                         license       <= 0;
                         phase         <= PH_T14B_SUBMIT;
@@ -585,7 +635,7 @@ module tb (
                 end
 
                 PH_T14B_WAIT: begin
-                    if (license_ready) begin
+                    if (beats_done) begin
                         license_valid <= 1'b0;
                         license       <= 0;
                         phase         <= PH_T14_REPLAY;
@@ -604,12 +654,12 @@ module tb (
                 end
 
                 PH_T14_CHECK: begin
-                    if (license_ready) begin
+                    if (beats_done) begin
                         license_valid <= 1'b0;
                         license       <= 0;
                     end
 
-                    if (!license_valid) begin
+                    if (cycle_done) begin
                         if (allowance <= saved_allow && nonce == saved_nonce) begin
                             $display("PASS  [T14 replay attack] rejected");
                             pass_count <= pass_count + 1;
@@ -640,7 +690,7 @@ module tb (
                 end
 
                 PH_T15A_WAIT: begin
-                    if (license_ready) begin
+                    if (beats_done) begin
                         license_valid <= 1'b0;
                         license       <= 0;
                         phase         <= PH_T15B_SUBMIT;
@@ -656,7 +706,7 @@ module tb (
                 end
 
                 PH_T15B_WAIT: begin
-                    if (license_ready) begin
+                    if (beats_done) begin
                         license_valid <= 1'b0;
                         license       <= 0;
                         phase         <= PH_T15_RESIGN;
@@ -676,12 +726,12 @@ module tb (
                 end
 
                 PH_T15_CHECK: begin
-                    if (license_ready) begin
+                    if (beats_done) begin
                         license_valid <= 1'b0;
                         license       <= 0;
                     end
 
-                    if (!license_valid) begin
+                    if (cycle_done) begin
                         if (allowance <= saved_allow && nonce == saved_nonce) begin
                             $display("PASS  [T15 new leaf old nonce] rejected");
                             pass_count <= pass_count + 1;
@@ -696,6 +746,97 @@ module tb (
                 end
 
                 // -------------------------------------------------------
+                // -------------------------------------------------------
+                // T16: A producer may pause mid-license. Dropping the beat
+                //   valid between elements is legal -- the verifier keeps
+                //   hashing -- and the license must still be accepted, so a
+                //   full 2-of-2 with a gap injected must raise the allowance.
+                // -------------------------------------------------------
+                PH_T16_A_SUBMIT: begin
+                    if (nonce_ready) begin
+                        license       <= hss_sign(nonce, 0);
+                        license_valid <= 1'b1;
+                        saved_allow   <= allowance;
+                        saved_nonce   <= nonce;
+                        phase         <= PH_T16_A_GAP;
+                    end
+                end
+
+                PH_T16_A_GAP: begin
+                    // Stall the stream partway through, then resume. beat_idx
+                    // must hold across the gap.
+                    // license_valid_q qualifies the trigger: on the first
+                    // cycle of the transaction the pointer has not rewound yet.
+                    if (license_valid_q && beat_idx >= 20 && !gap_stall && !gap_done) begin
+                        gap_stall <= 1'b1;
+                        gap_cnt   <= 0;
+                        gap_beat  <= beat_idx;
+                    end else if (gap_stall) begin
+                        gap_cnt <= gap_cnt + 1;
+                        if (gap_cnt > 300) begin
+                            gap_stall <= 1'b0;
+                            gap_done  <= 1'b1;
+                            if (beat_idx != gap_beat) begin
+                                $display("FAIL  [T16 valid gap] pointer moved during the gap (%0d -> %0d)",
+                                         gap_beat, beat_idx);
+                                fail_count <= fail_count + 1;
+                            end else begin
+                                $display("PASS  [T16 valid gap] pointer held at beat %0d across a %0d-cycle pause",
+                                         gap_beat, gap_cnt);
+                                pass_count <= pass_count + 1;
+                            end
+                        end
+                    end
+
+                    if (beats_done) begin
+                        license_valid <= 1'b0;
+                        license       <= 0;
+                    end
+                    if (cycle_done) phase <= PH_T16_A_CHECK;
+                end
+
+                PH_T16_A_CHECK: begin
+                    if (nonce == saved_nonce && allowance <= saved_allow) begin
+                        $display("PASS  [T16 valid gap] signer-0 license survived a mid-license pause");
+                        pass_count <= pass_count + 1;
+                    end else begin
+                        $display("FAIL  [T16 valid gap] signer-0 license disturbed");
+                        fail_count <= fail_count + 1;
+                    end
+                    phase <= PH_T16_B_SUBMIT;
+                end
+
+                PH_T16_B_SUBMIT: begin
+                    if (nonce_ready) begin
+                        license       <= hss_sign(nonce, 1);
+                        license_valid <= 1'b1;
+                        saved_allow   <= allowance;
+                        saved_nonce   <= nonce;
+                        phase         <= PH_T16_B_CHECK;
+                    end
+                end
+
+                PH_T16_B_CHECK: begin
+                    if (beats_done) begin
+                        license_valid <= 1'b0;
+                        license       <= 0;
+                    end
+
+                    if (cycle_done) begin
+                        // Only a genuine 2-of-2 raises the allowance.
+                        if (allowance > saved_allow && nonce != saved_nonce) begin
+                            $display("PASS  [T16 valid gap] 2-of-2 completed with a gapped license");
+                            pass_count <= pass_count + 1;
+                        end else begin
+                            $display("FAIL  [T16 valid gap] 2-of-2 not accepted");
+                            fail_count <= fail_count + 1;
+                        end
+                        phase <= PH_DONE;
+                    end else if (wait_cnt > VERIFY_TIMEOUT) begin
+                        $fatal("FAIL  [T16 valid gap] timeout");
+                    end
+                end
+
                 PH_DONE: begin
                     $display("");
                     if (fail_count == 0) begin

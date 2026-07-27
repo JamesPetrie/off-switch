@@ -33,7 +33,7 @@ module off_switch_axi #
 );
 
     wire [255:0] nonce;
-    wire [511:0] license;
+    wire [511:0] license;   // ECDSA delivers its licence in a single beat
     wire         license_valid;
     wire         license_ready;
 
@@ -77,7 +77,7 @@ module off_switch_axi #
         .rst_n           (s00_axi_aresetn),
         .license_valid   (license_valid),
         .license_ready   (license_ready),
-        .license         (license),
+        .license_data    (license),
         .workload_valid  (1'b0),            // Workload path unused
         .workload_a      (8'b0),
         .workload_b      (8'b0),

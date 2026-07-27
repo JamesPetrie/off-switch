@@ -24,7 +24,6 @@ module tb (
     // -------------------------------------------------------------------------
 
     logic             license_valid  = 1'b0;
-    logic             license_ready;
     license_t         license        = '0;
     logic             workload_valid;
     logic [7:0]       workload_a;
@@ -45,6 +44,17 @@ module tb (
 
     localparam logic [63:0] DEMO_INCREMENT = 64'd5_000_000;
 
+    // nonce_ready falls when the block takes the licence and rises again when
+    // the verification cycle ends -- that rising edge is the completion event.
+    // Producer contract: release valid once the beat has been accepted.
+    wire  license_ready;
+    logic nonce_ready_q;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) nonce_ready_q <= 1'b0;
+        else        nonce_ready_q <= nonce_ready;
+    end
+    wire cycle_done = nonce_ready && !nonce_ready_q;
+
     security_block #(
         .NUM_SIGNERS         (1),
         .ALLOWANCE_INCREMENT (DEMO_INCREMENT)
@@ -53,7 +63,7 @@ module tb (
         .rst_n          (rst_n),
         .license_valid  (license_valid),
         .license_ready  (license_ready),
-        .license        (license),
+        .license_data   (license),
         .workload_valid (workload_valid),
         .workload_a     (workload_a),
         .workload_b     (workload_b),
@@ -225,7 +235,7 @@ module tb (
                         license.s    <= '0;
                     end
 
-                    if (!license_valid) begin
+                    if (cycle_done) begin
                         if (allowance != '0) begin
                             $display("[cycle %0d] >>> License #1 ACCEPTED — allowance = %0d",
                                      cycle_cnt, allowance);
@@ -272,7 +282,7 @@ module tb (
                         license.s    <= '0;
                     end
 
-                    if (!license_valid) begin
+                    if (cycle_done) begin
                         if (allowance != '0 && enabled) begin
                             $display("[cycle %0d] >>> License #2 ACCEPTED — allowance = %0d",
                                      cycle_cnt, allowance);

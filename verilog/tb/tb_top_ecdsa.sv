@@ -19,7 +19,6 @@ module tb (
     // -------------------------------------------------------------------------
 
     logic             license_valid  = 1'b0;
-    logic             license_ready;
     license_t         license        = '0;
     logic             workload_valid = 1'b0;
     logic [7:0]       workload_a     = '0;
@@ -37,6 +36,17 @@ module tb (
     // Note: number of signers is hardcoded in the testcases!
     localparam int unsigned NUM_SIGNERS = 2;
 
+    // nonce_ready falls when the block takes the licence and rises again when
+    // the verification cycle ends -- that rising edge is the completion event.
+    // Producer contract: release valid once the beat has been accepted.
+    wire  license_ready;
+    logic nonce_ready_q;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) nonce_ready_q <= 1'b0;
+        else        nonce_ready_q <= nonce_ready;
+    end
+    wire cycle_done = nonce_ready && !nonce_ready_q;
+
     security_block #(
         .CRYPTO_TYPE(0),
         .NUM_SIGNERS(NUM_SIGNERS)
@@ -45,7 +55,7 @@ module tb (
         .rst_n          (rst_n),
         .license_valid  (license_valid),
         .license_ready  (license_ready),
-        .license        (license),
+        .license_data   (license),
         .workload_valid (workload_valid),
         .workload_a     (workload_a),
         .workload_b     (workload_b),
@@ -243,14 +253,14 @@ module tb (
                 end
 
                 PH_T4A_CHECK: begin
-                    // Hold license until license_ready pulses
+                    // Release valid as soon as the beat is accepted.
                     if (license_ready) begin
                         license_valid <= 1'b0;
                         license.r    <= '0;
                         license.s    <= '0;
                     end
 
-                    if (!license_valid) begin
+                    if (cycle_done) begin
                         if (allowance == '0 && nonce == saved_nonce) begin
                             $display("PASS  [T4A signer-0 license] allowance still 0, nonce unchanged");
                             pass_count <= pass_count + 1;
@@ -285,14 +295,14 @@ module tb (
                 end
 
                 PH_T4B_CHECK: begin
-                    // Hold license until license_ready pulses
+                    // Release valid as soon as the beat is accepted.
                     if (license_ready) begin
                         license_valid <= 1'b0;
                         license.r    <= '0;
                         license.s    <= '0;
                     end
 
-                    if (!license_valid) begin
+                    if (cycle_done) begin
                         if (allowance != '0) begin
                             $display("PASS  [T4B signer-1 license] allowance incremented to %0d", allowance);
                             pass_count <= pass_count + 1;
@@ -357,7 +367,7 @@ module tb (
                 end
 
                 PH_T6_CHECK: begin
-                    // Hold license until license_ready pulses
+                    // Release valid as soon as the beat is accepted.
                     if (license_ready) begin
                         license_valid <= 1'b0;
                         license.r    <= '0;
@@ -365,7 +375,7 @@ module tb (
                     end
 
                     // Check after deassert
-                    if (!license_valid) begin
+                    if (cycle_done) begin
                         if (allowance <= saved_allow && nonce == saved_nonce) begin
                             $display("PASS  [T6  invalid license] allowance not incremented, nonce unchanged");
                             pass_count <= pass_count + 1;
@@ -541,7 +551,7 @@ module tb (
                         license.r    <= '0;
                         license.s    <= '0;
                     end
-                    if (!license_valid) begin
+                    if (cycle_done) begin
                         if (nonce == saved_nonce) begin
                             $display("PASS  [T12A signer-0] nonce held across first signer's license");
                             pass_count <= pass_count + 1;
@@ -611,7 +621,7 @@ module tb (
                 end
 
                 PH_T13_CHECK: begin
-                    // Hold license until license_ready pulses
+                    // Release valid as soon as the beat is accepted.
                     if (license_ready) begin
                         license_valid <= 1'b0;
                         license.r    <= '0;
@@ -619,7 +629,7 @@ module tb (
                     end
 
                     // Check after deassert
-                    if (!license_valid) begin
+                    if (cycle_done) begin
                         if (allowance <= saved_allow && nonce == saved_nonce) begin
                             $display("PASS  [T13 wrong nonce] allowance not incremented, nonce unchanged");
                             pass_count <= pass_count + 1;
@@ -695,7 +705,7 @@ module tb (
                 end
 
                 PH_T14_CHECK: begin
-                    // Hold license until license_ready pulses
+                    // Release valid as soon as the beat is accepted.
                     if (license_ready) begin
                         license_valid <= 1'b0;
                         license.r    <= '0;
@@ -703,7 +713,7 @@ module tb (
                     end
 
                     // Check after deassert
-                    if (!license_valid) begin
+                    if (cycle_done) begin
                         if (allowance <= saved_allow && nonce == saved_nonce) begin
                             $display("PASS  [T14 replay attack] allowance not incremented, nonce unchanged");
                             pass_count <= pass_count + 1;

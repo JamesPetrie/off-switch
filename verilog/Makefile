@@ -18,6 +18,7 @@ TB_FILE    := $(TB_DIR)/tb_$(TB).sv
 BUILD_DIR  := build
 TOP_MODULE := tb
 DPI_FILE   := $(TB_DIR)/dpi_sha256.cpp
+SVA_FILE   := $(TB_DIR)/rtl_sva.sv # assertions bound into the RTL, simulation only
 
 # ---------------------------------------------------------------------------
 # Simulation
@@ -34,7 +35,7 @@ endif
 sim:
 ifeq ($(TOOL),verilator)
 	@echo "-- VERILATE & BUILD --------"
-	verilator $(VFLAGS) -F $(RTL_VC) +incdir+$(TB_DIR) $(TB_FILE) $(DPI_FILE) --top-module $(TOP_MODULE) tb/sim_main.cpp --Mdir $(BUILD_DIR)
+	verilator $(VFLAGS) -F $(RTL_VC) +incdir+$(TB_DIR) $(TB_FILE) $(SVA_FILE) $(DPI_FILE) --top-module $(TOP_MODULE) tb/sim_main.cpp --Mdir $(BUILD_DIR)
 	@echo "-- RUN ---------------------"
 	$(BUILD_DIR)/V$(TOP_MODULE)
 	@echo "-- DONE --------------------"

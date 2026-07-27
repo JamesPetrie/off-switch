@@ -150,7 +150,7 @@ The authorization protocol follows Section 2 of the paper (see Figure 2):
 1. TRNG generates nonce (at initialization or after valid license)
 2. Security Logic latches and publishes nonce (`nonce_ready` = 1)
 3. External authority reads nonce, signs it with private key
-4. Authority submits `license` via valid-ready handshake (`license_valid`/`license_ready`)
+4. Authority submits the `license` as a beat stream (`license_valid`/`license_ready`/`license_data`); `nonce_ready` drops, marking the start of a verification cycle
 5. The crypto engine verifies signature against nonce and hardcoded public key
 6. **If valid:**
    - Allowance incremented
@@ -158,6 +158,15 @@ The authorization protocol follows Section 2 of the paper (see Figure 2):
 7. **If invalid:**
    - Allowance unchanged
    - Same nonce retained (allows retry with correct signature)
+
+A license is a fixed number of beats — one for ECDSA,
+`HSS_LEVELS x (2 + WOTS_P + TREE_H)` for HSS-LMS — and the producer releases
+`license_valid` once the last one has been accepted. `nonce_ready` is low
+while a verification is in flight and rises again when the block has
+finished, so it also marks the end of a cycle; the outcome is read from the
+nonce itself, where a rotated nonce means a fully authorised round and an
+unchanged one means the license was rejected or further signers are still
+expected.
    - Return to step 2
 
 ### Workload Flow
@@ -223,26 +232,33 @@ The paper's Section 4 discusses attack vectors against these assumptions in deta
 |--------|-------|-------------|
 | `clk` | 1 | System clock |
 | `rst_n` | 1 | Asynchronous reset (active low) |
-| `license_valid` | 1 | License submission request (hold until `license_ready`) |
-| `license` | `LICENSE_W` | License payload |
+| `license_valid` | 1 | License beat offered (hold until the whole license has been accepted) |
+| `license_data` | `LICENSE_BEAT_W` | License beat payload |
 | `workload_valid` | 1 | Workload input data valid |
 | `workload_a` | 8 | Workload operand A |
 | `workload_b` | 8 | Workload operand B |
 | `trng_load_seed` | 1 | Load seed into TRNG (testing only) |
 | `trng_seed` | 256 | Seed value for TRNG (testing only) |
 
-`LICENSE_W` is selected at elaboration time from the `CRYPTO_TYPE` parameter:
+The license is delivered as a stream of beats rather than one packed word, so
+the port width does not grow with the signature size. `LICENSE_BEAT_W` and the
+beat count follow from `CRYPTO_TYPE`:
 
-| `CRYPTO_TYPE` | Engine | License struct (`license_t`) | Width |
-|---------------|--------|------------------------------|-------|
-| 0 | `ecdsa` (secp256k1) | `{r[256], s[256]}` | 512 bits |
-| 1 | `hss_verify` (HSS/LMS) | `{leaf_index[32], randomizer[256], N x sig_chains[256], M x auth_path[256]}` | 10k+ bits |
+| `CRYPTO_TYPE` | Engine | Beat width | Beats | Contents |
+|---------------|--------|-----------|-------|----------|
+| 0 | `ecdsa` (secp256k1) | 512 bits | 1 | `{r[256], s[256]}` |
+| 1 | `hss_verify` (HSS/LMS) | 256 bits | `L * (2 + WOTS_P + TREE_H)` | per layer, from `HSS_LEVELS-1` down to 0: a header beat `{leaf_index, sub_I}`, the randomizer, `WOTS_P` chain signatures, then `TREE_H` auth path siblings |
+
+For the default HSS parameters (L=2, WOTS_P=34, TREE_H=5) that is 82 beats of
+256 bits. Holding the whole thing in a single port would have taken 31,040
+bits and, more importantly, synthesised into a 68:1 and a 50:1 multiplexer on
+the critical path; streaming removes both.
 
 ### Top-Level Outputs
 
 | Signal | Width | Description |
 |--------|-------|-------------|
-| `license_ready` | 1 | License verification complete (pulse) |
+| `license_ready` | 1 | Ready to accept a license beat this cycle (only asserted together with `license_valid`) |
 | `nonce` | 256 | Current nonce value |
 | `nonce_ready` | 1 | Nonce is stable and ready for signing |
 | `workload_result` | 8 | Gated workload output |
@@ -282,10 +298,11 @@ The paper's Section 4 discusses attack vectors against these assumptions in deta
 |-----------|--------|-------|-------------|
 | Input | `clk` | 1 | System clock |
 | Input | `rst_n` | 1 | Asynchronous reset (active low) |
-| Input | `valid` | 1 | Start verification (hold until `ready`) |
 | Input | `message` | 256 | Message to verify (= nonce) |
-| Input | `license` | `hss_pkg::license_t` | Full license (leaf index, randomizer, all WOTS+ sig chains, full auth path) |
-| Output | `ready` | 1 | Verification complete (pulse) |
+| Input | `valid` | 1 | License beat offered; the first beat starts the verification |
+| Output | `ready` | 1 | Ready to accept a beat |
+| Input | `data` | 256 | License beat: per layer, `{leaf_index, sub_I}`, the randomizer, the chain signatures, then the auth path siblings |
+| Output | `verify_done` | 1 | Verification complete (pulse) |
 | Output | `verif_passed` | 1 | Signature is valid |
 
 ---
@@ -300,8 +317,8 @@ stateDiagram-v2
     StInitDelay --> StRequestNonce: counter ≥ INIT_DELAY
     StRequestNonce --> StPublishAndWait: immediate
     StPublishAndWait --> StWaitVerify: trng_nonce_valid && license_valid
-    StWaitVerify --> StRequestNonce: crypto_ready && verif_passed
-    StWaitVerify --> StPublishAndWait: crypto_ready && !verif_passed
+    StWaitVerify --> StRequestNonce: crypto_done && verif_passed
+    StWaitVerify --> StPublishAndWait: crypto_done && !verif_passed
 ```
 
 ### State Descriptions
@@ -311,7 +328,7 @@ stateDiagram-v2
 | `StInitDelay` | Reset | Increment delay counter | Counter ≥ `INIT_DELAY` |
 | `StRequestNonce` | From `StInitDelay` or `StWaitVerify` (valid) | Pulse `request_new` to TRNG | Immediate (next cycle) |
 | `StPublishAndWait` | From `StRequestNonce` or `StWaitVerify` (invalid) | Drive `nonce`, `nonce_ready` once `trng_nonce_valid`; wait for `license_valid` | `license_valid` |
-| `StWaitVerify` | From `StPublishAndWait` | Assert `crypto_valid`; on `crypto_ready` pulse `license_ready`; if `verif_passed`, increment allowance | `crypto_ready` |
+| `StWaitVerify` | From `StPublishAndWait` | Assert `crypto_valid` and stream the license beats into the engine; if `verif_passed`, increment allowance | `crypto_done` |
 
 ---
 
@@ -724,7 +741,8 @@ This is a proof-of-concept implementation. The paper discusses broader limitatio
 | ECDSA curve | secp256k1 only | Multiple curves for redundancy |
 | ECDSA Input validation | Minimal | Full range checking |
 | HSS levels | `L = 1` | `L ≥ 2` for larger key space |
-| HSS license delivery | Single wide packed port | Streaming / serial interface with on-chip buffering |
+| HSS license delivery | 256-bit beat stream | Same |
+| Stalled producer | A producer that stops mid-license leaves the block waiting, with the allowance draining meanwhile. This is indistinguishable from not sending a license at all, so no timeout is provided | Same |
 | Redundancy | Single block | Thousands of independent blocks per chip |
 
 ---
