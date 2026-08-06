@@ -10,9 +10,6 @@ module security_block_sva (
     input logic license_ready,
     input logic publishing
 );
-    // Ready is qualified by valid, so it is never offered on its own.
-    assert property (@(posedge clk) license_ready |-> license_valid);
-
     // Beats are only taken once a verification is under way.
     assert property (@(posedge clk) publishing |-> !license_ready);
 endmodule

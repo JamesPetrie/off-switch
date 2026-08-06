@@ -6,15 +6,15 @@
 //
 // Protocol:
 //   1. On startup, waits INIT_DELAY then generates an initial nonce
-//   2. nonce_ready pulses when a fresh nonce is available in nonce[]
+//   2. nonce_ready is high while a nonce is available for signing
 //   3. Submit the license as a beat stream on license_valid/ready/data:
 //      one 512-bit beat for ECDSA, metadata then elements for HSS-LMS.
 //      The signature must be over the current nonce as the message hash.
-//   4. nonce_ready marks the verification cycle, falling on the first beat and
-//      rising when it ends; the outcome is read from nonce/allowance. The
-//      producer sends a fixed number of beats and releases license_valid once
-//      the last one is accepted.
-//   5. On valid license: allowance += ALLOWANCE_INCREMENT (saturating), new nonce
+//   4. nonce_ready falls when verification starts. On failure, the same nonce is
+//      made ready again; after final successful verification it rises only when
+//      a new nonce has been generated. The producer sends a fixed number of
+//      beats and releases license_valid once the last one is accepted.
+//   5. On valid license: allowance += ALLOWANCE_INCREMENT (saturating), request new nonce
 //      On invalid license: same nonce retained, can retry
 //   6. Workload (signed 8-bit add) is gated: result is zeroed when allowance == 0
 //   7. Allowance decrements by 1 every cycle while > 0

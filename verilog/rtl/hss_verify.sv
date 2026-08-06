@@ -662,6 +662,7 @@ module hss_verify
                         hdr_cnt_d = hdr_cnt_q + 1'b1;
                     end
                 end else begin
+                    // hdr_cnt_q == HDR_DONE: both header beats have been captured.
                     // Start Q hash and wait to complete
                     sha_valid = 1'b1;
                     if (hash_complete) begin
@@ -724,16 +725,6 @@ module hss_verify
             cur_I_q      <= '0;
             prev_I_q     <= '0;
             hdr_cnt_q    <= '0;
-        end else begin
-            leaf_index_q <= leaf_index_d;
-            cur_I_q      <= cur_I_d;
-            prev_I_q     <= prev_I_d;
-            hdr_cnt_q    <= hdr_cnt_d;
-        end
-    end
-
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
             seq_q         <= StIdle;
             wots_q        <= StWotsInit;
             wots_chain_q  <= '0;
@@ -745,6 +736,10 @@ module hss_verify
             for (int i = 0; i < WOTS_P; i++)
                 pk_store_q[i] <= '0;
         end else begin
+            leaf_index_q <= leaf_index_d;
+            cur_I_q      <= cur_I_d;
+            prev_I_q     <= prev_I_d;
+            hdr_cnt_q    <= hdr_cnt_d;
             seq_q         <= seq_d;
             wots_q        <= wots_d;
             wots_chain_q  <= wots_chain_d;
