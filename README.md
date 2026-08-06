@@ -249,16 +249,11 @@ beat count follow from `CRYPTO_TYPE`:
 | 0 | `ecdsa` (secp256k1) | 512 bits | 1 | `{r[256], s[256]}` |
 | 1 | `hss_verify` (HSS/LMS) | 256 bits | `L * (2 + WOTS_P + TREE_H)` | per layer, from `HSS_LEVELS-1` down to 0: a header beat `{leaf_index, sub_I}`, the randomizer, `WOTS_P` chain signatures, then `TREE_H` auth path siblings |
 
-For the default HSS parameters (L=2, WOTS_P=34, TREE_H=5) that is 82 beats of
-256 bits. Holding the whole thing in a single port would have taken 31,040
-bits and, more importantly, synthesised into a 68:1 and a 50:1 multiplexer on
-the critical path; streaming removes both.
-
 ### Top-Level Outputs
 
 | Signal | Width | Description |
 |--------|-------|-------------|
-| `license_ready` | 1 | Ready to accept a license beat this cycle (only asserted together with `license_valid`) |
+| `license_ready` | 1 | Ready to accept a license beat this cycle |
 | `nonce` | 256 | Current nonce value |
 | `nonce_ready` | 1 | Nonce is stable and ready for signing |
 | `workload_result` | 8 | Gated workload output |
@@ -741,8 +736,6 @@ This is a proof-of-concept implementation. The paper discusses broader limitatio
 | ECDSA curve | secp256k1 only | Multiple curves for redundancy |
 | ECDSA Input validation | Minimal | Full range checking |
 | HSS levels | `L = 1` | `L ≥ 2` for larger key space |
-| HSS license delivery | 256-bit beat stream | Same |
-| Stalled producer | A producer that stops mid-license leaves the block waiting, with the allowance draining meanwhile. This is indistinguishable from not sending a license at all, so no timeout is provided | Same |
 | Redundancy | Single block | Thousands of independent blocks per chip |
 
 ---
