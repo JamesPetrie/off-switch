@@ -53,8 +53,8 @@ Both flavours are wired into the same `security_block` module via a `CRYPTO_TYPE
 # Install verilator if needed (macOS: brew install verilator, Ubuntu: apt install verilator)
 # Note: apt install gets older version, build a newer from source if needed
 
-# Clone the repo (recursively to pull the secworks SHA-256 submodule)
-git clone --recursive https://github.com/JamesPetrie/off-switch
+# Clone the repo
+git clone https://github.com/JamesPetrie/off-switch
 cd off-switch
 ```
 
@@ -557,7 +557,7 @@ flowchart TB
             R_PK["WOTS PK storage:<br/>pk_store[0..33]"]
         end
 
-        ENG["SHA-256 Core<br/>secworks, 66 cycles/block"]
+        ENG["SHA-2 Core<br/>Pavona prim_sha2, ~69 cycles/block"]
 
         SM <--> REGS
         SM <-->|"valid, block, last<br/>ready, digest"| ENG
@@ -622,14 +622,14 @@ For a signature on message `M` with randomizer `C`, leaf index `q`, identifier `
 
 A single SHA-256 core is shared across all phases (Q, WOTS, Kc, Leaf, Merkle) — there is no parallel pipelining of WOTS+ and Kc. The block counter `blk_idx_q` together with `sha_last` drives multi-block sequencing.
 
-The hash engine is the [secworks/sha256](https://github.com/secworks/sha256) Verilog core, included as a git submodule under `verilog/rtl/sha256/`.
+The hash engine is the [Pavona](https://github.com/pavona/pavona) `prim_sha2_compression` core (OpenTitan-derived), vendored byte-identical at a pinned commit under `verilog/rtl/vendor/pavona_prim_sha2/` (provenance and checksums in its README).
 
-- 3-state FSM: Idle -> Rounds (64 cycles) -> Done
-- 66 cycles per 512-bit block (1 init + 64 rounds + 1 done)
+- Instantiated in the SHA-256-only configuration (`MultimodeEn = 0`); a shared-datapath SHA-256/384/512 multimode configuration is available at synthesis time
+- ~69 cycles per 512-bit block (block load + init + 64 rounds + digest update, plus wrapper handshake)
 - 16-register sliding window for W message schedule
-- Supports multi-block hashing via `init`/`next` signals
+- Digest state is externally writable (`digest_i`/`digest_we_i`), enabling future IV loading and hash-context switching (e.g. incremental Kc accumulation)
 
-`sha256_wrap.sv` adds a thin per block valid/ready handshake and a last signal to indicate if the current block closes the message or further blocks are coming.
+`sha2_wrap.sv` adapts the core to the per block valid/ready handshake (last marks the closing block), reversing the core's 32-bit word order and aligning the final ready pulse to the cycle where the digest is final.
 
 ### Cycle Count
 
@@ -637,11 +637,11 @@ Total verification takes approximately **300 K cycles**, dominated by WOTS+ chai
 
 | Phase | Cycles | Notes |
 |-------|--------|-------|
-| Q hash | ~132 | 2 SHA-256 blocks |
+| Q hash | ~138 | 2 SHA-256 blocks |
 | WOTS+ chains | ~300 K | 34 chains × ~127 hashes avg |
-| Kc accumulation | ~1000 | 18 SHA-256 blocks |
-| Leaf hash | ~66 | 1 SHA-256 block |
-| Merkle path (h=4) | ~528 | 4 levels × 2 blocks|
+| Kc accumulation | ~1050 | 18 SHA-256 blocks |
+| Leaf hash | ~69 | 1 SHA-256 block |
+| Merkle path (h=4) | ~552 | 4 levels × 2 blocks|
 | Ooverhead | small | State transitions, flow control |
 
 At 1 GHz, verification completes in ~0.3 ms, well within the licensing interval (minutes to days).

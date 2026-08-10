@@ -1,3 +1,0 @@
-[submodule "sha256"]
-	path = sha256
-	url = https://github.com/secworks/sha256.git

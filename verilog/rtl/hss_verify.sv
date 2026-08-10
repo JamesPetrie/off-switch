@@ -134,7 +134,7 @@ module hss_verify
     wire          sha_ready;
     wire  [255:0] sha_digest;
 
-    sha256_wrap u_sha256 (
+    sha2_wrap u_sha256 (
         .clk    (clk),
         .rst_n  (rst_n),
         .valid  (sha_valid),
