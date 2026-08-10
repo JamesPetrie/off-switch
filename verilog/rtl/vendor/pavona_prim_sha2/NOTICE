@@ -1,0 +1,44 @@
+========================================
+Pavona Notices
+========================================
+
+This project, Pavona, includes modifications by its contributors
+and is maintained as a community open source project.
+
+Copyright 2026 Pavona contributors.
+
+========================================
+Expo Notices
+========================================
+
+This project, expo, includes modifications by its contributors
+and is maintained as a community open source project.
+
+Copyright 2025, 2026 expo contributors.
+
+========================================
+OpenTitan Notices
+========================================
+
+The OpenTitan Project
+Copyright 2024 lowRISC contributors (OpenTitan project).
+
+This product includes hardware and/or software developed as part of the
+OpenTitan(R) project (https://www.opentitan.org,
+https://github.com/lowRISC/opentitan).
+
+-
+
+The Ibex Project
+Copyright 2024 lowRISC contributors.
+
+This product includes hardware and/or software developed as part of the
+Ibex(R) (https://github.com/lowRISC/ibex) and OpenTitan(R) projects.
+
+Ibex was originally developed by the PULP team at ETH Zurich and University of
+Bologna under the name zero-riscy. Ibex verification, performance enhancement
+and security hardening have been supported by the OpenTitan project
+(https://www.opentitan.org).
+
+
+Licensed under the Apache License, Version 2.0
