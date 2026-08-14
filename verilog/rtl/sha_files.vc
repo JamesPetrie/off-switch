@@ -1,3 +1,3 @@
-+incdir+.
-./vendor/pavona_prim_sha2/prim_sha2_pkg.sv
-./vendor/pavona_prim_sha2/prim_sha2_compression.sv
++incdir+./vendor/pavona_fbdfde633
+./vendor/pavona_fbdfde633/prim_sha2_pkg.sv
+./vendor/pavona_fbdfde633/prim_sha2_compression.sv

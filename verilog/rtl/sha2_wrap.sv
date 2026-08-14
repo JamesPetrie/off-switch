@@ -1,17 +1,16 @@
-// SHA-2 wrapper — valid/ready handshake around the vendored Pavona
-// prim_sha2_compression core (vendor/pavona_prim_sha2/, MultimodeEn=0).
+// SHA-2 wrapper — per block valid/ready handshake around the vendored
+// Pavona prim_sha2_compression core (vendor/pavona_fbdfde633/).
 //
-// Same contract as the former secworks-based sha256_wrap: present a
-// pre-padded 512-bit block with valid/last; ready pulses one cycle when the
-// block is absorbed, and digest is final at the last block's ready pulse.
-// First vs continuation blocks are tracked internally (first_q).
-//
-// Core-facing notes:
-//   - Core wants W0 in msg_block_data_i[31:0]; off-switch puts W0 in
-//     block[511:480], so the 16 words are order-reversed (no byte swap).
-//   - digest_o is final one cycle after hash_done_o, hence StDone.
-//   - Outputs are Moore (registered state only): no combinational path
-//     from valid/last to ready, which would loop through hss_verify.
+// Contract: present a pre-padded 512-bit block on valid/block, with last
+// marking the closing block of the message, and hold the inputs stable
+// until ready. ready pulses for exactly one cycle per block, and at the
+// last block's ready pulse digest holds the final value. Messages need no
+// start signal: the first block after reset or after a completed message
+// starts a new one. All outputs depend on registered state only, so ready
+// never combinationally follows valid/last — hss_verify closes that loop
+// combinationally on its side. Inward the coupling is combinational: valid
+// passes straight through to the core's start/load inputs, which is safe
+// because the core's ready cone depends on its registered state only.
 
 module sha2_wrap
     import prim_sha2_pkg::*;
@@ -33,31 +32,30 @@ module sha2_wrap
     // State
     // -------------------------------------------------------------------------
 
-    typedef enum logic [2:0] {StIdle, StStart, StLoad, StBusy, StDone} state_e;
+    typedef enum logic [1:0] {StIdle, StPass, StFinish, StDone} state_e;
 
     state_e state_q, state_d;
-    logic   first_q;   // next accepted block is first of a new message
-    logic   last_q;    // block currently in flight closes the message
 
-    // -------------------------------------------------------------------------
-    // SHA-2 compression core
-    // -------------------------------------------------------------------------
+    logic accepted_q;         // core took a continuation block last cycle
+    logic [15:0] blk_cnt_q;   // blocks taken of the running message
 
-    logic              hash_start;
-    logic              msg_block_valid;
-    logic              msg_block_done;
-    wire               msg_block_ready;
-    wire               hash_done;
+    logic hash_start;
+    logic msg_block_valid;
+    logic msg_block_done;
+    wire  msg_block_ready;
+    wire  hash_done;
     sha_word64_t [7:0] digest_words;
 
-    // Observability outputs of the core that the wrapper does not need
-    sha_word64_t [7:0] hash_unused;
-    logic              digest_on_blk_unused;
-    sha_st_e           sha_st_unused;
-    logic              hash_running_unused;
-    logic              idle_unused;
+    // core takes the presented block in this cycle
+    wire accept = msg_block_valid & msg_block_ready;
 
-    // Order-reverse the 16 words: W0 from block[511:480] to block_rev[31:0]
+    // -------------------------------------------------------------------------
+    // SHA-2 compression core (SHA-256-only configuration, MultimodeEn=0)
+    // -------------------------------------------------------------------------
+
+    // The core consumes W0 from msg_block_data_i[31:0]; the off-switch block
+    // convention is W0 in block[511:480], so the sixteen 32-bit words are
+    // order-reversed (no byte swap within words).
     logic [511:0] block_rev;
     for (genvar gi = 0; gi < 16; gi++) begin : gen_block_rev
         assign block_rev[32*gi +: 32] = block[511 - 32*gi -: 32];
@@ -69,6 +67,7 @@ module sha2_wrap
         .clk_i             (clk),
         .rst_ni            (rst_n),
 
+        // Secret wiping is not used
         .wipe_secret_i     (1'b0),
         .wipe_v_i          (32'h0),
 
@@ -79,20 +78,20 @@ module sha2_wrap
 
         .sha_en_i          (1'b1),
         .hash_start_i      (hash_start),
-        .hash_continue_i   (1'b0),
+        .hash_continue_i   (1'b0),  // hash-context restore is not used
         .digest_mode_i     (SHA2_256),
 
         .hash_done_o       (hash_done),
-        .hash_o            (hash_unused),
+        .hash_o            (),      // a..h working variables; digest_o suffices
 
-        .message_length_i  (64'h0),
-        .digest_i          ('0),
+        .message_length_i  ({39'b0, blk_cnt_q, 9'b0}),  // bits taken so far
+        .digest_i          ('0),    // digest write-back (context restore) not used
         .digest_we_i       ('0),
         .digest_o          (digest_words),
-        .digest_on_blk_o   (digest_on_blk_unused),
-        .sha_st_o          (sha_st_unused),
-        .hash_running_o    (hash_running_unused),
-        .idle_o            (idle_unused)
+        .digest_on_blk_o   (),      // digest-at-block-boundary marker
+        .sha_st_o          (),      // core FSM state
+        .hash_running_o    (),      // compression rounds active
+        .idle_o            ()       // core FSM idle
     );
 
     // H0..H7 sit in the low halves of digest_o[0..7]; repack big-endian
@@ -103,53 +102,32 @@ module sha2_wrap
     // -------------------------------------------------------------------------
     // FSM
     // -------------------------------------------------------------------------
-    //   StIdle:  wait for a block; new messages go via StStart.
-    //   StStart: pulse hash_start; core is ready to load one cycle later.
-    //   StLoad:  drive the block until the core takes it (captures last_q).
-    //   StBusy:  continuation block done when msg_block_ready re-asserts;
-    //            final block done when hash_done pulses.
-    //   StDone:  extra cycle until digest is final, then ready.
+    //   StIdle:   wait for the first block of a message; its valid doubles as
+    //             hash_start, and the core starts accepting one cycle later.
+    //   StPass:   pass valid through to the core, which takes a block whenever
+    //             its ready is high (waiting for data, or back-to-back in its
+    //             digest-update cycle). Each taken continuation block is
+    //             acknowledged by a registered one-cycle ready pulse.
+    //   StFinish: the last block has been taken; signal msg_block_done and
+    //             wait for hash_done.
+    //   StDone:   digest_o is final one cycle after hash_done pulses, so the
+    //             last block's ready is asserted here.
 
-    assign hash_start      = (state_q == StStart);
-    assign msg_block_valid = (state_q == StLoad);
-    assign msg_block_done  = (state_q == StBusy) & last_q;
+    assign hash_start      = (state_q == StIdle) & valid;
+    assign msg_block_valid = (state_q == StPass) & valid;
+    assign msg_block_done  = (state_q == StFinish);
 
-    assign ready = (state_q == StDone) |
-                   ((state_q == StBusy) & ~last_q & msg_block_ready);
+    assign ready = (state_q == StDone) | accepted_q;
 
     always_comb begin
         state_d = state_q;
 
         unique case (state_q)
-            StIdle: begin
-                if (valid) begin
-                    state_d = first_q ? StStart : StLoad;
-                end
-            end
-
-            StStart: begin
-                state_d = StLoad;
-            end
-
-            StLoad: begin
-                if (msg_block_ready) begin
-                    state_d = StBusy;
-                end
-            end
-
-            StBusy: begin
-                if (last_q) begin
-                    if (hash_done) state_d = StDone;
-                end else if (msg_block_ready) begin
-                    state_d = StIdle;
-                end
-            end
-
-            StDone: begin
-                state_d = StIdle;
-            end
-
-            default: state_d = StIdle;
+            StIdle:   if (valid)         state_d = StPass;
+            StPass:   if (accept & last) state_d = StFinish;
+            StFinish: if (hash_done)     state_d = StDone;
+            StDone:                      state_d = StIdle;
+            default:                     state_d = StIdle;
         endcase
     end
 
@@ -167,17 +145,19 @@ module sha2_wrap
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            last_q <= 1'b0;
+            accepted_q <= 1'b0;
         end else begin
-            last_q <= (msg_block_valid & msg_block_ready) ? last : last_q;
+            accepted_q <= accept & ~last;
         end
     end
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            first_q <= 1'b1;
-        end else begin
-            first_q <= (valid & ready) ? last : first_q;
+            blk_cnt_q <= '0;
+        end else if (hash_start) begin
+            blk_cnt_q <= '0;
+        end else if (accept) begin
+            blk_cnt_q <= blk_cnt_q + 16'd1;
         end
     end
 

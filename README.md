@@ -557,7 +557,7 @@ flowchart TB
             R_PK["WOTS PK storage:<br/>pk_store[0..33]"]
         end
 
-        ENG["SHA-2 Core<br/>Pavona prim_sha2, ~69 cycles/block"]
+        ENG["SHA-2 Core<br/>Pavona prim_sha2, ~67 cycles/block"]
 
         SM <--> REGS
         SM <-->|"valid, block, last<br/>ready, digest"| ENG
@@ -622,10 +622,10 @@ For a signature on message `M` with randomizer `C`, leaf index `q`, identifier `
 
 A single SHA-256 core is shared across all phases (Q, WOTS, Kc, Leaf, Merkle) — there is no parallel pipelining of WOTS+ and Kc. The block counter `blk_idx_q` together with `sha_last` drives multi-block sequencing.
 
-The hash engine is the [Pavona](https://github.com/pavona/pavona) `prim_sha2_compression` core (OpenTitan-derived), vendored byte-identical at a pinned commit under `verilog/rtl/vendor/pavona_prim_sha2/` (provenance and checksums in its README).
+The hash engine is the [Pavona](https://github.com/pavona/pavona) `prim_sha2_compression` core (OpenTitan-derived), vendored byte-identical at a pinned commit under `verilog/rtl/vendor/pavona_fbdfde633/` (provenance and checksums in its README).
 
 - Instantiated in the SHA-256-only configuration (`MultimodeEn = 0`); a shared-datapath SHA-256/384/512 multimode configuration is available at synthesis time
-- ~69 cycles per 512-bit block (block load + init + 64 rounds + digest update, plus wrapper handshake)
+- ~67 cycles per 512-bit block back-to-back (block load + init + 64 rounds + digest update), plus ~3 wrapper cycles of start/finish per message
 - 16-register sliding window for W message schedule
 - Digest state is externally writable (`digest_i`/`digest_we_i`), enabling future IV loading and hash-context switching (e.g. incremental Kc accumulation)
 
@@ -637,11 +637,11 @@ Total verification takes approximately **300 K cycles**, dominated by WOTS+ chai
 
 | Phase | Cycles | Notes |
 |-------|--------|-------|
-| Q hash | ~138 | 2 SHA-256 blocks |
+| Q hash | ~137 | 2 SHA-256 blocks |
 | WOTS+ chains | ~300 K | 34 chains × ~127 hashes avg |
-| Kc accumulation | ~1050 | 18 SHA-256 blocks |
-| Leaf hash | ~69 | 1 SHA-256 block |
-| Merkle path (h=4) | ~552 | 4 levels × 2 blocks|
+| Kc accumulation | ~1210 | 18 SHA-256 blocks |
+| Leaf hash | ~70 | 1 SHA-256 block |
+| Merkle path (h=4) | ~548 | 4 levels × 2 blocks|
 | Ooverhead | small | State transitions, flow control |
 
 At 1 GHz, verification completes in ~0.3 ms, well within the licensing interval (minutes to days).
