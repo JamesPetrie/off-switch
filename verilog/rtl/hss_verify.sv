@@ -3,11 +3,11 @@
 // Single-module implementation of RFC 8554 HSS/LMS verification.
 // One SHA-256 core shared by all phases, sequenced by a main FSM:
 //
-//   Sequencer  — phases: Idle → Q → Wots → Kc → Leaf → Merkle → Done
+//   Sequencer  — phases: Idle → Q → Wots → KcFinal → Leaf → Merkle → Done
 //   Q          — hash for message digest Q
 //   WOTS       — hash WOTS chains forward to their public keys (sub-FSM),
 //                folding each finished pk into the Kc hash as it appears
-//   Kc         — resume the Kc hash one final time for the padding block
+//   KcFinal    — resume the Kc hash one final time for the padding block
 //   Leaf       — hash for leaf node
 //   Merkle     — walk auth path from leaf to root (sub-FSM)
 //
@@ -16,7 +16,8 @@
 // 512-bit block of the Kc message, that block is absorbed into the suspended
 // Kc hash and the running state is saved again (256 bits) while chain hashing
 // continues. This replaces storing all WOTS_P endpoints (34 x 256 bits) with
-// one saved state, one banked endpoint and a partial-block carry.
+// one saved state, the two endpoints of the block in flight and a
+// partial-block carry.
 //
 // Note: Deviation from the standard!
 // Verification runs bottom-up: start at layer HSS_LEVELS-1 (leaf tree that
@@ -65,7 +66,7 @@ module hss_verify
     // -------------------------------------------------------------------------
 
     typedef enum logic [3:0] {
-        StIdle, StQ, StWots, StKc, StLeaf, StMerkle, StDone
+        StIdle, StQ, StWots, StKcFinal, StLeaf, StMerkle, StDone
     } seq_state_e;
 
     // Header beats per layer: {leaf_index, sub_I} then the randomizer.
@@ -87,8 +88,10 @@ module hss_verify
     // The Kc message is I || q || D_PBLC followed by the WOTS_P chain
     // endpoints. The prefix offsets the endpoint stream so that each endpoint
     // pair completes exactly one 512-bit block (2*WIDTH == 512), leaving the
-    // same KC_PREFIX_W-bit carry after every absorb. Relies on WOTS_P being
-    // even; the final absorb then leaves only the padding block for StKc.
+    // same KC_PREFIX_W-bit carry after every absorb. The final padding block
+    // then carries the leftover: just the carry when WOTS_P is even, or the
+    // carry plus the unpaired banked endpoint when WOTS_P is odd (both fit,
+    // with 65 padding bits after 176 respectively 432 bits of data).
     // -------------------------------------------------------------------------
 
     localparam int unsigned KC_PREFIX_W = IDENT_W + 32 + 16;         // I || q || D_PBLC
@@ -137,10 +140,16 @@ module hss_verify
     logic [$clog2(TREE_H_MAX)-1:0] mrkl_level_q,  mrkl_level_d;
 
     // Kc interleaved accumulation (replaces the former 34 x 256-bit pk store):
-    // suspended SHA state, the banked even-chain endpoint awaiting its block
-    // partner, and the partial-block carry left over after each absorb.
+    // suspended SHA state, the two endpoints of the block being assembled,
+    // and the partial-block carry left over after each absorb.
+    //
+    // REVISIT: kc_lo/kc_odd duplicate endpoints that hash_reg also carries,
+    // so the Kc datapath does not depend on the digest being registered
+    // twice (core and verifier — see the design-doc limitation on double
+    // registering). Revisit together with that limitation.
     logic [WIDTH-1:0]       kc_state_q;
     logic [WIDTH-1:0]       kc_lo_q;
+    logic [WIDTH-1:0]       kc_odd_q;
     logic [KC_CARRY_W-1:0]  kc_hi_q;
 
     // Merkle node index
@@ -308,7 +317,7 @@ module hss_verify
     // WOTS-phase absorbs (StWotsAccum, odd chains) assemble a data block from
     // the carry (the prefix itself for the first block), the banked even
     // endpoint and the head of the odd endpoint still sitting in hash_reg;
-    // the tail of the odd endpoint becomes the next carry. StKc then only
+    // the tail of the odd endpoint becomes the next carry. StKcFinal then only
     // absorbs the final block: the last carry plus padding.
     // -------------------------------------------------------------------------
 
@@ -317,20 +326,41 @@ module hss_verify
 
     wire kc_odd       = wots_chain_q[0];
     wire kc_first_blk = (wots_chain_q == 6'd1);
-    wire kc_absorbing = (seq_q == StWots) && (wots_q == StWotsAccum) && kc_odd;
+    wire kc_final     = (seq_q == StKcFinal);
+    wire kc_absorbing = ((seq_q == StWots) && (wots_q == StWotsAccum) && kc_odd)
+                        || kc_final;
+
+    // Strobes of the accumulation registers below: endpoints are captured as
+    // they are produced (the last chain hash, or the signature beat itself
+    // when the digit is already at its maximum), and the suspended state is
+    // latched back at each save's ready pulse.
+    wire kc_endpoint = (seq_q == StWots) && (wots_q != StWotsAccum)
+                                         && (wots_d == StWotsAccum);
+    wire kc_saved    = sha_save && sha_ready;
+
+    wire [WIDTH-1:0] kc_endpoint_val = (wots_q == StWotsLoad) ? data : sha_digest;
 
     wire [KC_CARRY_W-1:0] kc_carry = kc_first_blk ? {cur_I, leaf_index_q, D_PBLC}
                                                   : kc_hi_q;
 
     wire [511:0] kc_absorb_block = {kc_carry, kc_lo_q,
-                                    hash_reg_q[WIDTH-1 -: KC_TOP_W]};
-    wire [511:0] kc_final_block  = {kc_hi_q, 1'b1, {KC_PAD_ZEROS{1'b0}},
-                                    64'(KC_DATA_BITS)};
+                                    kc_odd_q[WIDTH-1 -: KC_TOP_W]};
 
-    // WOTS-phase absorbs suspend the Kc hash; every Kc block after the first
-    // resumes from the saved state, including the final one in StKc.
-    assign sha_save    = kc_absorbing;
-    assign sha_restore = (kc_absorbing && !kc_first_blk) || (seq_q == StKc);
+    // Final padding block: the carry alone (even WOTS_P), or the carry plus
+    // the unpaired banked endpoint (odd WOTS_P).
+    logic [511:0] kc_final_block;
+    if (WOTS_P % 2 == 1) begin : gen_kc_final_odd
+        assign kc_final_block = {kc_hi_q, kc_lo_q, 1'b1, {KC_PAD_ZEROS{1'b0}},
+                                 64'(KC_DATA_BITS)};
+    end else begin : gen_kc_final_even
+        assign kc_final_block = {kc_hi_q, 1'b1, {KC_PAD_ZEROS{1'b0}},
+                                 64'(KC_DATA_BITS)};
+    end
+
+    // Every Kc block except the final one suspends the Kc hash; every one
+    // after the first resumes it from the saved state.
+    assign sha_save    = kc_absorbing && !kc_final;
+    assign sha_restore = kc_absorbing && !kc_first_blk;
 
     // -------------------------------------------------------------------------
     // Leaf: H(I || q || D_LEAF || Kc)
@@ -395,14 +425,14 @@ module hss_verify
     logic [$bits(mrkl_padded)-1:0]  mrkl_discard;
     /* verilator lint_on UNUSEDSIGNAL */
 
-    // Block counter. WOTS-phase Kc absorbs never advance it: their position
-    // in the Kc message is tracked by the chain index instead, and the next
-    // chain hash must still see index zero.
+    // Block counter — not used by Kc at all: a Kc block's position in the
+    // message is tracked by the chain index instead, and the next chain
+    // hash must still see index zero.
     always_comb begin
         blk_idx_d = blk_idx_q;
 
-        if (sha_ready) begin
-            blk_idx_d = (~sha_last && ~kc_absorbing) ? blk_idx_q + 1 : 0;
+        if (sha_ready && !kc_absorbing) begin
+            blk_idx_d = ~sha_last ? blk_idx_q + 1 : 0;
         end
     end
     always_ff @(posedge clk or negedge rst_n) begin
@@ -413,10 +443,9 @@ module hss_verify
         end
     end
 
-    // Last block flag. Kc bypasses the counter: WOTS-phase absorbs suspend
-    // the Kc message (never last), StKc absorbs exactly the final block.
-    assign sha_last = kc_absorbing    ? 1'b0 :
-                      (seq_q == StKc) ? 1'b1 :
+    // Last block flag. Kc bypasses the counter: only the final padding
+    // block closes the Kc message, every other absorb suspends it.
+    assign sha_last = kc_absorbing ? kc_final :
                       (int'(blk_idx_q) == num_blocks-1) ? 1'b1 : 1'b0;
 
     // Input vector and block selection
@@ -426,11 +455,10 @@ module hss_verify
         num_blocks =  0;
         sha_block  = '0;
 
-        // Note: 0 instead of '0 avoids verilator WIDTHCONCAT on wide vectors
-        q_msg_discard = 0;
-        q_sub_discard = 0;
-        leaf_discard  = 0;
-        mrkl_discard  = 0;
+        q_msg_discard = '0;
+        q_sub_discard = '0;
+        leaf_discard  = '0;
+        mrkl_discard  = '0;
 
         // Append 512'b0 for the shifts on the right side so widths are equal
         unique case (seq_q)
@@ -451,7 +479,7 @@ module hss_verify
                     sha_block  = wots_padded;
                 end
             end
-            StKc: begin
+            StKcFinal: begin
                 sha_block = kc_final_block;
             end
             StLeaf: begin
@@ -512,17 +540,16 @@ module hss_verify
     end
 
     // -------------------------------------------------------------------------
-    // Kc accumulation registers — banked endpoint, saved state and carry
+    // Kc accumulation registers — block endpoints, saved state and carry
     // -------------------------------------------------------------------------
-
-    wire kc_bank  = (seq_q == StWots) && (wots_q == StWotsAccum) && !kc_odd;
-    wire kc_saved = kc_absorbing && sha_ready;
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            kc_lo_q <= '0;
-        end else if (kc_bank) begin
-            kc_lo_q <= hash_reg_q;
+            kc_lo_q  <= '0;
+            kc_odd_q <= '0;
+        end else if (kc_endpoint) begin
+            if (kc_odd) kc_odd_q <= kc_endpoint_val;
+            else        kc_lo_q  <= kc_endpoint_val;
         end
     end
 
@@ -534,7 +561,7 @@ module hss_verify
             kc_hi_q    <= '0;
         end else if (kc_saved) begin
             kc_state_q <= sha_digest;
-            kc_hi_q    <= hash_reg_q[KC_CARRY_W-1:0];
+            kc_hi_q    <= kc_odd_q[KC_CARRY_W-1:0];
         end
     end
 
@@ -603,15 +630,16 @@ module hss_verify
 
                 StWotsAccum: begin
                     if (!kc_odd) begin
-                        // Even chain: bank the endpoint (kc_lo latches
-                        // outside this block) until its partner completes.
-                        wots_chain_d = wots_chain_q + 1'b1;
-                        wots_d       = StWotsLoad;
+                        // Even chain: its endpoint is already banked in
+                        // kc_lo; wait for its partner — or, on the last
+                        // chain (odd WOTS_P), leave it for the final
+                        // padding block.
+                        wots_chain_d  = ~last_chain ? wots_chain_q+1 : '0;
+                        wots_d        = ~last_chain ? StWotsLoad     : StWotsInit;
+                        wots_complete = last_chain;
                     end else begin
                         // Odd chain: absorb the assembled block into the
                         // suspended Kc hash; kc_state/kc_hi latch on ready.
-                        // The last chain is odd (WOTS_P even), so the final
-                        // absorb and wots_complete land here.
                         wots_sha_valid = 1'b1;
                         if (sha_ready) begin
                             wots_chain_d  = ~last_chain ? wots_chain_q+1 : '0;
@@ -746,11 +774,11 @@ module hss_verify
                 // The WOTS step has multiple iterations, delegate hash control to WOTS sub-FSM
                 sha_valid = wots_sha_valid;
                 if (wots_complete) begin
-                    seq_d = StKc;
+                    seq_d = StKcFinal;
                 end
             end
 
-            StKc: begin
+            StKcFinal: begin
                 // Start Kc hash and wait to complete
                 sha_valid = 1'b1;
                 if (hash_complete) begin
