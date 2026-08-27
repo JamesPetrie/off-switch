@@ -108,14 +108,18 @@ module sha2_wrap
     //             its ready is high (waiting for data, or back-to-back in its
     //             digest-update cycle). Each taken continuation block is
     //             acknowledged by a registered one-cycle ready pulse.
-    //   StFinish: the last block has been taken; signal msg_block_done and
-    //             wait for hash_done.
+    //   StFinish: the last block has been taken (msg_block_done accompanied
+    //             it in the handshake cycle); wait for hash_done.
     //   StDone:   digest_o is final one cycle after hash_done pulses, so the
     //             last block's ready is asserted here.
 
     assign hash_start      = (state_q == StIdle) & valid;
     assign msg_block_valid = (state_q == StPass) & valid;
-    assign msg_block_done  = (state_q == StFinish);
+    // done is qualified by the handshake: it accompanies the last block's
+    // valid/ready cycle. A level not gated by ready would latch early while
+    // the previous block is still compressing (the last block already sits
+    // on the bus back-to-back).
+    assign msg_block_done  = accept & last;
 
     assign ready = (state_q == StDone) | accepted_q;
 
