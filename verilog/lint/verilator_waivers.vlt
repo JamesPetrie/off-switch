@@ -1,4 +1,8 @@
 `verilator_config
 
-// Waive lint warnings in the third-party SHA-256 core.
-lint_off -file "*/sha256/*"
+// Waive lint warnings in the vendored third-party SHA-2 core.
+lint_off -file "*/vendor/pavona_fbdfde633/*"
+
+// Unused observability outputs of the vendored core are deliberately left
+// unconnected in the wrapper (see the port comments there).
+lint_off -rule PINCONNECTEMPTY -file "*/sha2_wrap.sv"
