@@ -538,11 +538,17 @@ module hss_verify
     // Kc accumulation registers — banked endpoint, staged carry, saved state
     // -------------------------------------------------------------------------
 
+    // The copy must not extend into the absorb's ready cycle: without the
+    // double-registered digest the absorb itself rewrites the digest during
+    // WotsAccum, so a late copy would take the Kc state instead of the
+    // endpoint. REVISIT: properly this samples in the cycle the core takes
+    // the block, which needs the wrapper handshake extended with a done
+    // indication; the guard marks the intent until then.
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             kc_lo_q   <= '0;
             kc_tail_q <= '0;
-        end else if (kc_accum) begin
+        end else if (kc_accum && (!kc_odd || !sha_ready)) begin
             if (kc_odd) kc_tail_q <= hash_reg_q[KC_CARRY_W-1:0];
             else        kc_lo_q   <= hash_reg_q;
         end
