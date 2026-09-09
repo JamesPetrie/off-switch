@@ -18,6 +18,77 @@ package hbsv_schs_pkg;
     localparam int unsigned DATA_W = arith_pkg::WIDTH;
 
     // -------------------------------------------------------------------------
+    // Scheme parameters
+    // -------------------------------------------------------------------------
+
+    // Node / signature-element / licence-beat width
+    function automatic int unsigned digest_w(input sch_e s);
+        case (s)
+            SCHEME_LMS: return arith_pkg::WIDTH;                            // 256
+            default:    return 0;
+        endcase
+    endfunction
+
+    // Winternitz digit width and chain count (data digits, checksum digits)
+    function automatic int unsigned digit_w(input sch_e s);
+        case (s)
+            SCHEME_LMS: return hss_pkg::WOTS_W;                             // 8
+            default:    return 0;
+        endcase
+    endfunction
+    function automatic int unsigned ots_len1(input sch_e s);
+        case (s)
+            SCHEME_LMS: return hss_pkg::WOTS_P1;                            // 32
+            default:    return 0;
+        endcase
+    endfunction
+    function automatic int unsigned ots_len2(input sch_e s);
+        case (s)
+            SCHEME_LMS: return hss_pkg::WOTS_P2;                            // 2
+            default:    return 0;
+        endcase
+    endfunction
+    function automatic int unsigned ots_len(input sch_e s);
+        case (s)
+            SCHEME_LMS: return hss_pkg::WOTS_P;                             // 34
+            default:    return 0;
+        endcase
+    endfunction
+    // Left shift of the 16-bit checksum before its digits are taken
+    // (RFC 8554 ls = 16 - len2 * w)
+    function automatic int unsigned csum_shift(input sch_e s);
+        return 16 - ots_len2(s) * digit_w(s);                               // 0
+    endfunction
+
+    // Hypertree: number of layers, tree height, and the level counter width
+    function automatic int unsigned layers(input sch_e s);
+        case (s)
+            SCHEME_LMS: return hss_pkg::HSS_LEVELS;                         // 2
+            default:    return 0;
+        endcase
+    endfunction
+    function automatic int unsigned tree_h(input sch_e s);
+        case (s)
+            SCHEME_LMS: return hss_pkg::TREE_H;                             // 5
+            default:    return 0;
+        endcase
+    endfunction
+    function automatic int unsigned level_w(input sch_e s);
+        case (s)
+            SCHEME_LMS: return $clog2(hss_pkg::TREE_H_MAX);                 // 5
+            default:    return 1;
+        endcase
+    endfunction
+
+    // Header beats at the start of each layer's signature
+    function automatic int unsigned hdr_beats(input sch_e s);
+        case (s)
+            SCHEME_LMS: return hss_pkg::LAYER_HDR_BEATS;                    // 2
+            default:    return 0;
+        endcase
+    endfunction
+
+    // -------------------------------------------------------------------------
     // Hash-message widths
     // -------------------------------------------------------------------------
 
@@ -28,6 +99,37 @@ package hbsv_schs_pkg;
 
     // Prefix of the OTS public-key accumulation (LMS: I || q || D_PBLC)
     localparam int unsigned ACC_PREFIX_W = $bits(hss_pkg::lms_prefix_t);          // 176
+
+    // -------------------------------------------------------------------------
+    // Endpoint accumulation geometry (LMS Kc)
+    //
+    // The prefix is 22 bytes, so with E-byte elements a 64-byte block
+    // boundary falls (42 mod E) bytes into an element: every absorbed block
+    // ends with that element head and leaves the rest of the element as the
+    // carry into the next block. The first block holds the prefix and
+    // (64-22)/E full elements, later blocks the carry and 64/E - 1 full
+    // elements; the final padding block holds the carry and whatever
+    // elements are still banked when the stream ends.
+    // -------------------------------------------------------------------------
+
+    function automatic int unsigned acc_first_full(input sch_e s);
+        return (512 - ACC_PREFIX_W) / digest_w(s);                          // 1
+    endfunction
+    function automatic int unsigned acc_mid_full(input sch_e s);
+        return 512 / digest_w(s) - 1;                                       // 1
+    endfunction
+    function automatic int unsigned acc_head_w(input sch_e s);
+        return (512 - ACC_PREFIX_W) % digest_w(s);                          // 80
+    endfunction
+    function automatic int unsigned acc_carry_w(input sch_e s);
+        return digest_w(s) - acc_head_w(s);                                 // 176
+    endfunction
+    // Elements still banked when a stream of n elements ends: absorbs fall
+    // at element acc_first_full, then every acc_mid_full + 1 elements.
+    function automatic int unsigned acc_tail_elems(input sch_e s, input int unsigned n);
+        if (n <= acc_first_full(s)) return n;
+        return (n - 1 - acc_first_full(s)) % (acc_mid_full(s) + 1);        // 0
+    endfunction
 
     // Bits actually presented for each message
     function automatic int unsigned msg_hash_bits(input sch_e s, input bit sub);
