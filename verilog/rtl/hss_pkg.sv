@@ -100,14 +100,14 @@ package hss_pkg;
     // Derived parameters
     // -------------------------------------------------------------------------
 
-    // layer counter width
-    localparam int unsigned LAYER_CNT_W = (HSS_LEVELS>1) ? $clog2(HSS_LEVELS) : 1;
-
     // total digits per chain
     localparam int unsigned WOTS_P = WOTS_P1 + WOTS_P2;
 
-    // WOTS digit maximum value (all 1s)
+    // WOTS digit maximum value (all 1s). The verifier derives its own from
+    // the scheme; the testbench signer reads this one.
+    /* verilator lint_off UNUSEDPARAM */
     localparam logic [WOTS_W-1:0] WOTS_MAX_COEF = '1;
+    /* verilator lint_on UNUSEDPARAM */
 
     // -------------------------------------------------------------------------
     // Hash-message layouts (RFC 8554 field order, most significant first)
