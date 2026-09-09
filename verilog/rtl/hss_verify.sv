@@ -40,7 +40,12 @@
 module hss_verify
     import arith_pkg::*;
     import hss_pkg::*;
-(
+    import hbsv_ctrl_pkg::*;
+    import hbsv_schs_pkg::*;
+#(
+    // Signature scheme; every message layout below is a function of it
+    parameter sch_e SCH = SCHEME_LMS
+) (
     input  logic               clk,
     input  logic               rst_n,
     input  logic [WIDTH-1:0]   message,
@@ -94,7 +99,7 @@ module hss_verify
     // with 65 padding bits after 176 respectively 432 bits of data).
     // -------------------------------------------------------------------------
 
-    localparam int unsigned KC_PREFIX_W = IDENT_W + 32 + 16;         // I || q || D_PBLC
+    localparam int unsigned KC_PREFIX_W = ACC_PREFIX_W;                // I || q || D_PBLC
     localparam int unsigned KC_TOP_W    = 512 - KC_PREFIX_W - WIDTH; // odd-endpoint head bits
     localparam int unsigned KC_CARRY_W  = WIDTH - KC_TOP_W;          // == KC_PREFIX_W
 
@@ -201,6 +206,17 @@ module hss_verify
                                       : cur_I_q;
 
     // -------------------------------------------------------------------------
+    // Control bundle — the counters in the form the hash messages read them
+    // -------------------------------------------------------------------------
+
+    wire ctrl_t ctrl = '{layer: 3'(layer_q),
+                         chain: 7'(wots_chain_q),
+                         step:  8'(wots_step_q),
+                         level: 5'(mrkl_level_q),
+                         nidx:  node_index_q,
+                         leaf:  leaf_index_q};
+
+    // -------------------------------------------------------------------------
     // Data indexed by WOTS chain / Merkle level
     // -------------------------------------------------------------------------
 
@@ -245,7 +261,8 @@ module hss_verify
     // -------------------------------------------------------------------------
     // SHA-256 hash inputs — continuous padded bitvectors
     //
-    // Using macros to avoid repeating construction for size and value
+    // Each message is built by hbsv_schs_pkg for the scheme SCH, narrowed
+    // to the scheme's width, then padded.
     // -------------------------------------------------------------------------
 
     // Hash input padding
@@ -274,16 +291,15 @@ module hss_verify
     //                                 just computed by the layer below)
     // -------------------------------------------------------------------------
 
-`define Q_PREFIX {cur_I, leaf_index_q, D_MESG, aux_reg_q}
+    localparam int unsigned Q_MSG_W = msg_hash_bits(SCH, 1'b0);
+    localparam int unsigned Q_SUB_W = msg_hash_bits(SCH, 1'b1);
 
-`define Q_MSG_DATA {`Q_PREFIX, message}
-    wire [$bits(`Q_MSG_DATA)-1 : 0] q_msg_data = `Q_MSG_DATA;
-`undef Q_MSG_DATA
+    wire [Q_MSG_W-1:0] q_msg_data = Q_MSG_W'(msg_hash_msg(SCH, cur_I, ctrl, aux_reg_q, message,
+                                                          1'b0, prev_I_q, hash_reg_q));
 
     // sub_I is indexed at layer_q+1 (identity of the tree below)
-`define Q_SUB_DATA {`Q_PREFIX, LMS_TYPE, LMOTS_TYPE, prev_I_q, hash_reg_q}
-    wire [$bits(`Q_SUB_DATA)-1 : 0] q_sub_data = `Q_SUB_DATA;
-`undef Q_SUB_DATA
+    wire [Q_SUB_W-1:0] q_sub_data = Q_SUB_W'(msg_hash_msg(SCH, cur_I, ctrl, aux_reg_q, message,
+                                                          1'b1, prev_I_q, hash_reg_q));
 
     localparam int unsigned Q_MSG_BLOCKS    = calc_sha_blocks($bits(q_msg_data));
     localparam int unsigned Q_MSG_PAD_ZEROS = calc_sha_pad_zeros($bits(q_msg_data));
@@ -299,10 +315,9 @@ module hss_verify
     // WOTS chain: H(I || q || i || j || tmp)
     // -------------------------------------------------------------------------
 
-`define WOTS_DATA {cur_I, leaf_index_q, 16'(wots_chain_q), \
-                   8'(wots_step_q), hash_reg_q}
-    wire [$bits(`WOTS_DATA)-1 : 0] wots_data = `WOTS_DATA;
-`undef WOTS_DATA
+    localparam int unsigned WOTS_MSG_W = chain_msg_bits(SCH);
+
+    wire [WOTS_MSG_W-1:0] wots_data = WOTS_MSG_W'(ots_chain_msg(SCH, cur_I, ctrl, hash_reg_q));
 
     // WOTS is designed to fit in a single block, assume BLOCKS=1
     //localparam int unsigned WOTS_BLOCKS    = calc_sha_blocks($bits(wots_data));
@@ -335,8 +350,9 @@ module hss_verify
     // the suspended state is latched back at each save's ready pulse.
     wire kc_saved = sha_save && sha_ready;
 
-    wire [KC_CARRY_W-1:0] kc_carry = kc_first_blk ? {cur_I, leaf_index_q, D_PBLC}
-                                                  : kc_hi_q;
+    wire [KC_PREFIX_W-1:0] kc_prefix = ots_pk_prefix(SCH, cur_I, ctrl);
+
+    wire [KC_CARRY_W-1:0] kc_carry = kc_first_blk ? kc_prefix : kc_hi_q;
 
     wire [511:0] kc_absorb_block = {kc_carry, kc_lo_q,
                                     hash_reg_q[WIDTH-1 -: KC_TOP_W]};
@@ -361,9 +377,9 @@ module hss_verify
     // Leaf: H(I || q || D_LEAF || Kc)
     // -------------------------------------------------------------------------
 
-`define LEAF_DATA {cur_I, leaf_index_q, D_LEAF, hash_reg_q}
-    wire [$bits(`LEAF_DATA)-1 : 0] leaf_data = `LEAF_DATA;
-`undef LEAF_DATA
+    localparam int unsigned LEAF_MSG_W = leaf_msg_bits(SCH);
+
+    wire [LEAF_MSG_W-1:0] leaf_data = LEAF_MSG_W'(leaf_msg(cur_I, ctrl, hash_reg_q));
 
     localparam int unsigned LEAF_BLOCKS    = calc_sha_blocks($bits(leaf_data));
     localparam int unsigned LEAF_PAD_ZEROS = calc_sha_pad_zeros($bits(leaf_data));
@@ -393,9 +409,10 @@ module hss_verify
     // Merkle: H(I || parent || D_INTR || left || right)
     // -------------------------------------------------------------------------
 
-`define MRKL_DATA {cur_I, parent_num, D_INTR, left_node, right_node}
-    wire [$bits(`MRKL_DATA)-1 : 0] mrkl_data = `MRKL_DATA;
-`undef MRKL_DATA
+    localparam int unsigned MRKL_MSG_W = tree_msg_bits(SCH);
+
+    wire [MRKL_MSG_W-1:0] mrkl_data = MRKL_MSG_W'(ots_tree_join_msg(SCH, cur_I, ctrl,
+                                                                    left_node, right_node));
 
     localparam int unsigned MRKL_BLOCKS    = calc_sha_blocks($bits(mrkl_data));
     localparam int unsigned MRKL_PAD_ZEROS = calc_sha_pad_zeros($bits(mrkl_data));
