@@ -9,6 +9,8 @@
 ./ecdsa_pkg.sv
 ./ecdsa.sv
 ./hss_pkg.sv
+./hbsv_ctrl_pkg.sv
+./hbsv_schs_pkg.sv
 ./sha2_wrap.sv
 ./hss_verify.sv
 ./security_block.sv

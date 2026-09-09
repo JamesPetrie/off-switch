@@ -100,14 +100,67 @@ package hss_pkg;
     // Derived parameters
     // -------------------------------------------------------------------------
 
-    // layer counter width
-    localparam int unsigned LAYER_CNT_W = (HSS_LEVELS>1) ? $clog2(HSS_LEVELS) : 1;
-
     // total digits per chain
     localparam int unsigned WOTS_P = WOTS_P1 + WOTS_P2;
 
-    // WOTS digit maximum value (all 1s)
+    // WOTS digit maximum value (all 1s). The verifier derives its own from
+    // the scheme; the testbench signer reads this one.
+    /* verilator lint_off UNUSEDPARAM */
     localparam logic [WOTS_W-1:0] WOTS_MAX_COEF = '1;
+    /* verilator lint_on UNUSEDPARAM */
+
+    // -------------------------------------------------------------------------
+    // Hash-message layouts (RFC 8554 field order, most significant first)
+    // -------------------------------------------------------------------------
+
+    // I || q || D: the prefix of every hash tied to a leaf
+    typedef struct packed {
+        logic [IDENT_W-1:0] i;
+        logic [31:0]        q;
+        logic [15:0]        d;
+    } lms_prefix_t;
+
+    // Q at the message layer: I || q || D_MESG || C || message
+    typedef struct packed {
+        lms_prefix_t      pre;
+        logic [WIDTH-1:0] c;
+        logic [WIDTH-1:0] msg;
+    } lms_q_msg_t;
+
+    // Q at an upper layer: I || q || D_MESG || C || serialised public key of
+    // the layer below (lms_type || lmots_type || I || T[1])
+    typedef struct packed {
+        lms_prefix_t        pre;
+        logic [WIDTH-1:0]   c;
+        lms_algorithm_t     lms_type;
+        lmots_algorithm_t   lmots_type;
+        logic [IDENT_W-1:0] sub_i;
+        logic [WIDTH-1:0]   root;
+    } lms_q_sub_msg_t;
+
+    // WOTS chain step: I || q || i || j || tmp
+    typedef struct packed {
+        logic [IDENT_W-1:0] i;
+        logic [31:0]        q;
+        logic [15:0]        chain;
+        logic [7:0]         step;
+        logic [WIDTH-1:0]   tmp;
+    } lms_chain_msg_t;
+
+    // Leaf: I || q || D_LEAF || Kc
+    typedef struct packed {
+        lms_prefix_t      pre;
+        logic [WIDTH-1:0] kc;
+    } lms_leaf_msg_t;
+
+    // Interior node: I || r || D_INTR || left || right
+    typedef struct packed {
+        logic [IDENT_W-1:0] i;
+        logic [31:0]        node;
+        logic [15:0]        d;
+        logic [WIDTH-1:0]   left;
+        logic [WIDTH-1:0]   right;
+    } lms_intr_msg_t;
 
     // -------------------------------------------------------------------------
     // HSS-LMS license format
