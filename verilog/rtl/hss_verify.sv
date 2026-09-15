@@ -44,10 +44,11 @@ module hss_verify
 #(
     // Signature scheme; every constant and message layout below is a
     // function of it
-    parameter sch_e SCH = SCHEME_LMS,
+    parameter sch_e SCH = SCHEME_HSS,
 
     // Node, signature-element and licence-beat width
-    localparam int unsigned DW = digest_w(SCH)
+    localparam int unsigned DW     = digest_w(SCH),
+    localparam int unsigned KCTX_W = kctx_w(SCH)
 ) (
     input  logic               clk,
     input  logic               rst_n,
@@ -75,14 +76,12 @@ module hss_verify
 
     localparam int unsigned LAYERS   = layers(SCH);     // hypertree layers
     localparam int unsigned TREE_HT  = tree_h(SCH);     // Merkle tree height
-    localparam int unsigned LEVEL_W  = level_w(SCH);    // Merkle level counter width
     localparam int unsigned OTS_LEN1 = ots_len1(SCH);   // WOTS data digits
     localparam int unsigned OTS_LEN  = ots_len(SCH);    // WOTS chains (data + checksum)
     localparam int unsigned DIGIT_W  = digit_w(SCH);    // Winternitz digit width
-    localparam int unsigned CSUM_LS  = csum_shift(SCH); // checksum left shift
 
-    localparam int unsigned LAYER_W = (LAYERS > 1) ? $clog2(LAYERS) : 1;
-    localparam int unsigned CHAIN_W = $clog2(OTS_LEN);
+    localparam int unsigned OTS_LEN2 = ots_len2(SCH);   // WOTS checksum digits
+    localparam int unsigned CSUM_W   = OTS_LEN2 * DIGIT_W;
 
     // WOTS digit maximum value (all 1s)
     localparam logic [DIGIT_W-1:0] DIGIT_MAX = '1;
@@ -113,30 +112,17 @@ module hss_verify
     // Kc interleaving geometry
     //
     // The Kc message is I || q || D_PBLC followed by the OTS_LEN chain
-    // endpoints; hbsv_schs_pkg derives the block geometry from the endpoint
-    // width. With 256-bit endpoints the prefix offsets the endpoint stream so
-    // that each endpoint pair completes exactly one 512-bit block, leaving
-    // the same KC_CARRY_W-bit carry after every absorb. The final padding
-    // block then carries the leftover: just the carry when OTS_LEN is even,
-    // or the carry plus the unpaired banked endpoint when OTS_LEN is odd
-    // (both fit, with 65 padding bits after 176 respectively 432 bits of
-    // data).
+    // endpoints. The prefix offsets the endpoint stream so that each endpoint
+    // pair completes exactly one 512-bit block (2*DW == 512), leaving the
+    // same KC_PREFIX_W-bit carry after every absorb. The final padding block
+    // then carries the leftover: just the carry when OTS_LEN is even, or the
+    // carry plus the unpaired banked endpoint when OTS_LEN is odd (both fit,
+    // with 65 padding bits after 176 respectively 432 bits of data).
     // -------------------------------------------------------------------------
 
-    localparam int unsigned KC_PREFIX_W = ACC_PREFIX_W;                 // I || q || D_PBLC
-    localparam int unsigned KC_FIRST    = acc_first_full(SCH);          // banked in block 0
-    localparam int unsigned KC_MID      = acc_mid_full(SCH);            // banked in later blocks
-    localparam int unsigned KC_TOP_W    = acc_head_w(SCH);              // head bits closing a block
-    localparam int unsigned KC_CARRY_W  = acc_carry_w(SCH);             // tail bits carried over
-    localparam int unsigned KC_TAIL     = acc_tail_elems(SCH, OTS_LEN); // still banked at the end
-
-    // The interleaving below banks one endpoint per block (the even one)
-    // and closes the block with the next. That is the geometry of 256-bit
-    // endpoints; a scheme that fits more endpoints per block would need a
-    // bank of KC_MID of them.
-    if (KC_FIRST != 1 || KC_MID != 1) begin : gen_kc_unsupported
-        $error("hss_verify: Kc interleaving supports one banked endpoint per block");
-    end
+    localparam int unsigned KC_PREFIX_W = ACC_PREFIX_W;             // I || q || D_PBLC
+    localparam int unsigned KC_TOP_W    = 512 - KC_PREFIX_W - DW;   // odd-endpoint head bits
+    localparam int unsigned KC_CARRY_W  = DW - KC_TOP_W;            // == KC_PREFIX_W
 
     // -------------------------------------------------------------------------
     // Registers
@@ -154,7 +140,7 @@ module hss_verify
     // hash input, and cur_I parameterises every hash of the layer, so the only
     // registers idle at that point are the Kc accumulation ones (kc_lo would
     // fit). Worth another look if HSS-LMS is picked up again.
-    logic [31:0]            leaf_index_q, leaf_index_d;
+    logic [LEAF_IDX_W-1:0]  leaf_index_q, leaf_index_d;
     logic [KCTX_W-1:0]      cur_I_q,      cur_I_d;
     logic [KCTX_W-1:0]      prev_I_q,     prev_I_d;
     logic [HDR_CNT_W-1:0]   hdr_cnt_q,    hdr_cnt_d;
@@ -173,11 +159,11 @@ module hss_verify
     logic [4:0]       blk_idx_q,     blk_idx_d;
 
     // WOTS counters (driven by WOTS sub-FSM)
-    logic [CHAIN_W-1:0] wots_chain_q, wots_chain_d; // chain index 0..OTS_LEN-1
-    logic [DIGIT_W-1:0] wots_step_q,  wots_step_d;  // step within chain
+    logic [CHAIN_IDX_W-1:0] wots_chain_q, wots_chain_d; // chain index 0..OTS_LEN-1
+    logic [HASH_IDX_W-1:0]  wots_step_q,  wots_step_d;  // step within chain
 
     // Merkle tree level (driven by Merkle sub-FSM)
-    logic [LEVEL_W-1:0] mrkl_level_q, mrkl_level_d;
+    logic [MRKL_LEVEL_W-1:0] mrkl_level_q, mrkl_level_d;
 
     // Kc interleaved accumulation (replaces the former 34 x 256-bit pk store):
     // suspended SHA state, the banked even endpoint, the current carry and
@@ -192,11 +178,8 @@ module hss_verify
     logic [KC_CARRY_W-1:0]  kc_hi_q;
     logic [KC_CARRY_W-1:0]  kc_tail_q;
 
-    // Merkle node index
-    logic [31:0] node_index_q, node_index_d;
-
     // Hypertree layer counter
-    logic [LAYER_W-1:0] layer_q, layer_d;
+    logic [HT_LAYER_W-1:0] layer_q, layer_d;
 
     // -------------------------------------------------------------------------
     // SHA-256 wrapper instance
@@ -244,12 +227,11 @@ module hss_verify
     // Control bundle — the counters in the form the hash messages read them
     // -------------------------------------------------------------------------
 
-    wire ctrl_t ctrl = '{layer: 3'(layer_q),
-                         chain: 7'(wots_chain_q),
-                         step:  8'(wots_step_q),
-                         level: 5'(mrkl_level_q),
-                         nidx:  node_index_q,
-                         leaf:  leaf_index_q};
+    wire ctrl_t ctrl = '{ht_layer:   layer_q,
+                         chain_idx:  wots_chain_q,
+                         hash_idx:   wots_step_q,
+                         mrkl_level: mrkl_level_q,
+                         leaf_idx:   leaf_index_q};
 
     // -------------------------------------------------------------------------
     // Data indexed by WOTS chain / Merkle level
@@ -268,7 +250,7 @@ module hss_verify
     // Using digit-wise shift left to avoid indexing issues
     always_comb begin
         logic [DW-1:0] hash;        // hash working variable
-        logic [15:0]   csum;        // checksum working variable
+        logic [CSUM_W-1:0] csum;    // checksum working variable
 
         hash  = aux_reg_q;
         csum = '0;
@@ -281,11 +263,8 @@ module hss_verify
             {q_digits[i], hash} = {hash, DIGIT_W'(0)};
 
             // add the digit's contribution to the checksum
-            csum += 16'(DIGIT_MAX) - 16'(q_digits[i]);
+            csum += CSUM_W'(DIGIT_MAX) - CSUM_W'(q_digits[i]);
         end
-
-        // Left-align the checksum in its digits (no shift for LMS w = 8)
-        csum = csum << CSUM_LS;
 
         // Load the checksum digits
         for (int i = OTS_LEN1; i < OTS_LEN; i++) begin
@@ -294,7 +273,8 @@ module hss_verify
         end
     end
 
-    wire [DIGIT_W-1:0] cur_digit = q_digits[wots_chain_q];
+    localparam int unsigned CHAIN_SEL_W = $clog2(OTS_LEN);
+    wire [DIGIT_W-1:0] cur_digit = q_digits[wots_chain_q[CHAIN_SEL_W-1:0]];
 
     // -------------------------------------------------------------------------
     // SHA-256 hash inputs — continuous padded bitvectors
@@ -329,15 +309,21 @@ module hss_verify
     //                                 just computed by the layer below)
     // -------------------------------------------------------------------------
 
-    localparam int unsigned Q_MSG_W = msg_hash_bits(SCH, 1'b0);
-    localparam int unsigned Q_SUB_W = msg_hash_bits(SCH, 1'b1);
+    localparam int unsigned Q_MSG_W = msg_hash_msg_bits(SCH);
+    localparam int unsigned Q_SUB_W = SUB_PK_HASH_MSG_BITS;
 
-    wire [Q_MSG_W-1:0] q_msg_data = Q_MSG_W'(msg_hash_msg(SCH, cur_I, ctrl, aux_reg_q, message,
-                                                          1'b0, prev_I_q, hash_reg_q));
+    wire [Q_MSG_W-1:0] q_msg_data = Q_MSG_W'(msg_hash_msg(.sch        (SCH),
+                                                          .kctx       (cur_I),
+                                                          .ctrl       (ctrl),
+                                                          .randomizer (aux_reg_q),
+                                                          .message    (message)));
 
     // sub_I is indexed at layer_q+1 (identity of the tree below)
-    wire [Q_SUB_W-1:0] q_sub_data = Q_SUB_W'(msg_hash_msg(SCH, cur_I, ctrl, aux_reg_q, message,
-                                                          1'b1, prev_I_q, hash_reg_q));
+    wire [Q_SUB_W-1:0] q_sub_data = sub_pk_hash_msg(.kctx       (cur_I),
+                                                    .ctrl       (ctrl),
+                                                    .randomizer (aux_reg_q),
+                                                    .sub_kctx   (prev_I_q),
+                                                    .sub_root   (hash_reg_q));
 
     localparam int unsigned Q_MSG_BLOCKS    = calc_sha_blocks($bits(q_msg_data));
     localparam int unsigned Q_MSG_PAD_ZEROS = calc_sha_pad_zeros($bits(q_msg_data));
@@ -353,9 +339,12 @@ module hss_verify
     // WOTS chain: H(I || q || i || j || tmp)
     // -------------------------------------------------------------------------
 
-    localparam int unsigned WOTS_MSG_W = chain_msg_bits(SCH);
+    localparam int unsigned WOTS_MSG_W = ots_chain_msg_bits(SCH);
 
-    wire [WOTS_MSG_W-1:0] wots_data = WOTS_MSG_W'(ots_chain_msg(SCH, cur_I, ctrl, hash_reg_q));
+    wire [WOTS_MSG_W-1:0] wots_data = WOTS_MSG_W'(ots_chain_msg(.sch  (SCH),
+                                                                .kctx (cur_I),
+                                                                .ctrl (ctrl),
+                                                                .tmp  (hash_reg_q)));
 
     // WOTS is designed to fit in a single block, assume BLOCKS=1
     //localparam int unsigned WOTS_BLOCKS    = calc_sha_blocks($bits(wots_data));
@@ -378,7 +367,7 @@ module hss_verify
     localparam int unsigned KC_PAD_ZEROS = calc_sha_pad_zeros(KC_DATA_BITS);
 
     wire kc_odd       = wots_chain_q[0];
-    wire kc_first_blk = (wots_chain_q == CHAIN_W'(1));
+    wire kc_first_blk = (wots_chain_q == CHAIN_IDX_W'(1));
     wire kc_final     = (seq_q == StKcFinal);
     wire kc_accum     = (seq_q == StWots) && (wots_q == StWotsAccum);
     wire kc_absorbing = (kc_accum && kc_odd) || kc_final;
@@ -388,7 +377,9 @@ module hss_verify
     // the suspended state is latched back at each save's ready pulse.
     wire kc_saved = sha_save && sha_ready;
 
-    wire [KC_PREFIX_W-1:0] kc_prefix = ots_pk_prefix(SCH, cur_I, ctrl);
+    wire [KC_PREFIX_W-1:0] kc_prefix = ots_pk_prefix(.sch  (SCH),
+                                                     .kctx (cur_I),
+                                                     .ctrl (ctrl));
 
     wire [KC_CARRY_W-1:0] kc_carry = kc_first_blk ? kc_prefix : kc_hi_q;
 
@@ -398,7 +389,7 @@ module hss_verify
     // Final padding block: the carry alone (even OTS_LEN), or the carry plus
     // the unpaired banked endpoint (odd OTS_LEN).
     logic [511:0] kc_final_block;
-    if (KC_TAIL == 1) begin : gen_kc_final_odd
+    if (OTS_LEN % 2 == 1) begin : gen_kc_final_odd
         assign kc_final_block = {kc_hi_q, kc_lo_q, 1'b1, {KC_PAD_ZEROS{1'b0}},
                                  64'(KC_DATA_BITS)};
     end else begin : gen_kc_final_even
@@ -415,9 +406,11 @@ module hss_verify
     // Leaf: H(I || q || D_LEAF || Kc)
     // -------------------------------------------------------------------------
 
-    localparam int unsigned LEAF_MSG_W = leaf_msg_bits(SCH);
+    localparam int unsigned LEAF_MSG_W = MSS_LEAF_MSG_BITS;
 
-    wire [LEAF_MSG_W-1:0] leaf_data = LEAF_MSG_W'(leaf_msg(cur_I, ctrl, hash_reg_q));
+    wire [LEAF_MSG_W-1:0] leaf_data = mss_leaf_msg(.kctx (cur_I),
+                                                   .ctrl (ctrl),
+                                                   .kc   (hash_reg_q));
 
     localparam int unsigned LEAF_BLOCKS    = calc_sha_blocks($bits(leaf_data));
     localparam int unsigned LEAF_PAD_ZEROS = calc_sha_pad_zeros($bits(leaf_data));
@@ -432,9 +425,11 @@ module hss_verify
     wire mrkl_wants = (seq_q == StMerkle) && (mrkl_q == StMrklLoad);
     wire mrkl_loading = mrkl_wants && valid;
 
-    // Nodes are indexed as 2n (left) and 2n+1 (right) from their parent
-    wire [31:0]      parent_num = node_index_q >> 1; // node / 2
-    wire             is_right   = node_index_q[0];
+    // Nodes are indexed as 2n (left) and 2n+1 (right) from their parent.
+    // The leaf is node 2^h + q and each level up halves the node number, so
+    // the node at the current level is a right child iff that bit of q is
+    // set; the node number itself is derived the same way in the package.
+    wire is_right = leaf_index_q[mrkl_level_q];
 
     // aux_reg holds the auth path sibling
     logic [DW-1:0] left_node;
@@ -447,10 +442,13 @@ module hss_verify
     // Merkle: H(I || parent || D_INTR || left || right)
     // -------------------------------------------------------------------------
 
-    localparam int unsigned MRKL_MSG_W = tree_msg_bits(SCH);
+    localparam int unsigned MRKL_MSG_W = mss_join_msg_bits(SCH);
 
-    wire [MRKL_MSG_W-1:0] mrkl_data = MRKL_MSG_W'(ots_tree_join_msg(SCH, cur_I, ctrl,
-                                                                    left_node, right_node));
+    wire [MRKL_MSG_W-1:0] mrkl_data = MRKL_MSG_W'(mss_join_msg(.sch   (SCH),
+                                                               .kctx  (cur_I),
+                                                               .ctrl  (ctrl),
+                                                               .left  (left_node),
+                                                               .right (right_node)));
 
     localparam int unsigned MRKL_BLOCKS    = calc_sha_blocks($bits(mrkl_data));
     localparam int unsigned MRKL_PAD_ZEROS = calc_sha_pad_zeros($bits(mrkl_data));
@@ -662,7 +660,8 @@ module hss_verify
                 StWotsLoad: begin
                     // Stall until the next chain element arrives.
                     if (valid) begin
-                        wots_step_d = cur_digit; // load step counter from the signed digit
+                        // load step counter from the signed digit
+                        wots_step_d = HASH_IDX_W'(cur_digit);
                         // hash_reg captures the chain signature this cycle too
                         // (outside this always_comb since hash_reg is shared)
 
@@ -680,7 +679,8 @@ module hss_verify
 
                         // continue hashing if this was not the last hash,
                         // otherwise move to fold the endpoint into Kc
-                        wots_d = (wots_step_q != DIGIT_MAX-1) ? StWotsHash : StWotsAccum;
+                        wots_d = (wots_step_q != HASH_IDX_W'(DIGIT_MAX-1)) ? StWotsHash
+                                                                           : StWotsAccum;
                     end
                 end
 
@@ -716,7 +716,6 @@ module hss_verify
         mrkl_d          = mrkl_q;
 
         mrkl_level_d    = mrkl_level_q;
-        node_index_d    = node_index_q;
 
         mrkl_sha_valid  = 1'b0;
         mrkl_complete   = 1'b0;
@@ -726,11 +725,6 @@ module hss_verify
 
             unique case (mrkl_q)
                 StMrklInit: begin
-                    // initialize node_index from license
-                    // set bit h to convert leaf index to node index
-                    // (nodes above might use leaf_index but with bit[h]=0)
-                    node_index_d = (32'd1 << TREE_HT) | leaf_index_q;
-
                     mrkl_d = StMrklLoad;
                 end
 
@@ -747,10 +741,8 @@ module hss_verify
                     // Start the hash and wait to complete
                     mrkl_sha_valid = 1'b1;
                     if (hash_complete) begin
-                        // Increment level count and set node index to parent
-                        // or clear counter and node index
+                        // Increment level count or clear it
                         mrkl_level_d = ~last_level ? mrkl_level_q+1 : '0;
-                        node_index_d = ~last_level ? parent_num     : '0;
                         mrkl_d = ~last_level ? StMrklLoad : StMrklInit;
 
                         // signal completion to main FSM on last level
@@ -786,7 +778,7 @@ module hss_verify
                 // until StQ takes it.
                 if (valid) begin
                     // Start at the bottom layer (signs the user message)
-                    layer_d   = LAYER_W'(LAYERS - 1);
+                    layer_d   = HT_LAYER_W'(LAYERS - 1);
                     hdr_cnt_d = '0;
                     seq_d     = StQ;
                 end
@@ -881,7 +873,6 @@ module hss_verify
             wots_step_q   <= '0;
             mrkl_q        <= StMrklInit;
             mrkl_level_q  <= '0;
-            node_index_q  <= '0;
             layer_q       <= '0;
         end else begin
             leaf_index_q <= leaf_index_d;
@@ -894,7 +885,6 @@ module hss_verify
             wots_step_q   <= wots_step_d;
             mrkl_q        <= mrkl_d;
             mrkl_level_q  <= mrkl_level_d;
-            node_index_q  <= node_index_d;
             layer_q       <= layer_d;
         end
     end
