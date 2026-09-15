@@ -52,7 +52,9 @@ package hss_pkg;
     //       But implementation fixes it for simplicity.
     localparam int unsigned    TREE_H      = 5;
     localparam lms_algorithm_t LMS_TYPE    = LMS_SHA256_N32_H5;    // LMS algorithm identifier
+    /* verilator lint_off UNUSEDPARAM */
     localparam int unsigned    TREE_H_MAX  = 25;                   // max of lms_algorithm_type
+    /* verilator lint_on UNUSEDPARAM */
 
     // Note: HSS levels could vary per signer according to the standard.
     //       But implementation fixes it for simplicity.
@@ -113,24 +115,27 @@ package hss_pkg;
     // Hash-message layouts (RFC 8554 field order, most significant first)
     // -------------------------------------------------------------------------
 
-    // I || q || D: the prefix of every hash tied to a leaf
-    typedef struct packed {
-        logic [IDENT_W-1:0] i;
-        logic [31:0]        q;
-        logic [15:0]        d;
-    } lms_prefix_t;
+    // Widths of the RFC 8554 hash-input fields
+    localparam int unsigned Q_W     = 32;   // u32str(q), u32str(r)
+    localparam int unsigned D_W     = 16;   // u16str(D)
+    localparam int unsigned CHAIN_W = 16;   // u16str(i)
+    localparam int unsigned STEP_W  = 8;    // u8str(j)
 
     // Q at the message layer: I || q || D_MESG || C || message
     typedef struct packed {
-        lms_prefix_t      pre;
-        logic [WIDTH-1:0] c;
-        logic [WIDTH-1:0] msg;
+        logic [IDENT_W-1:0] i;
+        logic [Q_W-1:0]     q;
+        logic [D_W-1:0]     d_mesg;
+        logic [WIDTH-1:0]   c;
+        logic [WIDTH-1:0]   msg;
     } lms_q_msg_t;
 
     // Q at an upper layer: I || q || D_MESG || C || serialised public key of
     // the layer below (lms_type || lmots_type || I || T[1])
     typedef struct packed {
-        lms_prefix_t        pre;
+        logic [IDENT_W-1:0] i;
+        logic [Q_W-1:0]     q;
+        logic [D_W-1:0]     d_mesg;
         logic [WIDTH-1:0]   c;
         lms_algorithm_t     lms_type;
         lmots_algorithm_t   lmots_type;
@@ -141,23 +146,32 @@ package hss_pkg;
     // WOTS chain step: I || q || i || j || tmp
     typedef struct packed {
         logic [IDENT_W-1:0] i;
-        logic [31:0]        q;
-        logic [15:0]        chain;
-        logic [7:0]         step;
+        logic [Q_W-1:0]     q;
+        logic [CHAIN_W-1:0] chain;
+        logic [STEP_W-1:0]  step;
         logic [WIDTH-1:0]   tmp;
     } lms_chain_msg_t;
 
+    // Public key: I || q || D_PBLC, followed by the chain endpoints
+    typedef struct packed {
+        logic [IDENT_W-1:0] i;
+        logic [Q_W-1:0]     q;
+        logic [D_W-1:0]     d_pblc;
+    } lms_pk_prefix_t;
+
     // Leaf: I || q || D_LEAF || Kc
     typedef struct packed {
-        lms_prefix_t      pre;
-        logic [WIDTH-1:0] kc;
+        logic [IDENT_W-1:0] i;
+        logic [Q_W-1:0]     q;
+        logic [D_W-1:0]     d_leaf;
+        logic [WIDTH-1:0]   kc;
     } lms_leaf_msg_t;
 
     // Interior node: I || r || D_INTR || left || right
     typedef struct packed {
         logic [IDENT_W-1:0] i;
-        logic [31:0]        node;
-        logic [15:0]        d;
+        logic [Q_W-1:0]     node;
+        logic [D_W-1:0]     d_intr;
         logic [WIDTH-1:0]   left;
         logic [WIDTH-1:0]   right;
     } lms_intr_msg_t;
