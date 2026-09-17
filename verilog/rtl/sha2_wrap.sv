@@ -4,7 +4,11 @@
 // Contract: present a pre-padded 512-bit block on valid/block, with last
 // marking the closing block of the message, and hold the inputs stable
 // until ready. ready pulses for exactly one cycle per block, and at the
-// last block's ready pulse digest holds the final value. Messages need no
+// last block's ready pulse digest holds the final value. taken pulses in
+// the cycle the core captures the block into its message schedule; from
+// the cycle after taken, block/valid for that message are ignored, so a
+// caller consuming data straight off a stream may release it then (the
+// conservative hold-until-ready discipline remains sufficient). Messages need no
 // start signal: the first block after reset or after a completed message
 // starts a new one. All outputs depend on registered state only, so ready
 // never combinationally follows valid/last — hss_verify closes that loop
@@ -41,6 +45,7 @@ module sha2_wrap
 
     // Outputs
     output logic           ready,
+    output logic           taken,
     output logic [255:0]   digest
 );
 
@@ -72,6 +77,7 @@ module sha2_wrap
 
     // core takes the presented block in this cycle
     wire accept = msg_block_valid & msg_block_ready;
+    assign taken = accept;
 
     // -------------------------------------------------------------------------
     // SHA-2 compression core (SHA-256-only configuration, MultimodeEn=0)
