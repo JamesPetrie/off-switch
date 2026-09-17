@@ -104,8 +104,8 @@ module hss_verify
     } wots_state_e;
 
 
-    typedef enum logic [1:0] {
-        StMrklInit, StMrklLoad, StMrklHash
+    typedef enum logic {
+        StMrklInit, StMrklHash
     } mrkl_state_e;
 
     // -------------------------------------------------------------------------
@@ -189,6 +189,7 @@ module hss_verify
     logic [511:0] sha_block;
     logic         sha_last;
     wire          sha_ready;
+    wire          sha_taken;
     wire  [255:0] sha_digest;
 
     logic         sha_save;
@@ -204,6 +205,7 @@ module hss_verify
         .restore (sha_restore),
         .ctx     (kc_state_q),
         .ready   (sha_ready),
+        .taken   (sha_taken),
         .digest  (sha_digest)
     );
 
@@ -422,8 +424,11 @@ module hss_verify
     // Merkle helpers
     // -------------------------------------------------------------------------
 
-    wire mrkl_wants = (seq_q == StMerkle) && (mrkl_q == StMrklLoad);
-    wire mrkl_loading = mrkl_wants && valid;
+    // The sibling is read straight off the stream: every block that reads it
+    // is only offered while the beat is present, and the beat is released
+    // (ready) in the cycle the core captures the last of them.
+    wire mrkl_hashing = (seq_q == StMerkle) && (mrkl_q == StMrklHash);
+    wire mrkl_wants   = mrkl_hashing && sha_taken && sha_last;
 
     // Nodes are indexed as 2n (left) and 2n+1 (right) from their parent.
     // The leaf is node 2^h + q and each level up halves the node number, so
@@ -431,12 +436,12 @@ module hss_verify
     // set; the node number itself is derived the same way in the package.
     wire is_right = leaf_index_q[mrkl_level_q];
 
-    // aux_reg holds the auth path sibling
+    // The sibling is the beat on the bus
     logic [DW-1:0] left_node;
     logic [DW-1:0] right_node;
 
-    assign {left_node, right_node} = is_right ? {aux_reg_q,  hash_reg_q}
-                                              : {hash_reg_q, aux_reg_q};
+    assign {left_node, right_node} = is_right ? {data,       hash_reg_q}
+                                              : {hash_reg_q, data};
 
     // -------------------------------------------------------------------------
     // Merkle: H(I || parent || D_INTR || left || right)
@@ -566,23 +571,23 @@ module hss_verify
     end
 
     // -------------------------------------------------------------------------
-    // aux_reg — stores Q hash throughout WOTS, and auth siblings during Merkle
+    // aux_reg — the randomizer while Q is set up, then the Q hash through WOTS
     // -------------------------------------------------------------------------
 
     wire wots_init  = (seq_q == StWots) && (wots_q == StWotsInit);
 
-    // Scratch register, three time-disjoint producers: the randomizer while Q
-    // is being set up, the Q digest through WOTS, and each auth sibling during
-    // Merkle. Reusing it keeps the randomizer out of storage entirely -- it is
-    // only ever read by the Q hash.
+    // Scratch register, two time-disjoint producers: the randomizer while Q
+    // is being set up and the Q digest through WOTS. Reusing it keeps the
+    // randomizer out of storage entirely -- it is only ever read by the Q
+    // hash.
     wire rand_loading = (seq_q == StQ) && (hdr_cnt_q == HDR_CNT_W'(1)) && valid;
 
-    assign aux_reg_d = (mrkl_loading || rand_loading) ? data : hash_reg_q;
+    assign aux_reg_d = rand_loading ? data : hash_reg_q;
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             aux_reg_q <= '0;
-        end else if (wots_init || mrkl_loading || rand_loading) begin
+        end else if (wots_init || rand_loading) begin
             aux_reg_q <= aux_reg_d;
         end
     end
@@ -725,25 +730,18 @@ module hss_verify
 
             unique case (mrkl_q)
                 StMrklInit: begin
-                    mrkl_d = StMrklLoad;
-                end
-
-                StMrklLoad: begin
-                    // The sibling must stay stable for the whole two-block
-                    // hash, so it is latched into aux_reg rather than used
-                    // straight off the bus.
-                    if (valid) begin
-                        mrkl_d = StMrklHash;
-                    end
+                    mrkl_d = StMrklHash;
                 end
 
                 StMrklHash: begin
-                    // Start the hash and wait to complete
-                    mrkl_sha_valid = 1'b1;
+                    // Hash with the sibling straight off the bus: the core is
+                    // fed only while the beat is present, and the beat is
+                    // released when the last block is captured.
+                    mrkl_sha_valid = valid;
                     if (hash_complete) begin
                         // Increment level count or clear it
                         mrkl_level_d = ~last_level ? mrkl_level_q+1 : '0;
-                        mrkl_d = ~last_level ? StMrklLoad : StMrklInit;
+                        mrkl_d = ~last_level ? StMrklHash : StMrklInit;
 
                         // signal completion to main FSM on last level
                         mrkl_complete = last_level;
