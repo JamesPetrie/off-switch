@@ -54,6 +54,7 @@ module tb (
         .data            (dut_sig_data),
         .identifier   (hss_pkg::PUBKEYS[0].identifier),
         .root_pub_key (hss_pkg::PUBKEYS[0].root_pub_key),
+        .midstate     ('0),
         .verify_done  (dut_ready),
         .verif_passed (dut_verif_passed)
     );
