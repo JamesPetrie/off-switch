@@ -9,23 +9,30 @@ set bd_name   design_1
 set jobs      [exec nproc]
 
 # --- .vc parser - AMD does not support .vc files natively, so vibe-coded a TCL parser
-# Resolve a Verilog command (.vc) file into a flat list of absolute source
-# paths. Recognizes the `-F <subfile>` include directive used by design.vc.
+# Resolve a Verilog command (.vc) file into flat lists of absolute source
+# paths and include directories, returned as {files incdirs}. Recognizes the
+# `-F <subfile>` include directive used by design.vc and the `+incdir+<dir>`
+# option used by sha_files.vc for the vendored SHA-2 core's macro headers.
 proc read_vc {path} {
-    set out {}
+    set files   {}
+    set incdirs {}
     set fp  [open $path r]
     set dir [file dirname [file normalize $path]]
     while {[gets $fp line] >= 0} {
         set line [string trim $line]
         if {$line eq "" || [string match "//*" $line]} continue
         if {[regexp {^-F\s+(\S+)} $line -> sub]} {
-            lappend out {*}[read_vc [file join $dir $sub]]
+            lassign [read_vc [file join $dir $sub]] sub_files sub_incdirs
+            lappend files   {*}$sub_files
+            lappend incdirs {*}$sub_incdirs
+        } elseif {[regexp {^\+incdir\+(\S+)} $line -> inc]} {
+            lappend incdirs [file normalize [file join $dir $inc]]
         } else {
-            lappend out [file normalize [file join $dir $line]]
+            lappend files [file normalize [file join $dir $line]]
         }
     }
     close $fp
-    return $out
+    return [list $files $incdirs]
 }
 
 # Use the official PYNQ project's PS7 config (extracted into pynqz2_ps7.tcl).
@@ -63,7 +70,21 @@ ipx::edit_ip_in_project -upgrade true -name edit_ip_prj \
     -directory $proj_dir/edit_ip \
     ./ip_repo/off_switch_axi_1_0/component.xml
 
-add_files -norecurse [read_vc ../verilog/rtl/design.vc]
+lassign [read_vc ../verilog/rtl/design.vc] rtl_files rtl_incdirs
+add_files -norecurse $rtl_files
+
+# `include`d headers living in the include directories (the vendored SHA-2
+# core's assertion macros) are not listed sources: package them with the IP
+# so its copy for the block design is self-contained.
+foreach d $rtl_incdirs {
+    foreach f [glob -nocomplain -directory $d *.sv *.svh] {
+        if {[lsearch -exact $rtl_files [file normalize $f]] < 0} {
+            add_files -norecurse $f
+            set_property file_type {Verilog Header} [get_files $f]
+        }
+    }
+}
+set_property include_dirs $rtl_incdirs [current_fileset]
 
 ipx::merge_project_changes ports       [ipx::current_core]
 ipx::merge_project_changes file_groups [ipx::current_core]
