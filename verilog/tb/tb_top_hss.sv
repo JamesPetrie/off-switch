@@ -43,18 +43,11 @@ module tb (
     int  beat_idx = 0;
     wire license_ready;
 
-    // A new transaction starts when the sequencer first raises license_valid;
-    // that is when the beat pointer rewinds.
-    logic license_valid_q = 1'b0;
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) license_valid_q <= 1'b0;
-        else        license_valid_q <= license_valid;
-    end
-    wire new_transaction = license_valid && !license_valid_q;
-
-    // Qualified by license_valid_q: on the first cycle of a transaction the
-    // pointer has not rewound yet, and a stale count must not look done.
-    wire beats_done = license_valid_q && (beat_idx == int'(TOTAL_BEATS));
+    // The beat pointer rewinds while license_valid is low, so it already
+    // points at beat 0 in the first cycle a transaction presents valid: the
+    // data on the bus is right from the start and never changes under a
+    // pending beat (strict valid/ready, see rtl_sva.sv).
+    wire beats_done = (beat_idx == int'(TOTAL_BEATS));
 
     // nonce_ready falls when the block takes the first beat and rises again
     // when the verification cycle ends -- that rising edge is the completion
@@ -66,10 +59,13 @@ module tb (
     end
     wire cycle_done = nonce_ready && !nonce_ready_q;
 
-    // Producer contract: a license is a fixed number of beats; release valid
-    // once the last one has been accepted. Dropping valid mid-license is
-    // legal -- the verifier keeps hashing between beats -- so the pointer only
-    // rewinds when a transaction is actually finished or abandoned.
+    // Producer contract: a license is a fixed number of beats on a strict
+    // valid/ready handshake -- once a beat is presented, valid stays high and
+    // the data stays unchanged until ready accepts it -- and valid is released
+    // once the last beat has been accepted. Pausing between beats (after an
+    // accept, before presenting the next) is legal -- the verifier keeps
+    // hashing -- so the pointer only rewinds when a transaction is actually
+    // finished or abandoned.
 
     // T16 drives a deliberate gap in the middle of a license.
     logic gap_stall = 1'b0;
@@ -80,7 +76,7 @@ module tb (
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n)                            beat_idx <= 0;
-        else if (new_transaction)              beat_idx <= 0;
+        else if (!license_valid)               beat_idx <= 0;
         else if (beat_valid && license_ready)  beat_idx <= beat_idx + 1;
     end
 
@@ -747,10 +743,12 @@ module tb (
 
                 // -------------------------------------------------------
                 // -------------------------------------------------------
-                // T16: A producer may pause mid-license. Dropping the beat
-                //   valid between elements is legal -- the verifier keeps
-                //   hashing -- and the license must still be accepted, so a
-                //   full 2-of-2 with a gap injected must raise the allowance.
+                // T16: A producer may pause between beats: after a beat has
+                //   been accepted it may wait before presenting the next. The
+                //   verifier keeps hashing and the license must still be
+                //   accepted, so a full 2-of-2 with a gap injected must raise
+                //   the allowance. A presented beat is never withdrawn -- the
+                //   stream is a strict valid/ready handshake (see rtl_sva.sv).
                 // -------------------------------------------------------
                 PH_T16_A_SUBMIT: begin
                     if (nonce_ready) begin
@@ -765,12 +763,14 @@ module tb (
                 PH_T16_A_GAP: begin
                     // Stall the stream partway through, then resume. beat_idx
                     // must hold across the gap.
-                    // license_valid_q qualifies the trigger: on the first
-                    // cycle of the transaction the pointer has not rewound yet.
-                    if (license_valid_q && beat_idx >= 20 && !gap_stall && !gap_done) begin
+                    // The stall is armed in the cycle beat 19 is accepted, so
+                    // beat 20 is withheld before it is ever presented: the
+                    // pause falls between beats and no presented beat is
+                    // withdrawn.
+                    if (beat_valid && license_ready && beat_idx == 19 && !gap_done) begin
                         gap_stall <= 1'b1;
                         gap_cnt   <= 0;
-                        gap_beat  <= beat_idx;
+                        gap_beat  <= beat_idx + 1;
                     end else if (gap_stall) begin
                         gap_cnt <= gap_cnt + 1;
                         if (gap_cnt > 300) begin
