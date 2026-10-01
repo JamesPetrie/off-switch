@@ -2,13 +2,15 @@
 //
 // Manages crypto-based license validation, a TRNG nonce source, an allowance
 // counter, and a gated workload unit.
-// CRYPTO_TYPE selects the verification engine: 0 = ECDSA, 1 = HSS-LMS.
+// CRYPTO_TYPE selects the verification engine: 0 = ECDSA, 1 = HSS-LMS,
+// 2 = SLH-DSA-SHA2-128s (FIPS 205).
 //
 // Protocol:
 //   1. On startup, waits INIT_DELAY then generates an initial nonce
 //   2. nonce_ready is high while a nonce is available for signing
 //   3. Submit the license as a beat stream on license_valid/ready/data:
-//      one 512-bit beat for ECDSA, metadata then elements for HSS-LMS.
+//      one 512-bit beat for ECDSA, metadata then elements for HSS-LMS,
+//      one 128-bit signature element per beat for SLH-DSA.
 //      The signature must be over the current nonce as the message hash.
 //   4. nonce_ready falls when verification starts. On failure, the same nonce is
 //      made ready again; after final successful verification it rises only when
@@ -23,12 +25,15 @@ module security_block
     import arith_pkg::*;
     import base_pkg::*;
 # (
-    parameter bit          CRYPTO_TYPE = 0,  // 1 = HSS-LMS, 0 = ECDSA
+    parameter int unsigned CRYPTO_TYPE = 0,  // 0 = ECDSA, 1 = HSS-LMS, 2 = SLH-DSA
     parameter int unsigned NUM_SIGNERS = 2,  // Number of signers
 
-    // ECDSA delivers its whole license in one beat; HSS-LMS streams elements.
-    localparam int unsigned LICENSE_BEAT_W = CRYPTO_TYPE ? WIDTH
-                                                         : $bits(ecdsa_pkg::license_t),
+    // ECDSA delivers its whole license in one beat; the hash-based schemes
+    // stream signature elements at their natural width.
+    localparam int unsigned LICENSE_BEAT_W =
+        (CRYPTO_TYPE == 2) ? slh_pkg::SLH_BEAT_W :
+        (CRYPTO_TYPE == 1) ? WIDTH
+                           : $bits(ecdsa_pkg::license_t),
     localparam int unsigned SIGNER_IDX_W = (NUM_SIGNERS > 1) ? $clog2(NUM_SIGNERS) : 1,
     localparam int unsigned ALLOW_W      = 64,
     localparam int unsigned WORKLD_W     =  8,
@@ -151,7 +156,7 @@ module security_block
                 .ready        (ecdsa_ready),
                 .verif_passed (crypto_verif_passed)
             );
-        end else begin : g_hss_lms
+        end else if (CRYPTO_TYPE == 1) begin : g_hss_lms
 
             hss_verify u_hss (
                 .clk          (clk),
@@ -165,6 +170,31 @@ module security_block
                 .verify_done  (crypto_done),
                 .verif_passed (crypto_verif_passed)
             );
+        end else if (CRYPTO_TYPE == 2) begin : g_slh_dsa
+
+            // Elaboration guard: each signer needs key material.
+            initial begin
+                if (NUM_SIGNERS > slh_pkg::SLH_NUM_KEYS)
+                    $fatal(1, "NUM_SIGNERS (%0d) exceeds slh_pkg::SLH_NUM_KEYS (%0d)",
+                           NUM_SIGNERS, slh_pkg::SLH_NUM_KEYS);
+            end
+
+            hss_verify #(
+                .SCH (hbsv_ctrl_pkg::SCHEME_SLH_128S)
+            ) u_slh (
+                .clk          (clk),
+                .rst_n        (rst_n),
+                .message      (trng_nonce),
+                .valid        (crypto_valid),
+                .ready        (crypto_input_ready),
+                .data         (license_data),
+                .identifier   (slh_pkg::SLH_KEYS[signer_q].seed),
+                .root_pub_key (slh_pkg::SLH_KEYS[signer_q].root),
+                .verify_done  (crypto_done),
+                .verif_passed (crypto_verif_passed)
+            );
+        end else begin : g_bad_crypto_type
+            initial $fatal(1, "unsupported CRYPTO_TYPE %0d", CRYPTO_TYPE);
         end
     endgenerate;
 
