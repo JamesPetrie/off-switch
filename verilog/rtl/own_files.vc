@@ -8,6 +8,7 @@
 ./base_pkg.sv
 ./ecdsa_pkg.sv
 ./ecdsa.sv
+./sha2_wrap_pkg.sv
 ./hss_pkg.sv
 ./slh_pkg.sv
 ./hbsv_ctrl_pkg.sv

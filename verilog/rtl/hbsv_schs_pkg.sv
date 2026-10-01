@@ -5,20 +5,13 @@
 // per hash message, its width and the builder that turns the shared ctrl_t
 // bundle plus the live data values into the scheme's layout. The layout
 // structs themselves belong to the scheme packages (hss_pkg, slh_pkg).
-// Builders return the widest layout across schemes, right-aligned; the
-// caller narrows with a width cast.
+// Builders take their arguments and return the layout at the widest width
+// across schemes, right-aligned; the caller widens and narrows with width
+// casts. A message a scheme does not have is all zeroes.
 
 package hbsv_schs_pkg;
 
     import hbsv_ctrl_pkg::*;
-
-    // Builder arguments are passed at the widest width across schemes; the
-    // verifier narrows key context and data to kctx_w / digest_w of its SCH.
-    localparam int unsigned MAX_KCTX_W    = hss_pkg::IDENT_W;
-    localparam int unsigned MAX_DATA_W    = arith_pkg::WIDTH;
-    localparam int unsigned MAX_MSG_REG_W = arith_pkg::WIDTH;   // widest msg_reg_w
-
-    localparam int unsigned SHA256_BLOCK_W = 512;
 
     // -------------------------------------------------------------------------
     // Scheme parameters
@@ -27,164 +20,157 @@ package hbsv_schs_pkg;
     // Node / signature-element / licence-beat width
     function automatic int unsigned digest_w(input sch_e sch);
         case (sch)
-            SCHEME_HSS: return arith_pkg::WIDTH;
-            default:    return slh_pkg::SLH_NW;
+            SCHEME_HSS:      return arith_pkg::WIDTH;
+            SCHEME_SLH_128S: return slh_pkg::SLH_NW;
+            default:         return 0;
         endcase
     endfunction
 
-    // Key context of the current tree (LMS: the identifier I)
+    // Key context of a tree (LMS: the identifier I; SLH: PK.seed)
     function automatic int unsigned kctx_w(input sch_e sch);
         case (sch)
-            SCHEME_HSS: return hss_pkg::IDENT_W;
-            default:    return slh_pkg::SLH_NW;
+            SCHEME_HSS:      return hss_pkg::IDENT_W;
+            SCHEME_SLH_128S: return slh_pkg::SLH_NW;
+            default:         return 0;
         endcase
     endfunction
 
     // Winternitz digit width and chain count (data digits, checksum digits)
     function automatic int unsigned digit_w(input sch_e sch);
         case (sch)
-            SCHEME_HSS: return hss_pkg::WOTS_W;
-            default:    return slh_pkg::SLH_LGW;
+            SCHEME_HSS:      return hss_pkg::WOTS_W;
+            SCHEME_SLH_128S: return slh_pkg::SLH_LGW;
+            default:         return 0;
         endcase
     endfunction
     function automatic int unsigned ots_len1(input sch_e sch);
         case (sch)
-            SCHEME_HSS: return hss_pkg::WOTS_P1;
-            default:    return slh_pkg::SLH_LEN1;
+            SCHEME_HSS:      return hss_pkg::WOTS_P1;
+            SCHEME_SLH_128S: return slh_pkg::SLH_LEN1;
+            default:         return 0;
         endcase
     endfunction
     function automatic int unsigned ots_len2(input sch_e sch);
         case (sch)
-            SCHEME_HSS: return hss_pkg::WOTS_P2;
-            default:    return slh_pkg::SLH_LEN2;
+            SCHEME_HSS:      return hss_pkg::WOTS_P2;
+            SCHEME_SLH_128S: return slh_pkg::SLH_LEN2;
+            default:         return 0;
         endcase
     endfunction
     function automatic int unsigned ots_len(input sch_e sch);
         case (sch)
-            SCHEME_HSS: return hss_pkg::WOTS_P;
-            default:    return slh_pkg::SLH_LEN;
+            SCHEME_HSS:      return hss_pkg::WOTS_P;
+            SCHEME_SLH_128S: return slh_pkg::SLH_LEN;
+            default:         return 0;
         endcase
     endfunction
     // Hypertree: number of layers and tree height
     function automatic int unsigned layers(input sch_e sch);
         case (sch)
-            SCHEME_HSS: return hss_pkg::HSS_LEVELS;
-            default:    return slh_pkg::SLH_D;
+            SCHEME_HSS:      return hss_pkg::HSS_LEVELS;
+            SCHEME_SLH_128S: return slh_pkg::SLH_D;
+            default:         return 0;
         endcase
     endfunction
     function automatic int unsigned tree_h(input sch_e sch);
         case (sch)
-            SCHEME_HSS: return hss_pkg::TREE_H;
-            default:    return slh_pkg::SLH_HP;
+            SCHEME_HSS:      return hss_pkg::TREE_H;
+            SCHEME_SLH_128S: return slh_pkg::SLH_HP;
+            default:         return 0;
         endcase
     endfunction
     // Header beats at the start of each layer's signature
     function automatic int unsigned hdr_beats(input sch_e sch);
         case (sch)
-            SCHEME_HSS: return hss_pkg::LAYER_HDR_BEATS;
-            default:    return 0;
+            SCHEME_HSS:      return hss_pkg::LAYER_HDR_BEATS;
+            SCHEME_SLH_128S: return 0;
+            default:         return 0;
         endcase
     endfunction
-    // FORS (SLH only): number of trees and their height
+    // FORS: number of trees and their height (none: 0)
     function automatic int unsigned fors_k(input sch_e sch);
         case (sch)
+            SCHEME_HSS:      return 0;
             SCHEME_SLH_128S: return slh_pkg::SLH_K;
             default:         return 0;
         endcase
     endfunction
     function automatic int unsigned fors_h(input sch_e sch);
         case (sch)
+            SCHEME_HSS:      return 0;
             SCHEME_SLH_128S: return slh_pkg::SLH_A;
             default:         return 0;
         endcase
     endfunction
-    // Width of the message the OTS chains sign, held through a layer: HSS the
-    // Q digest; SLH the FORS message digest md, then the FORS public key and
-    // each layer's root
-    function automatic int unsigned msg_reg_w(input sch_e sch);
+    // Width of the signand, the value the OTS chains or the FORS trees sign
+    // directly
+    function automatic int unsigned signand_w(input sch_e sch);
         case (sch)
-            SCHEME_HSS: return arith_pkg::WIDTH;
-            default:    return slh_pkg::SLH_MD_W;
-        endcase
-    endfunction
-    // Bits the SHA-256 length field counts for a precomputed first block: SLH
-    // resumes every F, H and T call from the midstate of PK.seed || 0^48
-    function automatic int unsigned midstate_bits(input sch_e sch);
-        case (sch)
-            SCHEME_SLH_128S: return SHA256_BLOCK_W;
+            SCHEME_HSS:      return arith_pkg::WIDTH;
+            SCHEME_SLH_128S: return slh_pkg::SLH_MD_W;
             default:         return 0;
         endcase
     endfunction
-    function automatic bit resumes_from_midstate(input sch_e sch);
-        return (midstate_bits(sch) != 0);
-    endfunction
-    // Whether the OTS public key is hashed once more for the Merkle leaf
-    // (HSS) or is the leaf itself (SLH)
+    // Whether the OTS public key is hashed once more for the Merkle leaf, or
+    // is the leaf itself
     function automatic bit has_mss_leaf_hash(input sch_e sch);
-        return (sch == SCHEME_HSS);
+        case (sch)
+            SCHEME_HSS:      return 1'b1;
+            SCHEME_SLH_128S: return 1'b0;
+            default:         return 1'b0;
+        endcase
+    endfunction
+    // Whether the root of a tree is hashed into another message for the layer
+    // above to sign, or is signed directly
+    function automatic bit has_sub_pk_hash(input sch_e sch);
+        case (sch)
+            SCHEME_HSS:      return 1'b1;
+            SCHEME_SLH_128S: return 1'b0;
+            default:         return 1'b0;
+        endcase
+    endfunction
+    // Whether the message digest is extended by a second hash to more bits
+    // than one hash produces
+    function automatic bit extends_digest(input sch_e sch);
+        case (sch)
+            SCHEME_HSS:      return 1'b0;
+            SCHEME_SLH_128S: return 1'b1;
+            default:         return 1'b0;
+        endcase
     endfunction
 
-    // -------------------------------------------------------------------------
-    // Accumulation of the OTS public key (HSS Kc; SLH T_len, and T_k over the
-    // FORS roots)
-    //
-    // The endpoints are hashed behind a prefix of ACC_PREFIX_W bits (HSS
-    // I || q || D_PBLC, SLH ADRSc: 22 bytes in both) in 64-byte SHA-256
-    // blocks, so with E-byte endpoints a block boundary falls (64 - 22) mod E
-    // bytes into an endpoint. The verifier banks endpoints until one
-    // straddles a boundary, absorbs the block with that endpoint's head, and
-    // carries its tail into the next block. With E = 32 (HSS) block 0 holds
-    // the prefix, one endpoint and the head of the next, and every later
-    // block the previous tail, one endpoint and the next head. With E = 16
-    // (SLH-128s) block 0 holds the prefix, two endpoints and a head, and
-    // every later block a tail, three endpoints and a head. The final block
-    // holds the last tail, the endpoints still banked (none after 34 or 35
-    // endpoints, three after the 14 FORS roots) and the padding.
-    // -------------------------------------------------------------------------
+    // Widest of each across the schemes
+    function automatic int unsigned max2(input int unsigned a, input int unsigned b);
+        return (a > b) ? a : b;
+    endfunction
 
-    localparam int unsigned ACC_PREFIX_W = $bits(hss_pkg::lms_pk_prefix_t);
+    localparam int unsigned MAX_KCTX_W    = max2(kctx_w(SCHEME_HSS),
+                                                 kctx_w(SCHEME_SLH_128S));
+    localparam int unsigned MAX_DATA_W    = max2(digest_w(SCHEME_HSS),
+                                                 digest_w(SCHEME_SLH_128S));
+    localparam int unsigned MAX_SIGNAND_W = max2(signand_w(SCHEME_HSS),
+                                                 signand_w(SCHEME_SLH_128S));
 
-    // Endpoints banked before the first block closes, and before each later one
-    function automatic int unsigned acc_first_full(input sch_e sch);
-        return (SHA256_BLOCK_W - ACC_PREFIX_W) / digest_w(sch);
-    endfunction
-    function automatic int unsigned acc_mid_full(input sch_e sch);
-        return SHA256_BLOCK_W / digest_w(sch) - 1;
-    endfunction
-    // Bits of the endpoint closing a block that fit in it, and the rest
-    function automatic int unsigned acc_head_w(input sch_e sch);
-        return (SHA256_BLOCK_W - ACC_PREFIX_W) % digest_w(sch);
-    endfunction
-    function automatic int unsigned acc_carry_w(input sch_e sch);
-        return digest_w(sch) - acc_head_w(sch);
-    endfunction
-    // Endpoints still banked when a stream of count endpoints ends
-    function automatic int unsigned acc_tail_elems(input sch_e sch, input int unsigned count);
-        if (count <= acc_first_full(sch)) return count;
-        return (count - 1 - acc_first_full(sch)) % (acc_mid_full(sch) + 1);
-    endfunction
+    localparam int unsigned MESSAGE_W = arith_pkg::WIDTH;
+    localparam int unsigned SHA_DIGEST_W = sha2_wrap_pkg::DIGEST_W;
+
+    // The builders take their arguments at the widest width and the whole
+    // control bundle, and a scheme reads only its part of them, so -Wall
+    // would flag the unread bits.
+    /* verilator lint_off UNUSEDSIGNAL */
 
     // -------------------------------------------------------------------------
     // ctrl_t -> scheme fields
     // -------------------------------------------------------------------------
 
-    // These take the whole bundle, or the whole digest, but read only the
-    // fields the scheme needs, so -Wall would flag the unread bits.
-    /* verilator lint_off UNUSEDSIGNAL */
-
     // LMS: the u32 field is the leaf index q, or the parent node number
     // during a Merkle step. Leaf q is node 2^h + q; each level up halves
-    // the node number. SLH numbers the nodes of a level from zero, so the
-    // parent's tree index is the leaf index halved once per level.
+    // the node number.
     function automatic logic [hss_pkg::Q_W-1:0] ctrl2q(input ctrl_t ctrl);
         return ctrl.leaf_idx;
     endfunction
     function automatic logic [hss_pkg::Q_W-1:0] ctrl2node(input sch_e sch, input ctrl_t ctrl);
-        case (sch)
-            SCHEME_HSS: return ((hss_pkg::Q_W'(1) << tree_h(sch)) | ctrl.leaf_idx)
-                               >> ctrl.mrkl_level >> 1;
-            default:    return hss_pkg::Q_W'(ctrl.leaf_idx) >> ctrl.mrkl_level >> 1;
-        endcase
+        return ((hss_pkg::Q_W'(1) << tree_h(sch)) | ctrl.leaf_idx) >> ctrl.mrkl_level >> 1;
     endfunction
 
     // SLH: the compressed address of a hash. The layer address counts from
@@ -208,73 +194,111 @@ package hbsv_schs_pkg;
                     hash_or_index:   hash_or_index};
     endfunction
 
-    // SLH: the H_msg digest split into md and the two indices (Alg 20); the
-    // bits above each index and beyond the m bytes of the digest are unread
-    typedef struct packed {
-        logic [MAX_MSG_REG_W-1:0] md;
-        logic [TREE_IDX_W-1:0]    tree_idx;
-        logic [LEAF_IDX_W-1:0]    leaf_idx;
-    } hmsg_split_t;
-
-    function automatic hmsg_split_t slh_hmsg_split(
-        input logic [slh_pkg::SHA256_STATE_W-1:0] digest);
-        slh_pkg::slh_digest_t fields;
-        fields = digest;
-        return hmsg_split_t'{
-                    md:       MAX_MSG_REG_W'(fields.md),
-                    tree_idx: TREE_IDX_W'(fields.tree_field[slh_pkg::SLH_IDX_TREE_W-1:0]),
-                    leaf_idx: LEAF_IDX_W'(fields.leaf_field[slh_pkg::SLH_IDX_LEAF_W-1:0])};
+    // SLH: the nodes of a tree level are numbered from zero, so the parent's
+    // index is the leaf index halved once per level. The FORS trees share
+    // one numbering: the leaves of tree t follow those of tree t - 1.
+    function automatic logic [slh_pkg::ADRS_WORD_W-1:0] ctrl2height(input ctrl_t ctrl);
+        return slh_pkg::ADRS_WORD_W'(ctrl.mrkl_level) + slh_pkg::ADRS_WORD_W'(1);
+    endfunction
+    function automatic logic [slh_pkg::ADRS_WORD_W-1:0] ctrl2tree_index(input ctrl_t ctrl);
+        return slh_pkg::ADRS_WORD_W'(ctrl.leaf_idx) >> ctrl.mrkl_level >> 1;
+    endfunction
+    function automatic logic [slh_pkg::ADRS_WORD_W-1:0] ctrl2fors_leaf(input ctrl_t ctrl);
+        return (slh_pkg::ADRS_WORD_W'(ctrl.fors_tree) << slh_pkg::SLH_A)
+               | slh_pkg::ADRS_WORD_W'(ctrl.fors_leaf);
+    endfunction
+    function automatic logic [slh_pkg::ADRS_WORD_W-1:0] ctrl2fors_index(input ctrl_t ctrl);
+        return ctrl2fors_leaf(ctrl) >> ctrl.mrkl_level >> 1;
     endfunction
 
-    /* verilator lint_on UNUSEDSIGNAL */
+    // SLH: PK.seed, zero-padded to a whole block
+    function automatic slh_pkg::slh_seed_block_t slh_seed_block(
+        input logic [MAX_KCTX_W-1:0] kctx);
+        return slh_pkg::slh_seed_block_t'{
+                    seed:     slh_pkg::SLH_NW'(kctx),
+                    zero_pad: '0};
+    endfunction
 
     // -------------------------------------------------------------------------
-    // Message hash of the layer that signs the message: LMS Q, built here;
-    // SLH the inner hash of H_msg, which also needs PK.root and so has its
-    // own builder, slh_hmsg_msg. msg_hash_msg_bits gives either width.
+    // Layer header: the beat carrying the leaf index and the key context of
+    // the layer's tree
     // -------------------------------------------------------------------------
 
-    localparam int unsigned MAX_MSG_HASH_MSG_BITS = $bits(hss_pkg::lms_q_msg_t);
+    typedef struct packed {
+        logic [LEAF_IDX_W-1:0] leaf_idx;
+        logic [MAX_KCTX_W-1:0] kctx;
+    } layer_hdr_t;
 
-    function automatic int unsigned msg_hash_msg_bits(input sch_e sch);
+    function automatic layer_hdr_t layer_hdr(
+        input sch_e                  sch,
+        input logic [MAX_DATA_W-1:0] beat);
+        hss_pkg::layer_hdr_t hss_hdr;
+        hss_hdr = beat;
         case (sch)
-            SCHEME_HSS: return $bits(hss_pkg::lms_q_msg_t);
-            default:    return $bits(slh_pkg::slh_hmsg_msg_t);
+            SCHEME_HSS:      return layer_hdr_t'{
+                    leaf_idx: hss_hdr.leaf_index,
+                    kctx:     hss_hdr.sub_i};
+            SCHEME_SLH_128S: return '0;
+            default:         return '0;
         endcase
     endfunction
 
-    function automatic logic [MAX_MSG_HASH_MSG_BITS-1:0] msg_hash_msg(
-        input sch_e              sch,
-        input logic [MAX_KCTX_W-1:0] kctx,
-        input ctrl_t             ctrl,
-        input logic [MAX_DATA_W-1:0] randomizer,
-        input logic [MAX_DATA_W-1:0] message);
+    // -------------------------------------------------------------------------
+    // Message hash of the layer that signs the message
+    // -------------------------------------------------------------------------
+
+    function automatic int unsigned msg_hash_msg_bits(input sch_e sch);
         case (sch)
-            SCHEME_HSS: return MAX_MSG_HASH_MSG_BITS'(hss_pkg::lms_q_msg_t'{
+            SCHEME_HSS:      return $bits(hss_pkg::lms_q_msg_t);
+            SCHEME_SLH_128S: return $bits(slh_pkg::slh_hmsg_msg_t);
+            default:         return 0;
+        endcase
+    endfunction
+
+    localparam int unsigned MAX_MSG_HASH_MSG_BITS = max2(msg_hash_msg_bits(SCHEME_HSS),
+                                                         msg_hash_msg_bits(SCHEME_SLH_128S));
+
+    function automatic logic [MAX_MSG_HASH_MSG_BITS-1:0] msg_hash_msg(
+        input sch_e                  sch,
+        input logic [MAX_KCTX_W-1:0] kctx,
+        input ctrl_t                 ctrl,
+        input logic [MAX_DATA_W-1:0] randomizer,
+        input logic [MAX_DATA_W-1:0] pk_root,
+        input logic [MESSAGE_W-1:0]  message);
+        case (sch)
+            SCHEME_HSS:      return MAX_MSG_HASH_MSG_BITS'(hss_pkg::lms_q_msg_t'{
                     i:      kctx,
                     q:      ctrl2q(ctrl),
                     d_mesg: hss_pkg::D_MESG,
                     c:      randomizer,
                     msg:    message});
-            default:    return '0;
+            SCHEME_SLH_128S: return MAX_MSG_HASH_MSG_BITS'(slh_pkg::slh_hmsg_msg_t'{
+                    r:        slh_pkg::SLH_NW'(randomizer),
+                    seed:     slh_pkg::SLH_NW'(kctx),
+                    root:     slh_pkg::SLH_NW'(pk_root),
+                    mode_ctx: '0,
+                    message:  message});
+            default:         return '0;
         endcase
     endfunction
 
     // -------------------------------------------------------------------------
-    // Message hash of an upper hypertree layer (HSS only): Q over the
-    // serialised public key of the layer below, given its identifier and
-    // the root just computed for it
+    // Message hash of an upper hypertree layer: over the serialised public
+    // key of the layer below, given its key context and the root just
+    // computed for it
     // -------------------------------------------------------------------------
 
     localparam int unsigned SUB_PK_HASH_MSG_BITS = $bits(hss_pkg::lms_q_sub_msg_t);
 
     function automatic logic [SUB_PK_HASH_MSG_BITS-1:0] sub_pk_hash_msg(
+        input sch_e                  sch,
         input logic [MAX_KCTX_W-1:0] kctx,
-        input ctrl_t             ctrl,
+        input ctrl_t                 ctrl,
         input logic [MAX_DATA_W-1:0] randomizer,
         input logic [MAX_KCTX_W-1:0] sub_kctx,
         input logic [MAX_DATA_W-1:0] sub_root);
-        return hss_pkg::lms_q_sub_msg_t'{
+        case (sch)
+            SCHEME_HSS:      return hss_pkg::lms_q_sub_msg_t'{
                     i:          kctx,
                     q:          ctrl2q(ctrl),
                     d_mesg:     hss_pkg::D_MESG,
@@ -283,99 +307,93 @@ package hbsv_schs_pkg;
                     lmots_type: hss_pkg::LMOTS_TYPE,
                     sub_i:      sub_kctx,
                     root:       sub_root};
+            SCHEME_SLH_128S: return '0;
+            default:         return '0;
+        endcase
     endfunction
 
     // -------------------------------------------------------------------------
-    // H_msg, inner hash (SLH only): over R, the public key and the message
+    // Message digest extension: a second hash over the randomizer and the
+    // digest of the message hash, then the split of its digest into the
+    // signand and the indices of the tree and the leaf that sign it
     // -------------------------------------------------------------------------
 
-    localparam int unsigned SLH_HMSG_MSG_BITS = $bits(slh_pkg::slh_hmsg_msg_t);
+    localparam int unsigned DIGEST_EXT_MSG_BITS = $bits(slh_pkg::slh_mgf1_msg_t);
 
-    function automatic logic [SLH_HMSG_MSG_BITS-1:0] slh_hmsg_msg(
-        input logic [MAX_KCTX_W-1:0]     kctx,
-        input logic [slh_pkg::SLH_NW-1:0] pk_root,
-        input logic [slh_pkg::SLH_NW-1:0] randomizer,
-        input logic [MAX_DATA_W-1:0]     message);
-        return slh_pkg::slh_hmsg_msg_t'{
-                    r:        randomizer,
-                    seed:     kctx[MAX_KCTX_W-1 -: slh_pkg::SLH_NW],
-                    root:     pk_root,
-                    mode_ctx: '0,
-                    message:  message};
-    endfunction
-
-    // -------------------------------------------------------------------------
-    // H_msg, outer hash (SLH only): MGF1 over R, PK.seed and the inner digest
-    // -------------------------------------------------------------------------
-
-    localparam int unsigned SLH_MGF1_MSG_BITS = $bits(slh_pkg::slh_mgf1_msg_t);
-
-    function automatic logic [SLH_MGF1_MSG_BITS-1:0] slh_mgf1_msg(
-        input logic [MAX_KCTX_W-1:0]             kctx,
-        input logic [slh_pkg::SLH_NW-1:0]         randomizer,
-        input logic [slh_pkg::SHA256_STATE_W-1:0] inner_digest);
-        return slh_pkg::slh_mgf1_msg_t'{
-                    r:            randomizer,
-                    seed:         kctx[MAX_KCTX_W-1 -: slh_pkg::SLH_NW],
-                    inner_digest: inner_digest,
+    function automatic logic [DIGEST_EXT_MSG_BITS-1:0] digest_ext_msg(
+        input sch_e                    sch,
+        input logic [MAX_KCTX_W-1:0]   kctx,
+        input logic [MAX_DATA_W-1:0]   randomizer,
+        input logic [SHA_DIGEST_W-1:0] digest);
+        case (sch)
+            SCHEME_HSS:      return '0;
+            SCHEME_SLH_128S: return slh_pkg::slh_mgf1_msg_t'{
+                    r:            slh_pkg::SLH_NW'(randomizer),
+                    seed:         slh_pkg::SLH_NW'(kctx),
+                    inner_digest: digest,
                     counter:      '0};
+            default:         return '0;
+        endcase
+    endfunction
+
+    typedef struct packed {
+        logic [MAX_SIGNAND_W-1:0] signand;
+        logic [TREE_IDX_W-1:0]    tree_idx;
+        logic [LEAF_IDX_W-1:0]    leaf_idx;
+    } msg_digest_t;
+
+    function automatic msg_digest_t msg_digest_split(
+        input sch_e                    sch,
+        input logic [SHA_DIGEST_W-1:0] digest);
+        slh_pkg::slh_digest_t slh_digest;
+        slh_digest = digest;
+        case (sch)
+            SCHEME_HSS:      return '0;
+            SCHEME_SLH_128S: return msg_digest_t'{
+                    signand:  MAX_SIGNAND_W'(slh_digest.md),
+                    tree_idx: TREE_IDX_W'(slh_digest.tree_field[slh_pkg::SLH_IDX_TREE_W-1:0]),
+                    leaf_idx: LEAF_IDX_W'(slh_digest.leaf_field[slh_pkg::SLH_IDX_LEAF_W-1:0])};
+            default:         return '0;
+        endcase
     endfunction
 
     // -------------------------------------------------------------------------
     // OTS chain step
     // -------------------------------------------------------------------------
 
-    localparam int unsigned MAX_OTS_CHAIN_MSG_BITS = $bits(hss_pkg::lms_chain_msg_t);
-
     function automatic int unsigned ots_chain_msg_bits(input sch_e sch);
         case (sch)
-            SCHEME_HSS: return $bits(hss_pkg::lms_chain_msg_t);
-            default:    return $bits(slh_pkg::slh_f_msg_t);
+            SCHEME_HSS:      return $bits(hss_pkg::lms_chain_msg_t);
+            SCHEME_SLH_128S: return $bits(slh_pkg::slh_f_msg_t);
+            default:         return 0;
         endcase
     endfunction
 
+    localparam int unsigned MAX_OTS_CHAIN_MSG_BITS = max2(ots_chain_msg_bits(SCHEME_HSS),
+                                                          ots_chain_msg_bits(SCHEME_SLH_128S));
+
     function automatic logic [MAX_OTS_CHAIN_MSG_BITS-1:0] ots_chain_msg(
-        input sch_e              sch,
+        input sch_e                  sch,
         input logic [MAX_KCTX_W-1:0] kctx,
-        input ctrl_t             ctrl,
+        input ctrl_t                 ctrl,
         input logic [MAX_DATA_W-1:0] tmp);
         case (sch)
-            SCHEME_HSS: return MAX_OTS_CHAIN_MSG_BITS'(hss_pkg::lms_chain_msg_t'{
+            SCHEME_HSS:      return MAX_OTS_CHAIN_MSG_BITS'(hss_pkg::lms_chain_msg_t'{
                     i:     kctx,
                     q:     ctrl2q(ctrl),
                     chain: hss_pkg::CHAIN_W'(ctrl.chain_idx),
                     step:  hss_pkg::STEP_W'(ctrl.hash_idx),
                     tmp:   tmp});
-            default:    return MAX_OTS_CHAIN_MSG_BITS'(slh_pkg::slh_f_msg_t'{
-                    adrs: slh_adrs(.sch             (sch),
-                                   .ctrl            (ctrl),
-                                   .adrs_type       (slh_pkg::ADRS_WOTS_HASH),
-                                   .chain_or_height (slh_pkg::ADRS_WORD_W'(ctrl.chain_idx)),
-                                   .hash_or_index   (slh_pkg::ADRS_WORD_W'(ctrl.hash_idx))),
-                    m1:   tmp[MAX_DATA_W-1 -: slh_pkg::SLH_NW]});
+            SCHEME_SLH_128S: return MAX_OTS_CHAIN_MSG_BITS'(slh_pkg::slh_f_msg_t'{
+                    seed_block: slh_seed_block(kctx),
+                    adrs:       slh_adrs(.sch             (sch),
+                                         .ctrl            (ctrl),
+                                         .adrs_type       (slh_pkg::ADRS_WOTS_HASH),
+                                         .chain_or_height (slh_pkg::ADRS_WORD_W'(ctrl.chain_idx)),
+                                         .hash_or_index   (slh_pkg::ADRS_WORD_W'(ctrl.hash_idx))),
+                    m1:         slh_pkg::SLH_NW'(tmp)});
+            default:         return '0;
         endcase
-    endfunction
-
-    // -------------------------------------------------------------------------
-    // FORS leaf (SLH only): F over the secret element, addressed by the leaf's
-    // index in the forest, tree * 2^a + digit
-    // -------------------------------------------------------------------------
-
-    localparam int unsigned FORS_LEAF_MSG_BITS = $bits(slh_pkg::slh_f_msg_t);
-    localparam int unsigned FORS_LEAF_IDX_W    = slh_pkg::ADRS_WORD_W;   // an ADRS word
-
-    function automatic logic [FORS_LEAF_MSG_BITS-1:0] fors_leaf_msg(
-        input sch_e                        sch,
-        input ctrl_t                       ctrl,
-        input logic [FORS_LEAF_IDX_W-1:0]  fors_leaf,
-        input logic [slh_pkg::SLH_NW-1:0]  secret);
-        return slh_pkg::slh_f_msg_t'{
-                    adrs: slh_adrs(.sch             (sch),
-                                   .ctrl            (ctrl),
-                                   .adrs_type       (slh_pkg::ADRS_FORS_TREE),
-                                   .chain_or_height ('0),
-                                   .hash_or_index   (fors_leaf)),
-                    m1:   secret};
     endfunction
 
     // -------------------------------------------------------------------------
@@ -383,113 +401,228 @@ package hbsv_schs_pkg;
     // behind
     // -------------------------------------------------------------------------
 
-    function automatic logic [ACC_PREFIX_W-1:0] ots_pk_prefix(
-        input sch_e              sch,
-        input logic [MAX_KCTX_W-1:0] kctx,
-        input ctrl_t             ctrl);
+    function automatic int unsigned ots_pk_prefix_bits(input sch_e sch);
         case (sch)
-            SCHEME_HSS: return hss_pkg::lms_pk_prefix_t'{
+            SCHEME_HSS:      return $bits(hss_pkg::lms_pk_prefix_t);
+            SCHEME_SLH_128S: return $bits(slh_pkg::slh_t_prefix_t);
+            default:         return 0;
+        endcase
+    endfunction
+
+    localparam int unsigned MAX_OTS_PK_PREFIX_BITS = max2(ots_pk_prefix_bits(SCHEME_HSS),
+                                                          ots_pk_prefix_bits(SCHEME_SLH_128S));
+
+    function automatic logic [MAX_OTS_PK_PREFIX_BITS-1:0] ots_pk_prefix(
+        input sch_e                  sch,
+        input logic [MAX_KCTX_W-1:0] kctx,
+        input ctrl_t                 ctrl);
+        case (sch)
+            SCHEME_HSS:      return MAX_OTS_PK_PREFIX_BITS'(hss_pkg::lms_pk_prefix_t'{
                     i:      kctx,
                     q:      ctrl2q(ctrl),
-                    d_pblc: hss_pkg::D_PBLC};
-            default:    return slh_adrs(.sch             (sch),
-                                        .ctrl            (ctrl),
-                                        .adrs_type       (slh_pkg::ADRS_WOTS_PK),
-                                        .chain_or_height ('0),
-                                        .hash_or_index   ('0));
+                    d_pblc: hss_pkg::D_PBLC});
+            SCHEME_SLH_128S: return MAX_OTS_PK_PREFIX_BITS'(slh_pkg::slh_t_prefix_t'{
+                    seed_block: slh_seed_block(kctx),
+                    adrs:       slh_adrs(.sch             (sch),
+                                         .ctrl            (ctrl),
+                                         .adrs_type       (slh_pkg::ADRS_WOTS_PK),
+                                         .chain_or_height ('0),
+                                         .hash_or_index   ('0))});
+            default:         return '0;
         endcase
     endfunction
 
     // -------------------------------------------------------------------------
-    // FORS public-key hash (SLH only): the prefix the FORS roots are
-    // accumulated behind
+    // Accumulation of a public key (the OTS one over the chain endpoints, the
+    // FORS one over the tree roots)
+    //
+    // The elements are hashed behind the prefix in SHA-256 blocks, so every
+    // block boundary falls somewhere inside an element. The verifier banks
+    // elements until one straddles a boundary, absorbs what is complete with
+    // the top of that element, and carries the rest of it into the next
+    // block. The first absorb covers the prefix and the elements up to the
+    // first boundary after it; every later one is a single block of a carry,
+    // whole elements and a top. The final block holds the last carry, the
+    // elements still banked, and the padding.
     // -------------------------------------------------------------------------
 
-    function automatic logic [ACC_PREFIX_W-1:0] fors_pk_prefix(input sch_e sch, input ctrl_t ctrl);
-        return slh_adrs(.sch             (sch),
-                        .ctrl            (ctrl),
-                        .adrs_type       (slh_pkg::ADRS_FORS_ROOTS),
-                        .chain_or_height ('0),
-                        .hash_or_index   ('0));
+    // Blocks of the first absorb, and the bits of its last block left for
+    // elements
+    function automatic int unsigned acc_first_blocks(input sch_e sch);
+        return ots_pk_prefix_bits(sch) / sha2_wrap_pkg::BLOCK_W + 1;
+    endfunction
+    function automatic int unsigned acc_first_room(input sch_e sch);
+        return sha2_wrap_pkg::BLOCK_W - ots_pk_prefix_bits(sch) % sha2_wrap_pkg::BLOCK_W;
+    endfunction
+    // Elements banked before the first absorb, and before each later one
+    function automatic int unsigned acc_first_full(input sch_e sch);
+        return acc_first_room(sch) / digest_w(sch);
+    endfunction
+    function automatic int unsigned acc_mid_full(input sch_e sch);
+        return sha2_wrap_pkg::BLOCK_W / digest_w(sch) - 1;
+    endfunction
+    // Bits of the element closing a block that fit in it, and the rest
+    function automatic int unsigned acc_top_w(input sch_e sch);
+        return acc_first_room(sch) % digest_w(sch);
+    endfunction
+    function automatic int unsigned acc_carry_w(input sch_e sch);
+        return digest_w(sch) - acc_top_w(sch);
+    endfunction
+    // Elements still banked when a stream of count elements ends
+    function automatic int unsigned acc_tail_elems(input sch_e sch, input int unsigned count);
+        if (count <= acc_first_full(sch)) return count;
+        return (count - 1 - acc_first_full(sch)) % (acc_mid_full(sch) + 1);
     endfunction
 
     // -------------------------------------------------------------------------
-    // Merkle leaf (HSS only): the leaf hash over the OTS public key
+    // Merkle leaf: the leaf hash over the OTS public key
     // -------------------------------------------------------------------------
 
     localparam int unsigned MSS_LEAF_MSG_BITS = $bits(hss_pkg::lms_leaf_msg_t);
 
     function automatic logic [MSS_LEAF_MSG_BITS-1:0] mss_leaf_msg(
+        input sch_e                  sch,
         input logic [MAX_KCTX_W-1:0] kctx,
-        input ctrl_t             ctrl,
+        input ctrl_t                 ctrl,
         input logic [MAX_DATA_W-1:0] kc);
-        return hss_pkg::lms_leaf_msg_t'{
+        case (sch)
+            SCHEME_HSS:      return hss_pkg::lms_leaf_msg_t'{
                     i:      kctx,
                     q:      ctrl2q(ctrl),
                     d_leaf: hss_pkg::D_LEAF,
                     kc:     kc};
+            SCHEME_SLH_128S: return '0;
+            default:         return '0;
+        endcase
     endfunction
 
     // -------------------------------------------------------------------------
     // Merkle interior node: the parent hash over a left and a right child
     // -------------------------------------------------------------------------
 
-    localparam int unsigned MAX_MSS_JOIN_MSG_BITS = $bits(hss_pkg::lms_intr_msg_t);
-
     function automatic int unsigned mss_join_msg_bits(input sch_e sch);
         case (sch)
-            SCHEME_HSS: return $bits(hss_pkg::lms_intr_msg_t);
-            default:    return $bits(slh_pkg::slh_h_msg_t);
+            SCHEME_HSS:      return $bits(hss_pkg::lms_intr_msg_t);
+            SCHEME_SLH_128S: return $bits(slh_pkg::slh_h_msg_t);
+            default:         return 0;
         endcase
     endfunction
 
+    localparam int unsigned MAX_MSS_JOIN_MSG_BITS = max2(mss_join_msg_bits(SCHEME_HSS),
+                                                         mss_join_msg_bits(SCHEME_SLH_128S));
+
     function automatic logic [MAX_MSS_JOIN_MSG_BITS-1:0] mss_join_msg(
-        input sch_e              sch,
+        input sch_e                  sch,
         input logic [MAX_KCTX_W-1:0] kctx,
-        input ctrl_t             ctrl,
+        input ctrl_t                 ctrl,
         input logic [MAX_DATA_W-1:0] left,
         input logic [MAX_DATA_W-1:0] right);
         case (sch)
-            SCHEME_HSS: return MAX_MSS_JOIN_MSG_BITS'(hss_pkg::lms_intr_msg_t'{
+            SCHEME_HSS:      return MAX_MSS_JOIN_MSG_BITS'(hss_pkg::lms_intr_msg_t'{
                     i:      kctx,
                     node:   ctrl2node(sch, ctrl),
                     d_intr: hss_pkg::D_INTR,
                     left:   left,
                     right:  right});
-            default:    return MAX_MSS_JOIN_MSG_BITS'(slh_pkg::slh_h_msg_t'{
-                    adrs:  slh_adrs(.sch             (sch),
-                                    .ctrl            (ctrl),
-                                    .adrs_type       (slh_pkg::ADRS_TREE),
-                                    .chain_or_height (slh_pkg::ADRS_WORD_W'(ctrl.mrkl_level)
-                                                      + slh_pkg::ADRS_WORD_W'(1)),
-                                    .hash_or_index   (ctrl2node(sch, ctrl))),
-                    left:  left[MAX_DATA_W-1 -: slh_pkg::SLH_NW],
-                    right: right[MAX_DATA_W-1 -: slh_pkg::SLH_NW]});
+            SCHEME_SLH_128S: return MAX_MSS_JOIN_MSG_BITS'(slh_pkg::slh_h_msg_t'{
+                    seed_block: slh_seed_block(kctx),
+                    adrs:       slh_adrs(.sch             (sch),
+                                         .ctrl            (ctrl),
+                                         .adrs_type       (slh_pkg::ADRS_TREE),
+                                         .chain_or_height (ctrl2height(ctrl)),
+                                         .hash_or_index   (ctrl2tree_index(ctrl))),
+                    left:       slh_pkg::SLH_NW'(left),
+                    right:      slh_pkg::SLH_NW'(right)});
+            default:         return '0;
         endcase
     endfunction
 
     // -------------------------------------------------------------------------
-    // FORS interior node (SLH only): the parent hash within one FORS tree,
-    // addressed by the leaf's index in the forest halved once per level
+    // FORS: the index of the leaf a tree reveals (its digit of the signand,
+    // the most significant first), the leaf hash over the secret element,
+    // the parent hash, and the prefix the tree roots are accumulated behind
+    // (as wide as the OTS one, the accumulation is shared)
     // -------------------------------------------------------------------------
+
+    function automatic logic [FORS_LEAF_W-1:0] fors_leaf_idx(
+        input sch_e                     sch,
+        input logic [MAX_SIGNAND_W-1:0] signand,
+        input logic [FORS_TREE_W-1:0]   fors_tree);
+        logic [slh_pkg::SLH_A-1:0] slh_digit;
+        slh_digit = '0;
+        for (int unsigned i = 0; i < slh_pkg::SLH_K; i++) begin
+            if (fors_tree == FORS_TREE_W'(i)) begin
+                slh_digit = signand[slh_pkg::SLH_MD_W-1 - slh_pkg::SLH_A*i -: slh_pkg::SLH_A];
+            end
+        end
+        case (sch)
+            SCHEME_HSS:      return '0;
+            SCHEME_SLH_128S: return FORS_LEAF_W'(slh_digit);
+            default:         return '0;
+        endcase
+    endfunction
+
+    localparam int unsigned FORS_LEAF_MSG_BITS = $bits(slh_pkg::slh_f_msg_t);
+
+    function automatic logic [FORS_LEAF_MSG_BITS-1:0] fors_leaf_msg(
+        input sch_e                  sch,
+        input logic [MAX_KCTX_W-1:0] kctx,
+        input ctrl_t                 ctrl,
+        input logic [MAX_DATA_W-1:0] secret);
+        case (sch)
+            SCHEME_HSS:      return '0;
+            SCHEME_SLH_128S: return slh_pkg::slh_f_msg_t'{
+                    seed_block: slh_seed_block(kctx),
+                    adrs:       slh_adrs(.sch             (sch),
+                                         .ctrl            (ctrl),
+                                         .adrs_type       (slh_pkg::ADRS_FORS_TREE),
+                                         .chain_or_height ('0),
+                                         .hash_or_index   (ctrl2fors_leaf(ctrl))),
+                    m1:         slh_pkg::SLH_NW'(secret)};
+            default:         return '0;
+        endcase
+    endfunction
 
     localparam int unsigned FORS_JOIN_MSG_BITS = $bits(slh_pkg::slh_h_msg_t);
 
     function automatic logic [FORS_JOIN_MSG_BITS-1:0] fors_join_msg(
-        input sch_e                        sch,
-        input ctrl_t                       ctrl,
-        input logic [FORS_LEAF_IDX_W-1:0]  fors_leaf,
-        input logic [slh_pkg::SLH_NW-1:0]  left,
-        input logic [slh_pkg::SLH_NW-1:0]  right);
-        return slh_pkg::slh_h_msg_t'{
-                    adrs:  slh_adrs(.sch             (sch),
-                                    .ctrl            (ctrl),
-                                    .adrs_type       (slh_pkg::ADRS_FORS_TREE),
-                                    .chain_or_height (slh_pkg::ADRS_WORD_W'(ctrl.mrkl_level)
-                                                      + slh_pkg::ADRS_WORD_W'(1)),
-                                    .hash_or_index   (fors_leaf >> ctrl.mrkl_level >> 1)),
-                    left:  left,
-                    right: right};
+        input sch_e                  sch,
+        input logic [MAX_KCTX_W-1:0] kctx,
+        input ctrl_t                 ctrl,
+        input logic [MAX_DATA_W-1:0] left,
+        input logic [MAX_DATA_W-1:0] right);
+        case (sch)
+            SCHEME_HSS:      return '0;
+            SCHEME_SLH_128S: return slh_pkg::slh_h_msg_t'{
+                    seed_block: slh_seed_block(kctx),
+                    adrs:       slh_adrs(.sch             (sch),
+                                         .ctrl            (ctrl),
+                                         .adrs_type       (slh_pkg::ADRS_FORS_TREE),
+                                         .chain_or_height (ctrl2height(ctrl)),
+                                         .hash_or_index   (ctrl2fors_index(ctrl))),
+                    left:       slh_pkg::SLH_NW'(left),
+                    right:      slh_pkg::SLH_NW'(right)};
+            default:         return '0;
+        endcase
     endfunction
+
+    function automatic logic [MAX_OTS_PK_PREFIX_BITS-1:0] fors_pk_prefix(
+        input sch_e                  sch,
+        input logic [MAX_KCTX_W-1:0] kctx,
+        input ctrl_t                 ctrl);
+        case (sch)
+            SCHEME_HSS:      return '0;
+            SCHEME_SLH_128S: return MAX_OTS_PK_PREFIX_BITS'(slh_pkg::slh_t_prefix_t'{
+                    seed_block: slh_seed_block(kctx),
+                    adrs:       slh_adrs(.sch             (sch),
+                                         .ctrl            (ctrl),
+                                         .adrs_type       (slh_pkg::ADRS_FORS_ROOTS),
+                                         .chain_or_height ('0),
+                                         .hash_or_index   ('0))});
+            default:         return '0;
+        endcase
+    endfunction
+
+    /* verilator lint_on UNUSEDSIGNAL */
 
 endpackage

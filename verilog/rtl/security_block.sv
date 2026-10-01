@@ -167,7 +167,6 @@ module security_block
                 .data         (license_data),
                 .identifier   (hss_pkg::PUBKEYS[signer_q].identifier),
                 .root_pub_key (hss_pkg::PUBKEYS[signer_q].root_pub_key),
-                .midstate     ('0),
                 .verify_done  (crypto_done),
                 .verif_passed (crypto_verif_passed)
             );
@@ -191,7 +190,6 @@ module security_block
                 .data         (license_data),
                 .identifier   (slh_pkg::SLH_KEYS[signer_q].seed),
                 .root_pub_key (slh_pkg::SLH_KEYS[signer_q].root),
-                .midstate     (slh_pkg::SLH_KEYS[signer_q].midstate),
                 .verify_done  (crypto_done),
                 .verif_passed (crypto_verif_passed)
             );
