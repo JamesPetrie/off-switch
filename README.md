@@ -46,6 +46,7 @@ Both flavours are wired into the same `security_block` module via a `CRYPTO_TYPE
 #### Prerequisites
 
 - **Verilator** (5.x+)
+- **OpenSSL** headers and library (`libssl-dev` on Ubuntu, `brew install openssl@3` on macOS): the HSS-LMS testbenches sign with the Cisco [hash-sigs](https://github.com/cisco/hash-sigs) reference implementation of RFC 8554, a git submodule that hashes with OpenSSL
 
 #### Installation
 
@@ -53,8 +54,8 @@ Both flavours are wired into the same `security_block` module via a `CRYPTO_TYPE
 # Install verilator if needed (macOS: brew install verilator, Ubuntu: apt install verilator)
 # Note: apt install gets older version, build a newer from source if needed
 
-# Clone the repo
-git clone https://github.com/JamesPetrie/off-switch
+# Clone the repo, with the hash-sigs submodule
+git clone --recurse-submodules https://github.com/JamesPetrie/off-switch
 cd off-switch
 ```
 
@@ -71,6 +72,8 @@ make sim TB=top_hss
 ```
 
 The two top-level testbenches (`tb_top_ecdsa.sv`, `tb_top_hss.sv`) instantiate `security_block` with the appropriate `CRYPTO_TYPE` parameter and run the same suite of integration tests.
+
+The HSS-LMS licences are signed at run time by hash-sigs through DPI-C (`tb/hss_signer.c`, `tb/dpi_hss.c`), so the verifier is checked against the RFC 8554 reference rather than against a signer of our own. The test signers' keys derive from fixed seeds; their public halves live in `rtl/hss_keys.svh` and are regenerated with `make hss-keys` whenever the seeds or the parameter set change (the testbench stops if the file is stale).
 
 ---
 

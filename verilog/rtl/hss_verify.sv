@@ -403,12 +403,13 @@ module hss_verify
     assign sha_restore = kc_absorbing && !kc_first_blk;
 
     // -------------------------------------------------------------------------
-    // Leaf: H(I || q || D_LEAF || Kc)
+    // Leaf: H(I || u32str(2^h + q) || D_LEAF || Kc)
     // -------------------------------------------------------------------------
 
     localparam int unsigned LEAF_MSG_W = MSS_LEAF_MSG_BITS;
 
-    wire [LEAF_MSG_W-1:0] leaf_data = mss_leaf_msg(.kctx (cur_I),
+    wire [LEAF_MSG_W-1:0] leaf_data = mss_leaf_msg(.sch  (SCH),
+                                                   .kctx (cur_I),
                                                    .ctrl (ctrl),
                                                    .kc   (hash_reg_q));
 

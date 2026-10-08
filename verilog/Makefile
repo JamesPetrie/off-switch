@@ -17,7 +17,36 @@ TB_DIR     := tb
 TB_FILE    := $(TB_DIR)/tb_$(TB).sv
 BUILD_DIR  := build
 TOP_MODULE := tb
-DPI_FILE   := $(TB_DIR)/dpi_sha256.cpp
+
+# -- HSS-LMS test signer: Cisco hash-sigs, the RFC 8554 reference (tb/hash-sigs) --
+HASH_SIGS_DIR  := $(TB_DIR)/hash-sigs
+HASH_SIGS_SRCS := hss.c hss_alloc.c hss_aux.c hss_common.c hss_compute.c hss_generate.c \
+                  hss_keygen.c hss_param.c hss_reserve.c hss_sign.c hss_sign_inc.c \
+                  hss_thread_single.c hss_verify.c hss_verify_inc.c hss_derive.c hss_zeroize.c \
+                  lm_common.c lm_ots_common.c lm_ots_sign.c lm_ots_verify.c lm_verify.c \
+                  endian.c hash.c sha256.c
+HSS_SIGNER_SRCS := $(TB_DIR)/hss_signer.c $(TB_DIR)/dpi_hss.c
+HSS_LIB         := $(BUILD_DIR)/libhss_signer.a
+# hash-sigs hashes with OpenSSL's SHA-256
+OPENSSL_CFLAGS  := $(shell pkg-config --cflags libcrypto 2>/dev/null || (p=$$(brew --prefix openssl@3 2>/dev/null) && echo "-I$$p/include"))
+OPENSSL_LDFLAGS := $(shell pkg-config --libs libcrypto 2>/dev/null || (p=$$(brew --prefix openssl@3 2>/dev/null) && echo "-L$$p/lib -lcrypto"))
+VLT_INC         := $(shell verilator --getenv VERILATOR_ROOT 2>/dev/null)/include/vltstd
+HSS_CFLAGS      := -O2 -I$(HASH_SIGS_DIR) -I$(VLT_INC) $(OPENSSL_CFLAGS)
+
+$(HSS_LIB): $(addprefix $(HASH_SIGS_DIR)/,$(HASH_SIGS_SRCS)) $(HSS_SIGNER_SRCS) $(TB_DIR)/hss_signer.h
+	@test -f $(HASH_SIGS_DIR)/hss.h || { echo "tb/hash-sigs is empty: run 'git submodule update --init'"; exit 1; }
+	@mkdir -p $(BUILD_DIR)/hss_signer
+	@for f in $(addprefix $(HASH_SIGS_DIR)/,$(HASH_SIGS_SRCS)); do \
+	    $(CC) $(HSS_CFLAGS) -w -c $$f -o $(BUILD_DIR)/hss_signer/$$(basename $$f .c).o || exit 1; done
+	@for f in $(HSS_SIGNER_SRCS); do \
+	    $(CC) $(HSS_CFLAGS) -Wall -Werror -c $$f -o $(BUILD_DIR)/hss_signer/$$(basename $$f .c).o || exit 1; done
+	ar rcs $@ $(BUILD_DIR)/hss_signer/*.o
+
+# Only the HSS testbenches sign
+ifneq ($(filter hss top_hss,$(TB)),)
+SIM_DEPS    := $(HSS_LIB)
+SIM_LDFLAGS := -LDFLAGS "$(abspath $(HSS_LIB)) $(OPENSSL_LDFLAGS)"
+endif
 SVA_FILE   := $(TB_DIR)/rtl_sva.sv # assertions bound into the RTL, simulation only
 
 # ---------------------------------------------------------------------------
@@ -32,10 +61,10 @@ ifeq ($(GUI),1)
 endif
 
 .PHONY: sim
-sim:
+sim: $(SIM_DEPS)
 ifeq ($(TOOL),verilator)
 	@echo "-- VERILATE & BUILD --------"
-	verilator $(VFLAGS) -F $(RTL_VC) +incdir+$(TB_DIR) $(TB_FILE) $(SVA_FILE) $(DPI_FILE) --top-module $(TOP_MODULE) tb/sim_main.cpp --Mdir $(BUILD_DIR)
+	verilator $(VFLAGS) -F $(RTL_VC) +incdir+$(TB_DIR) $(TB_FILE) $(SVA_FILE) --top-module $(TOP_MODULE) tb/sim_main.cpp $(SIM_LDFLAGS) --Mdir $(BUILD_DIR)
 	@echo "-- RUN ---------------------"
 	$(BUILD_DIR)/V$(TOP_MODULE)
 	@echo "-- DONE --------------------"
@@ -103,6 +132,13 @@ endif
 # Housekeeping
 # ---------------------------------------------------------------------------
 
+# Regenerate the test signers' public keys (rtl/hss_keys.svh) from the fixed seeds
+.PHONY: hss-keys
+hss-keys: $(HSS_LIB)
+	$(CC) $(HSS_CFLAGS) -Wall $(TB_DIR)/gen_hss_keys.c $(HSS_LIB) $(OPENSSL_LDFLAGS) -o $(BUILD_DIR)/gen_hss_keys
+	$(BUILD_DIR)/gen_hss_keys > rtl/hss_keys.svh
+	@echo "wrote rtl/hss_keys.svh"
+
 .PHONY: clean
 clean:
 	rm -rf $(BUILD_DIR) *.vcd *.fst *.vpd *.wlf *.log simv csrc
@@ -115,6 +151,7 @@ help:
 	@echo "  sim      Run simulation (TOOL=verilator TB=demo|top_ecdsa|top_hss|ecdsa|arith|hss GUI=0|1)"
 	@echo "  lint     Run linter (TOOL=verilator|verible GUI=0)"
 	@echo "  synth    Run yosys synthesis and report cell area (CRYPTO_TYPE=0|1). Requires CELL_LIB env var."
+	@echo "  hss-keys Regenerate rtl/hss_keys.svh, the HSS test signers' public keys (hash-sigs)"
 	@echo "  clean    Remove all generated build artefacts"
 	@echo "  help     Print this message"
 

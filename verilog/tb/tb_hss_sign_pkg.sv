@@ -1,6 +1,13 @@
-// HSS-LMS signing functions for testbench use.
-// Uses DPI-C SHA-256 to compute WOTS+ signatures at runtime across
-// HSS_LEVELS stacked trees (bottom-up verify order mirrors hss_verify.sv).
+// HSS-LMS signing for testbench use.
+//
+// Signatures come from the Cisco hash-sigs reference implementation of
+// RFC 8554 (tb/hash-sigs, git submodule) through DPI-C (tb/dpi_hss.c,
+// tb/hss_signer.c). Each test signer is a two-level hypertree with keys
+// derived from a fixed seed; the public keys are in rtl/hss_keys.svh
+// (`make hss-keys`) and are checked against the signer on first use.
+//
+// hss_sign() returns the standard HSS signature re-laid as the verifier's
+// licence beat stream; the bytes themselves are not reinterpreted.
 
 `ifndef TB_HSS_SIGN_PKG_SV
 `define TB_HSS_SIGN_PKG_SV
@@ -9,173 +16,27 @@ package tb_hss_sign_pkg;
 
     import arith_pkg::*;
     import hss_pkg::*;
-    import tb_hss_tree_pkg::*;
-
-    // DPI import — implemented in dpi_sha256.cpp
-    // Buffer sized to fit the largest single-hash input we assemble here.
-    import "DPI-C" function void dpi_sha256(
-        input byte unsigned data[128], input int byte_len,
-        output bit [255:0] digest
-    );
 
     // -------------------------------------------------------------------------
-    // Buffer accumulator for SHA-256 input assembly
+    // RFC 8554 encodings, in bytes
     // -------------------------------------------------------------------------
 
-    // Large enough for the biggest single-block consumer: inter-layer Q input
-    // (128+32+16+256+32+32+128+256 bits = 110 bytes). Sized generously.
-    byte unsigned sha_buf [128];
-    int           sha_idx;
+    localparam int unsigned LMS_PUB_LEN = 4 + 4 + 16 + 32;              // type || otstype || I || T
+    localparam int unsigned OTS_SIG_LEN = 4 + 32 + 32 * WOTS_P;              // otstype || C || y[p]
+    localparam int unsigned LMS_SIG_LEN = 4 + OTS_SIG_LEN + 4 + 32 * TREE_H; // q || ots sig || type || path
+    localparam int unsigned HSS_SIG_LEN = 4 + (HSS_LEVELS - 1) * (LMS_SIG_LEN + LMS_PUB_LEN)
+                                            + LMS_SIG_LEN;
 
-    function automatic void sha_clear();
-        sha_idx = 0;
-    endfunction
-
-    function automatic void sha_pack256(input logic [255:0] val);
-        for (int i = 0; i < 32; i++)
-            sha_buf[sha_idx + i] = val[(255 - i*8) -: 8];
-        sha_idx += 32;
-    endfunction
-
-    function automatic void sha_pack128(input logic [127:0] val);
-        for (int i = 0; i < 16; i++)
-            sha_buf[sha_idx + i] = val[(127 - i*8) -: 8];
-        sha_idx += 16;
-    endfunction
-
-    function automatic void sha_pack32(input logic [31:0] val);
-        for (int i = 0; i < 4; i++)
-            sha_buf[sha_idx + i] = val[(31 - i*8) -: 8];
-        sha_idx += 4;
-    endfunction
-
-    function automatic void sha_pack16(input logic [15:0] val);
-        sha_buf[sha_idx]     = val[15:8];
-        sha_buf[sha_idx + 1] = val[7:0];
-        sha_idx += 2;
-    endfunction
-
-    function automatic void sha_pack8(input logic [7:0] val);
-        sha_buf[sha_idx] = val;
-        sha_idx += 1;
-    endfunction
-
-    function automatic logic [255:0] sha_finish();
-        logic [255:0] digest;
-        dpi_sha256(sha_buf, sha_idx, digest);
-        return digest;
-    endfunction
-
-    // -------------------------------------------------------------------------
-    // Derive WOTS+ secret key per RFC 8554 Appendix A:
-    //   x_q[i] = H(I || u32str(q) || u16str(i) || u8str(0xff) || SEED)
-    // -------------------------------------------------------------------------
-
-    function automatic logic [255:0] wots_secret_key(
-        input logic [127:0] ident,
-        input logic [255:0] seed,
-        input logic [31:0]  leaf_q,
-        input int           chain_i
-    );
-        sha_clear();
-        sha_pack128(ident);
-        sha_pack32 (leaf_q);
-        sha_pack16 (16'(chain_i));
-        sha_pack8  (8'hff);
-        sha_pack256(seed);
-        return sha_finish();
-    endfunction
-
-    // -------------------------------------------------------------------------
-    // WOTS+ chain hash: H(I || u32str(q) || u16str(i) || u8str(j) || tmp)
-    // -------------------------------------------------------------------------
-
-    function automatic logic [255:0] wots_chain_hash(
-        input logic [127:0] ident,
-        input logic [31:0]  leaf_q,
-        input int           chain_i,
-        input int           step_j,
-        input logic [255:0] tmp
-    );
-        sha_clear();
-        sha_pack128(ident);
-        sha_pack32 (leaf_q);
-        sha_pack16 (16'(chain_i));
-        sha_pack8  (8'(step_j));
-        sha_pack256(tmp);
-        return sha_finish();
-    endfunction
-
-    // -------------------------------------------------------------------------
-    // Q hash for a 256-bit message input:
-    //   H(I || u32str(q) || D_MESG || C || message)
-    // -------------------------------------------------------------------------
-
-    function automatic logic [255:0] compute_q_hash_msg(
-        input logic [127:0] ident,
-        input logic [31:0]  leaf_q,
-        input logic [255:0] randomizer,
-        input logic [255:0] message
-    );
-        sha_clear();
-        sha_pack128(ident);
-        sha_pack32 (leaf_q);
-        sha_pack16 (D_MESG);
-        sha_pack256(randomizer);
-        sha_pack256(message);
-        return sha_finish();
-    endfunction
-
-    // -------------------------------------------------------------------------
-    // Q hash for a serialised-pub inter-layer input:
-    //   H(I || u32str(q) || D_MESG || C || LMS_TYPE || LMOTS_TYPE || sub_I || sub_root)
-    // -------------------------------------------------------------------------
-
-    function automatic logic [255:0] compute_q_hash_sub(
-        input logic [127:0] ident,
-        input logic [31:0]  leaf_q,
-        input logic [255:0] randomizer,
-        input logic [127:0] sub_ident,
-        input logic [255:0] sub_root
-    );
-        sha_clear();
-        sha_pack128(ident);
-        sha_pack32 (leaf_q);
-        sha_pack16 (D_MESG);
-        sha_pack256(randomizer);
-        sha_pack32 (LMS_TYPE);
-        sha_pack32 (LMOTS_TYPE);
-        sha_pack128(sub_ident);
-        sha_pack256(sub_root);
-        return sha_finish();
-    endfunction
-
-    // -------------------------------------------------------------------------
-    // Extract auth path from pre-built tree (per signer × layer)
-    // -------------------------------------------------------------------------
-
-    function automatic void get_auth_path(
-        input  int signer_id,
-        input  int lv,
-        input  int leaf_q,
-        output logic [TREE_H_MAX-1:0][WIDTH-1:0] path
-    );
-        int node_idx;
-        node_idx = NUM_LEAVES + leaf_q;
-        path = '0;
-        for (int level = 0; level < TREE_H; level++) begin
-            path[level] = TREE[signer_id][lv][node_idx ^ 1];
-            node_idx = node_idx >> 1;
-        end
-    endfunction
-
-    // -------------------------------------------------------------------------
-    // Per-signer × per-layer leaf state. Only the bottom-layer leaf advances
-    // on each sign call for that signer; upper-layer leaves stay sticky
-    // (initialised from SUB_LEAF_INDEX) throughout the simulation.
-    // -------------------------------------------------------------------------
-
-    int cur_leaf [NUM_SIGNERS][HSS_LEVELS];
+    import "DPI-C" function int dpi_hss_init(input int signer);
+    import "DPI-C" function int dpi_hss_pubkey(input  int           signer,
+                                               output int           levels,
+                                               output int           lms_type,
+                                               output int           ots_type,
+                                               output bit [127:0]   identifier,
+                                               output bit [255:0]   root);
+    import "DPI-C" function int dpi_hss_sign(input  int           signer,
+                                             input  bit [255:0]   message,
+                                             output byte unsigned sig [HSS_SIG_LEN]);
 
     // -------------------------------------------------------------------------
     // License format
@@ -193,7 +54,7 @@ package tb_hss_sign_pkg;
         logic [HSS_LEVELS-1:0]                [WIDTH-1:0]  randomizer;
         logic [HSS_LEVELS-1:0]                [127:0]      sub_I;
         logic [HSS_LEVELS-1:0][WOTS_P-1:0]    [WIDTH-1:0]  sig_chains;
-        logic [HSS_LEVELS-1:0][TREE_H_MAX-1:0][WIDTH-1:0]  auth_path;
+        logic [HSS_LEVELS-1:0][TREE_H-1:0]    [WIDTH-1:0]  auth_path;
     } license_t;
 
     // -------------------------------------------------------------------------
@@ -211,11 +72,9 @@ package tb_hss_sign_pkg;
     function automatic logic [WIDTH-1:0] license_beat(input license_t lic,
                                                      input int       idx);
         int lv, off;
-
         lv  = int'(HSS_LEVELS) - 1 - (idx / int'(BEATS_PER_LAYER));
         off = idx % int'(BEATS_PER_LAYER);
         if (lv < 0 || lv >= int'(HSS_LEVELS)) return '0;
-
         case (off)
             0:       return {lic.leaf_index[lv], lic.sub_I[lv],
                              {(WIDTH - 32 - 128){1'b0}}};
@@ -228,130 +87,108 @@ package tb_hss_sign_pkg;
         endcase
     endfunction
 
-    function automatic void init_leaves();
-        for (int s = 0; s < int'(NUM_SIGNERS); s++) begin
-            // Upper layers (if any): pre-chosen sub leaves, stable across
-            // signings. For L=1 the inner loop is empty.
-            for (int lv = 0; lv < int'(HSS_LEVELS) - 1; lv++)
-                cur_leaf[s][lv] = SUB_LEAF_INDEX[lv];
-            // Bottom layer: starts at 5, advances on each hss_sign
-            cur_leaf[s][HSS_LEVELS - 1] = 5;
+    // -------------------------------------------------------------------------
+    // Signature bytes -> license_t
+    // -------------------------------------------------------------------------
+
+    byte unsigned sig_buf [HSS_SIG_LEN];
+
+    function automatic logic [31:0] be32(input int off);
+        return {sig_buf[off], sig_buf[off+1], sig_buf[off+2], sig_buf[off+3]};
+    endfunction
+
+    function automatic logic [127:0] be128(input int off);
+        logic [127:0] v;
+        for (int i = 0; i < 16; i++) v[127 - 8*i -: 8] = sig_buf[off + i];
+        return v;
+    endfunction
+
+    function automatic logic [255:0] be256(input int off);
+        logic [255:0] v;
+        for (int i = 0; i < 32; i++) v[255 - 8*i -: 8] = sig_buf[off + i];
+        return v;
+    endfunction
+
+    // One LMS signature at sig_buf[off]: u32 q || ots sig || u32 type || path.
+    // Fills layer lv of lic; returns the offset past it.
+    function automatic int unpack_lms_sig(input int off, input int lv, ref license_t lic);
+        lic.leaf_index[lv] = be32(off);                              off += 4;
+        if (be32(off) != 32'(LMOTS_TYPE))
+            $fatal(1, "hss_sign: layer %0d OTS type 0x%08x, expected 0x%08x", lv, be32(off), 32'(LMOTS_TYPE));
+        off += 4;
+        lic.randomizer[lv] = be256(off);                             off += 32;
+        for (int i = 0; i < int'(WOTS_P); i++) begin
+            lic.sig_chains[lv][i] = be256(off);                      off += 32;
+        end
+        if (be32(off) != 32'(LMS_TYPE))
+            $fatal(1, "hss_sign: layer %0d LMS type 0x%08x, expected 0x%08x", lv, be32(off), 32'(LMS_TYPE));
+        off += 4;
+        for (int j = 0; j < int'(TREE_H); j++) begin
+            lic.auth_path[lv][j] = be256(off);                       off += 32;
+        end
+        return off;
+    endfunction
+
+    // The signer's public keys must be the ones hss_pkg was elaborated with.
+    function automatic void check_keys();
+        int         levels, lms_type, ots_type;
+        bit [127:0] identifier;
+        bit [255:0] root;
+        for (int s = 0; s < $size(PUBKEYS); s++) begin
+            if (dpi_hss_init(s) != 0 ||
+                dpi_hss_pubkey(s, levels, lms_type, ots_type, identifier, root) != 0)
+                $fatal(1, "hss_sign: hash-sigs could not set up signer %0d", s);
+            if (levels != int'(HSS_LEVELS) || lms_type != int'(LMS_TYPE) || ots_type != int'(LMOTS_TYPE))
+                $fatal(1, "hss_sign: signer %0d parameter set (L=%0d, lms=%0d, ots=%0d) is not hss_pkg's",
+                       s, levels, lms_type, ots_type);
+            if (identifier != PUBKEYS[s].identifier || root != PUBKEYS[s].root_pub_key)
+                $fatal(1, "hss_sign: signer %0d public key is not the one in rtl/hss_keys.svh; run `make hss-keys`", s);
         end
     endfunction
 
-    function automatic logic [255:0] make_randomizer(input int leaf);
-        return {32{leaf[7:0]}};
-    endfunction
-
-    function automatic void advance_leaf(input int signer_id);
-        cur_leaf[signer_id][HSS_LEVELS - 1] = cur_leaf[signer_id][HSS_LEVELS - 1] + 1;
-        if (cur_leaf[signer_id][HSS_LEVELS - 1] >= NUM_LEAVES)
-            $fatal("Exhausted all %0d leaves in signer %0d's bottom tree",
-                   NUM_LEAVES, signer_id);
-    endfunction
-
     // -------------------------------------------------------------------------
-    // Sign a single LMS layer (one tree's worth of WOTS+ + auth path) given a
-    // pre-computed Q digest. Writes into the license struct at index `lv`.
-    // -------------------------------------------------------------------------
-
-    function automatic void sign_layer_with_q(
-        input int                                    signer_id,
-        input int                                    lv,
-        input logic [255:0]                          q_hash,
-        ref   license_t                              lic
-    );
-        logic [15:0]  csum;
-        int digits [WOTS_P];
-        logic [127:0] ident;
-        logic [255:0] seed;
-        int q;
-
-        ident = IDENTIFIERS[signer_id][lv];
-        seed  = MASTER_SEEDS[signer_id][lv];
-        q     = cur_leaf[signer_id][lv];
-
-        // Extract digits
-        for (int i = 0; i < WOTS_P1; i++)
-            digits[i] = int'(q_hash[(255 - i*8) -: 8]);
-
-        // Checksum
-        csum = '0;
-        for (int i = 0; i < WOTS_P1; i++)
-            csum = csum + 16'(WOTS_MAX_COEF) - 16'(digits[i]);
-        digits[WOTS_P1]     = int'(csum[15:8]);
-        digits[WOTS_P1 + 1] = int'(csum[7:0]);
-
-        // Sign each chain: hash secret key forward digit[i] steps
-        for (int i = 0; i < WOTS_P; i++) begin
-            logic [255:0] val;
-            val = wots_secret_key(ident, seed, q, i);
-            for (int j = 0; j < digits[i]; j++)
-                val = wots_chain_hash(ident, q, i, j, val);
-            lic.sig_chains[lv][i] = val;
-        end
-
-        lic.leaf_index[lv] = q;
-        lic.randomizer[lv] = make_randomizer(q);
-
-        // Auth path
-        get_auth_path(signer_id, lv, q, lic.auth_path[lv]);
-    endfunction
-
-    // -------------------------------------------------------------------------
-    // HSS sign — populate a license_t across all HSS_LEVELS layers for the
-    // given signer.
-    //
-    // Layer HSS_LEVELS-1 (bottom) signs the user message.
-    // Layer lv < L-1 signs pub[lv+1] = serialised LMS public key of layer lv+1.
-    // Upper-layer signatures are recomputed each call (cheap for small h),
-    // but only the signer's bottom-layer leaf advances afterwards.
+    // HSS sign: the next bottom-tree leaf of signer_id signs the 256-bit
+    // message; upper layers come along inside the signature as RFC 8554
+    // lays them out. The signer advances its leaf on every call.
     // -------------------------------------------------------------------------
 
     function automatic license_t hss_sign(
         input logic [255:0] message,
         input int           signer_id
     );
-        static bit leaves_initialised = 1'b0;
+        static bit keys_checked = 1'b0;
         license_t lic;
-        logic [255:0] q_hash;
-        int q;
+        int off;
 
-
-        // One-shot initialisation on first sign across all signers.
-        if (!leaves_initialised) begin
-            init_leaves();
-            leaves_initialised = 1'b1;
+        if (!keys_checked) begin
+            check_keys();
+            keys_checked = 1'b1;
         end
+
+        if (dpi_hss_sign(signer_id, message, sig_buf) != 0)
+            $fatal(1, "hss_sign: hash-sigs could not sign for signer %0d", signer_id);
 
         lic = 0;
-
-        // Subtree identifiers go into the license so the verifier can
-        // reconstruct pub[lv] during upper-layer Q hashing. sub_I[0] is unused
-        // (layer 0 is the top tree and uses the signer's top identifier).
-        for (int lv = 1; lv < HSS_LEVELS; lv++)
-            lic.sub_I[lv] = IDENTIFIERS[signer_id][lv];
-
-        // Sign each layer lv from top (0) to bottom (L-1). Payload at lv:
-        //   - lv == L-1 : user message
-        //   - lv <  L-1 : pub[lv+1] = {LMS_TYPE, LMOTS_TYPE, I_{lv+1}, root_{lv+1}}
-        for (int lv = 0; lv < HSS_LEVELS; lv++) begin
-            q = cur_leaf[signer_id][lv];
-            if (lv == HSS_LEVELS - 1) begin
-                q_hash = compute_q_hash_msg(IDENTIFIERS[signer_id][lv], q,
-                                            make_randomizer(q), message);
-            end else begin
-                q_hash = compute_q_hash_sub(IDENTIFIERS[signer_id][lv], q,
-                                            make_randomizer(q),
-                                            IDENTIFIERS[signer_id][lv + 1],
-                                            TREE[signer_id][lv + 1][1]);  // root T_{lv+1}[1]
+        // u32 Nspk, the number of signed public keys: all layers but the bottom
+        if (be32(0) != 32'(HSS_LEVELS - 1))
+            $fatal(1, "hss_sign: Nspk %0d, expected %0d", be32(0), HSS_LEVELS - 1);
+        off = 4;
+        for (int lv = 0; lv < int'(HSS_LEVELS); lv++) begin
+            off = unpack_lms_sig(off, lv, lic);
+            if (lv < int'(HSS_LEVELS) - 1) begin
+                // pub[lv+1] = u32 type || u32 otstype || I || T: the verifier
+                // rebuilds it from sub_I and its own Merkle root, so only I
+                // rides in the licence. sub_I[0] stays 0: the top tree's
+                // identity is the fused public key's.
+                if (be32(off) != 32'(LMS_TYPE) || be32(off + 4) != 32'(LMOTS_TYPE))
+                    $fatal(1, "hss_sign: pub[%0d] types 0x%08x/0x%08x are not hss_pkg's",
+                           lv + 1, be32(off), be32(off + 4));
+                lic.sub_I[lv + 1] = be128(off + 8);
+                off += int'(LMS_PUB_LEN);
             end
-            sign_layer_with_q(signer_id, lv, q_hash, lic);
         end
-
-        // Advance only this signer's bottom-layer leaf for the next call.
-        advance_leaf(signer_id);
-
+        if (off != int'(HSS_SIG_LEN))
+            $fatal(1, "hss_sign: consumed %0d of %0d signature bytes", off, HSS_SIG_LEN);
         return lic;
     endfunction
 

@@ -11,7 +11,6 @@ module tb (
 );
     import arith_pkg::*;
     import hss_pkg::*;
-    import tb_hss_tree_pkg::*;
     import tb_hss_sign_pkg::*;
 
     // -------------------------------------------------------------------------

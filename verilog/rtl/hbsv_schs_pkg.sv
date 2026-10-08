@@ -100,6 +100,11 @@ package hbsv_schs_pkg;
     function automatic logic [hss_pkg::Q_W-1:0] ctrl2q(input ctrl_t ctrl);
         return ctrl.leaf_idx;
     endfunction
+    // The leaf's node number, 2^h + q: what the leaf hash takes (RFC 8554
+    // Section 5.3 and Algorithm 6a), as opposed to Kc, which takes q itself.
+    function automatic logic [hss_pkg::Q_W-1:0] ctrl2leaf(input sch_e sch, input ctrl_t ctrl);
+        return (hss_pkg::Q_W'(1) << tree_h(sch)) + hss_pkg::Q_W'(ctrl.leaf_idx);
+    endfunction
     function automatic logic [hss_pkg::Q_W-1:0] ctrl2node(input sch_e sch, input ctrl_t ctrl);
         return ((hss_pkg::Q_W'(1) << tree_h(sch)) | ctrl.leaf_idx) >> ctrl.mrkl_level >> 1;
     endfunction
@@ -215,12 +220,13 @@ package hbsv_schs_pkg;
     localparam int unsigned MSS_LEAF_MSG_BITS = $bits(hss_pkg::lms_leaf_msg_t);
 
     function automatic logic [MSS_LEAF_MSG_BITS-1:0] mss_leaf_msg(
+        input sch_e                  sch,
         input logic [MAX_KCTX_W-1:0] kctx,
-        input ctrl_t             ctrl,
+        input ctrl_t                 ctrl,
         input logic [MAX_DATA_W-1:0] kc);
         return hss_pkg::lms_leaf_msg_t'{
                     i:      kctx,
-                    q:      ctrl2q(ctrl),
+                    q:      ctrl2leaf(sch, ctrl),
                     d_leaf: hss_pkg::D_LEAF,
                     kc:     kc};
     endfunction
