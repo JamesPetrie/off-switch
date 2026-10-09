@@ -193,4 +193,11 @@ package hss_pkg;
     // lives with the signer in tb/tb_hss_sign_pkg.sv.
     localparam int unsigned LAYER_HDR_BEATS = 2;
 
+    // Beat 0
+    typedef struct packed {
+        logic [Q_W-1:0]                 leaf_index;
+        logic [IDENT_W-1:0]             sub_i;
+        logic [WIDTH-Q_W-IDENT_W-1:0]   padding;
+    } layer_hdr_t;
+
 endpackage
