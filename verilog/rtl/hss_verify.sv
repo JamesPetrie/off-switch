@@ -304,8 +304,8 @@ module hss_verify
 
     wire             last_chain    = (int'(wots_chain_q) == OTS_LEN-1) ? 1'b1 : 1'b0;
 
-    wire             last_level    = (seq_q == StFors)  ? (int'(mrkl_level_q) == FORS_H-1)
-                                                        : (int'(mrkl_level_q) == TREE_HT-1);
+    wire             last_level    = (seq_q == StFors)  ? (int'(mrkl_level_q) == FORS_H)
+                                                        : (int'(mrkl_level_q) == TREE_HT);
 
     wire             last_fors_tree = (int'(fors_tree_q) == FORS_K-1) ? 1'b1 : 1'b0;
 
@@ -549,7 +549,7 @@ module hss_verify
     assign sha_restore = kc_absorbing && !kc_first_q;
 
     // -------------------------------------------------------------------------
-    // Leaf: H(I || q || D_LEAF || Kc)
+    // Leaf: H(I || u32str(r) || D_LEAF || Kc)
     // -------------------------------------------------------------------------
 
     localparam int unsigned LEAF_MSG_W = MSS_LEAF_MSG_BITS;
@@ -603,7 +603,8 @@ module hss_verify
     // The leaf is node 2^h + q and each level up halves the node number, so
     // the node at the current level is a right child iff that bit of q is
     // set; the node number itself is derived the same way in the package.
-    wire is_right = mrkl_leaf_idx[mrkl_level_q];
+    // The node joined sits a level below the one produced
+    wire is_right = mrkl_leaf_idx[mrkl_level_q - 1'b1];
 
     // The sibling is the beat on the bus
     logic [DW-1:0] left_node;
@@ -1003,8 +1004,10 @@ module hss_verify
 
             unique case (mrkl_q)
                 StMrklInit: begin
-                    // Hash the MSS tree leaf first if needed, FORS leaf is always hashed first
-                    mrkl_d = (MSS_LEAF_HASH || (seq_q == StFors)) ? StMrklLeaf : StMrklJoin;
+                    // Hash the MSS tree leaf first if needed, FORS leaf is always hashed first.
+                    // The level is the produced node's: the leaf's, or the first join's
+                    mrkl_level_d = (MSS_LEAF_HASH || (seq_q == StFors)) ? '0 : MRKL_LEVEL_W'(1);
+                    mrkl_d       = (MSS_LEAF_HASH || (seq_q == StFors)) ? StMrklLeaf : StMrklJoin;
                 end
 
                 StMrklLeaf: begin
@@ -1012,7 +1015,8 @@ module hss_verify
                     // is hashed straight off the bus, like a sibling.
                     mrkl_sha_valid = (seq_q == StFors) ? valid : 1'b1;
                     if (hash_complete) begin
-                        mrkl_d = StMrklJoin;
+                        mrkl_level_d = mrkl_level_q + 1'b1;
+                        mrkl_d       = StMrklJoin;
                     end
                 end
 

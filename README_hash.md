@@ -485,7 +485,7 @@ The current default of 10¹² provides approximately 17 minutes of authorization
 | Test | Description | Vectors |
 |------|-------------|---------|
 | `test_sha256` | SHA-256 core against NIST vectors | 4 tests (empty, "abc", 2-block, multi-block) |
-| `test_wots_verify` | WOTS+ chain computation | 34 chains vs reference_lms.py vectors |
+| `test_wots_verify` | WOTS+ chain computation | 34 chains vs test/test_vectors_lms.json (legacy vectors) |
 | `test_merkle_verify` | Merkle path verification | Height-4 tree, root comparison |
 | `test_hss_verify` | End-to-end HSS orchestrator | Full Q->WOTS->Kc->leaf->Merkle pipeline |
 | `test_security_block` | Security block integration | 14 tests with TRNG calibration |

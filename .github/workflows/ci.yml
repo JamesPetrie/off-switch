@@ -54,6 +54,9 @@ jobs:
         with:
           version: 5.044 # REVISIT: 5.046 used locally is not yet available on GitHub
 
+      - name: Install OpenSSL (hash-sigs test signer)
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
       - name: Simulate ${{ matrix.tb }}
         run: make sim TB=${{ matrix.tb }}
         working-directory: verilog

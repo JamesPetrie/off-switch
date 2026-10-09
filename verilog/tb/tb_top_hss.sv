@@ -1,8 +1,7 @@
 // tb_top_hss.sv — Security block integration test with HSS-LMS (CRYPTO_TYPE=1)
 //
-// Mirrors tb_top.sv but uses HSS-LMS signing via DPI-C SHA-256.
-// The WOTS+ secret keys are derived at runtime; the Merkle tree is
-// pre-built by reference_lms.py and loaded from tb_hss_tree_pkg.
+// Mirrors tb_top.sv with HSS-LMS licences, signed at run time by the
+// hash-sigs reference signer through DPI-C (tb_hss_sign_pkg).
 
 `include "tb_hss_sign_pkg.sv"
 
@@ -12,7 +11,6 @@ module tb (
 );
     import arith_pkg::*;
     import hss_pkg::*;
-    import tb_hss_tree_pkg::*;
     import tb_hss_sign_pkg::*;
 
     // -------------------------------------------------------------------------
