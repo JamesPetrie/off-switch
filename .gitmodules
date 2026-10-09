@@ -1,0 +1,3 @@
+[submodule "verilog/tb/hash-sigs"]
+	path = verilog/tb/hash-sigs
+	url = https://github.com/cisco/hash-sigs.git
