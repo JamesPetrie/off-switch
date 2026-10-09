@@ -163,14 +163,13 @@ package hbsv_schs_pkg;
     // ctrl_t -> scheme fields
     // -------------------------------------------------------------------------
 
-    // LMS: the u32 field is the leaf index q, or the parent node number
-    // during a Merkle step. Leaf q is node 2^h + q; each level up halves
-    // the node number.
+    // LMS: the leaf index q and the node number r (RFC 8554 Section 5.3)
     function automatic logic [hss_pkg::Q_W-1:0] ctrl2q(input ctrl_t ctrl);
         return ctrl.leaf_idx;
     endfunction
-    function automatic logic [hss_pkg::Q_W-1:0] ctrl2node(input sch_e sch, input ctrl_t ctrl);
-        return ((hss_pkg::Q_W'(1) << tree_h(sch)) | ctrl.leaf_idx) >> ctrl.mrkl_level >> 1;
+    function automatic logic [hss_pkg::Q_W-1:0] ctrl2r(input ctrl_t ctrl);
+        return hss_pkg::node_r(.q     (ctrl2q(ctrl)),
+                               .level (int'(ctrl.mrkl_level)));
     endfunction
 
     // SLH: the compressed address of a hash. The layer address counts from
@@ -194,21 +193,21 @@ package hbsv_schs_pkg;
                     hash_or_index:   hash_or_index};
     endfunction
 
-    // SLH: the nodes of a tree level are numbered from zero, so the parent's
+    // SLH: the nodes of a tree level are numbered from zero, so a node's
     // index is the leaf index halved once per level. The FORS trees share
     // one numbering: the leaves of tree t follow those of tree t - 1.
     function automatic logic [slh_pkg::ADRS_WORD_W-1:0] ctrl2height(input ctrl_t ctrl);
-        return slh_pkg::ADRS_WORD_W'(ctrl.mrkl_level) + slh_pkg::ADRS_WORD_W'(1);
+        return slh_pkg::ADRS_WORD_W'(ctrl.mrkl_level);
     endfunction
     function automatic logic [slh_pkg::ADRS_WORD_W-1:0] ctrl2tree_index(input ctrl_t ctrl);
-        return slh_pkg::ADRS_WORD_W'(ctrl.leaf_idx) >> ctrl.mrkl_level >> 1;
+        return slh_pkg::ADRS_WORD_W'(ctrl.leaf_idx) >> ctrl.mrkl_level;
     endfunction
     function automatic logic [slh_pkg::ADRS_WORD_W-1:0] ctrl2fors_leaf(input ctrl_t ctrl);
         return (slh_pkg::ADRS_WORD_W'(ctrl.fors_tree) << slh_pkg::SLH_A)
                | slh_pkg::ADRS_WORD_W'(ctrl.fors_leaf);
     endfunction
     function automatic logic [slh_pkg::ADRS_WORD_W-1:0] ctrl2fors_index(input ctrl_t ctrl);
-        return ctrl2fors_leaf(ctrl) >> ctrl.mrkl_level >> 1;
+        return ctrl2fors_leaf(ctrl) >> ctrl.mrkl_level;
     endfunction
 
     // SLH: PK.seed, zero-padded to a whole block
@@ -465,7 +464,7 @@ package hbsv_schs_pkg;
         case (sch)
             SCHEME_HSS:      return hss_pkg::lms_leaf_msg_t'{
                     i:      kctx,
-                    q:      ctrl2q(ctrl),
+                    r:      ctrl2r(ctrl),
                     d_leaf: hss_pkg::D_LEAF,
                     kc:     kc};
             SCHEME_SLH_128S: return '0;
@@ -497,7 +496,7 @@ package hbsv_schs_pkg;
         case (sch)
             SCHEME_HSS:      return MAX_MSS_JOIN_MSG_BITS'(hss_pkg::lms_intr_msg_t'{
                     i:      kctx,
-                    node:   ctrl2node(sch, ctrl),
+                    r:      ctrl2r(ctrl),
                     d_intr: hss_pkg::D_INTR,
                     left:   left,
                     right:  right});
