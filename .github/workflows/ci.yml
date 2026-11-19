@@ -33,6 +33,10 @@ jobs:
         run: make lint TOOL=verilator CRYPTO_TYPE=1
         working-directory: verilog
 
+      - name: Lint Verilator SLH-DSA
+        run: make lint TOOL=verilator CRYPTO_TYPE=2
+        working-directory: verilog
+
       - name: Lint Verible
         run: make lint TOOL=verible # verible does not compile the design, just checks syntax and style, no need to run separately for each CRYPTO_TYPE
         working-directory: verilog
@@ -42,7 +46,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        tb: [top_ecdsa, top_hss]
+        tb: [top_ecdsa, top_hss, top_slh, slh]
 
     steps:
       - uses: actions/checkout@v4

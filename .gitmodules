@@ -1,3 +1,6 @@
 [submodule "verilog/tb/hash-sigs"]
 	path = verilog/tb/hash-sigs
 	url = https://github.com/cisco/hash-sigs.git
+[submodule "verilog/tb/slhdsa-c"]
+	path = verilog/tb/slhdsa-c
+	url = https://github.com/pq-code-package/slhdsa-c.git
