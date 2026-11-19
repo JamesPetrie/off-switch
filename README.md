@@ -28,8 +28,9 @@ The paper proposes embedding thousands of these security blocks throughout an AI
 
 - **ECDSA** over secp256k1 — the conventional choice analysed in the paper.
 - **HSS/LMS** hash-based signatures (RFC 8554) — post-quantum-secure.
+- **SLH-DSA** stateless hash-based signatures (FIPS 205, SLH-DSA-SHA2-128s) — post-quantum-secure, verified by the same engine as HSS/LMS. Only the SLH-DSA-SHA2-128s parameter set (128-bit digest) is supported.
 
-Both flavours are wired into the same `security_block` module via a `CRYPTO_TYPE` parameter (`0` = ECDSA, `1` = HSS-LMS), so the surrounding TRNG / allowance counter / workload-gating logic is identical.
+All flavours are wired into the same `security_block` module via a `CRYPTO_TYPE` parameter (`0` = ECDSA, `1` = HSS-LMS, `2` = SLH-DSA), so the surrounding TRNG / allowance counter / workload-gating logic is identical.
 
 ### Design Goals
 
@@ -54,7 +55,7 @@ Both flavours are wired into the same `security_block` module via a `CRYPTO_TYPE
 # Install verilator if needed (macOS: brew install verilator, Ubuntu: apt install verilator)
 # Note: apt install gets older version, build a newer from source if needed
 
-# Clone the repo, with the hash-sigs submodule
+# Clone the repo, with the test signers' submodules (hash-sigs, slhdsa-c)
 git clone --recurse-submodules https://github.com/JamesPetrie/off-switch
 cd off-switch
 ```
@@ -69,11 +70,17 @@ make sim TB=top_ecdsa
 
 # HSS-LMS top-level (CRYPTO_TYPE=1)
 make sim TB=top_hss
+
+# SLH-DSA top-level (CRYPTO_TYPE=2), and the verifier on its own
+make sim TB=top_slh
+make sim TB=slh
 ```
 
-The two top-level testbenches (`tb_top_ecdsa.sv`, `tb_top_hss.sv`) instantiate `security_block` with the appropriate `CRYPTO_TYPE` parameter and run the same suite of integration tests.
+The top-level testbenches instantiate `security_block` with the appropriate `CRYPTO_TYPE` parameter. `tb_top_ecdsa.sv` and `tb_top_hss.sv` run the same suite of integration tests; `tb_top_slh.sv` covers what depends on the scheme (the licence beat stream, the key per signer, the replay protection).
 
 The HSS-LMS licences are signed at run time by hash-sigs through DPI-C (`tb/hss_signer.c`, `tb/dpi_hss.c`), so the verifier is checked against the RFC 8554 reference rather than against a signer of our own. The test signers' keys derive from fixed seeds; their public halves live in `rtl/hss_keys.svh` and are regenerated with `make hss-keys` whenever the seeds or the parameter set change (the testbench stops if the file is stale).
+
+The SLH-DSA licences are signed the same way by [slhdsa-c](https://github.com/pq-code-package/slhdsa-c), the PQ Code Package implementation of FIPS 205 and a second submodule (`tb/slh_signer.c`, `tb/dpi_slh.c`; it brings its own SHA-2, so it does not need OpenSSL). Their public keys live in `rtl/slh_keys.svh` and are regenerated with `make slh-keys`.
 
 ---
 
@@ -138,6 +145,7 @@ flowchart TB
 | `trng` | Submodule | Nonce generation (256-bit LFSR in prototype; ring oscillator in production) |
 | `ecdsa` | Submodule (CRYPTO_TYPE=0) | Signature verification using secp256k1 curve |
 | `hss_verify` | Submodule (CRYPTO_TYPE=1) | RFC 8554 HSS/LMS verification (L=1, w=8, n=32, p=34) |
+| `hss_verify` | Submodule (CRYPTO_TYPE=2) | FIPS 205 SLH-DSA-SHA2-128s verification, the same engine with `SCH = SCHEME_SLH_128S` |
 | Security Logic | Inline | State machine orchestration |
 | Usage Allowance | Inline | 64-bit authorization counter |
 | Workload | Inline | Gated essential operation (Int8 Add example) |
@@ -163,7 +171,7 @@ The authorization protocol follows Section 2 of the paper (see Figure 2):
    - Same nonce retained (allows retry with correct signature)
 
 A license is a fixed number of beats — one for ECDSA,
-`HSS_LEVELS x (2 + WOTS_P + TREE_H)` for HSS-LMS — and the producer releases
+`HSS_LEVELS x (2 + WOTS_P + TREE_H)` for HSS-LMS, 491 for SLH-DSA — and the producer releases
 `license_valid` once the last one has been accepted. `nonce_ready` is low
 while a verification is in flight and rises again when the block has
 finished, so it also marks the end of a cycle; the outcome is read from the
@@ -251,6 +259,7 @@ beat count follow from `CRYPTO_TYPE`:
 |---------------|--------|-----------|-------|----------|
 | 0 | `ecdsa` (secp256k1) | 512 bits | 1 | `{r[256], s[256]}` |
 | 1 | `hss_verify` (HSS/LMS) | 256 bits | `L * (2 + WOTS_P + TREE_H)` | per layer, from `HSS_LEVELS-1` down to 0: a header beat `{leaf_index, sub_I}`, the randomizer, `WOTS_P` chain signatures, then `TREE_H` auth path siblings |
+| 2 | `hss_verify` (SLH-DSA-SHA2-128s) | 128 bits | `1 + k * (1 + a) + d * (len + h')` = 491 | the FIPS 205 signature, one `n`-byte element per beat: the randomizer, per FORS tree a secret value and `a` auth path nodes, then per hypertree layer from the bottom `len` chain signatures and `h'` auth path nodes |
 
 ### Top-Level Outputs
 
@@ -668,6 +677,7 @@ At 1 GHz, verification completes in ~0.3 ms, well within the licensing interval 
 | Nonce generation | 2 | Request + latch |
 | License verification ECDSA | ~5×10⁶ | scalar multiplication dominates |
 | License verification HSS-LMS | ~3×10⁵ | WOTS+ chains dominate |
+| License verification SLH-DSA | ~3×10⁵ | WOTS+ chains of the seven hypertree layers dominate |
 | Workload operation | 1 | Combinational add + output register |
 | Allowance per license | 10¹² | Configurable via `ALLOWANCE_INCREMENT` |
 
@@ -692,7 +702,7 @@ The current default of 10¹² provides approximately 17 minutes of authorization
 
 ## Test Coverage
 
-Both top-level testbenches exercise the same integration scenarios via the shared `security_block` interface; only the licence format and signing approach differ.
+The ECDSA and HSS-LMS top-level testbenches exercise the same integration scenarios via the shared `security_block` interface; only the licence format and signing approach differ. The SLH-DSA one (`tb_top_slh.sv`) repeats those that depend on the licence (1, 3, 4, 6, 12–15), and `tb_slh.sv` checks the verifier on its own against genuine signatures and ones with a single bit inverted in each part.
 
 ### Test Cases
 
@@ -712,7 +722,7 @@ Both top-level testbenches exercise the same integration scenarios via the share
 | 12 | New nonce | Generated after valid license only | Replay prevention |
 | 13 | Wrong nonce | License for different nonce rejected | Crypto auth |
 | 14 | Replay attack | Same license rejected on second use | No double-spend |
-| 15 | New signature, old nonce | Re-signing a stale nonce is rejected (HSS-only for now) | No double-spend |
+| 15 | New signature, old nonce | Re-signing a stale nonce is rejected (HSS-LMS and SLH-DSA only for now) | No double-spend |
 
 ### Property Coverage Matrix
 

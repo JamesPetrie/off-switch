@@ -1,27 +1,8 @@
 // DPI-C glue between tb_hss_sign_pkg.sv and the hash-sigs test signers.
-//
-// Bit vectors cross DPI as svBitVecVal words, word 0 holding bits [31:0];
-// the RFC 8554 byte strings are big-endian, so byte 0 is the top of the vector.
 
 #include "svdpi.h"
+#include "dpi_vec.h"
 #include "hss_signer.h"
-
-static void vec_to_bytes(const svBitVecVal *w, int nbits, unsigned char *out)
-{
-    for (int i = 0; i < nbits / 8; i++) {
-        int lsb = nbits - 8 - 8 * i;
-        out[i] = (unsigned char)(w[lsb / 32] >> (lsb % 32));
-    }
-}
-
-static void bytes_to_vec(const unsigned char *in, int nbits, svBitVecVal *w)
-{
-    for (int i = 0; i < nbits / 32; i++) w[i] = 0;
-    for (int i = 0; i < nbits / 8; i++) {
-        int lsb = nbits - 8 - 8 * i;
-        w[lsb / 32] |= (svBitVecVal)in[i] << (lsb % 32);
-    }
-}
 
 int dpi_hss_init(int signer)
 {
