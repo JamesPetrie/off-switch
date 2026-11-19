@@ -16,7 +16,7 @@ jobs:
       - name: Install Verilator
         uses: veryl-lang/setup-verilator@v1
         with:
-          version: 5.044 # REVISIT: 5.046 used locally is not yet available on GitHub
+          version: 5.046
 
       - name: Install Verible
         run: |
@@ -52,7 +52,7 @@ jobs:
       - name: Install Verilator
         uses: veryl-lang/setup-verilator@v1
         with:
-          version: 5.044 # REVISIT: 5.046 used locally is not yet available on GitHub
+          version: 5.046
 
       - name: Simulate ${{ matrix.tb }}
         run: make sim TB=${{ matrix.tb }}
