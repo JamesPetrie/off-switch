@@ -461,21 +461,26 @@ module hss_verify
     // SHA block counter, last block flag and block selection
     // -------------------------------------------------------------------------
 
-    // Helper variable
-    int unsigned num_blocks;
-    int unsigned blk_shift;
+    // Longest hash input, in blocks
+    function automatic int unsigned max2(input int unsigned a, input int unsigned b);
+        return (a > b) ? a : b;
+    endfunction
+    localparam int unsigned MAX_BLOCKS = max2(max2(Q_MSG_BLOCKS, Q_SUB_BLOCKS),
+                                              max2(LEAF_BLOCKS,  MRKL_BLOCKS));
+    localparam int unsigned MAX_MSG_W  = MAX_BLOCKS * 512;
 
-    // Unused bits from shift output
-    /* verilator lint_off UNUSEDSIGNAL */
-    logic [$bits(q_msg_padded)-1:0] q_msg_discard;
-    logic [$bits(q_sub_padded)-1:0] q_sub_discard;
-    logic [$bits(leaf_padded)-1:0]  leaf_discard;
-    logic [$bits(mrkl_padded)-1:0]  mrkl_discard;
-    /* verilator lint_on UNUSEDSIGNAL */
+    // Selected hash input and its length in blocks. Inputs are right-aligned:
+    // the last block is always the least significant 512 bits.
+    int unsigned          num_blocks;
+    logic [MAX_MSG_W-1:0] sha_msg;
 
-    // Block counter — not used by Kc at all: a Kc block's position in the
-    // message is tracked by the chain index instead, and the next chain
-    // hash must still see index zero.
+    // Blocks left after the current one. This is also the position of the
+    // current block counted from the least significant end of sha_msg.
+    wire [31:0] blks_left = num_blocks - 1 - 32'(blk_idx_q);
+
+    // Block counter — not advanced by Kc: every Kc absorb is a single block
+    // whose position in the message is tracked by the chain index instead,
+    // so both the absorb and the next chain hash see index zero.
     always_comb begin
         blk_idx_d = blk_idx_q;
 
@@ -493,53 +498,54 @@ module hss_verify
 
     // Last block flag. Kc bypasses the counter: only the final padding
     // block closes the Kc message, every other absorb suspends it.
-    assign sha_last = kc_absorbing ? kc_final :
-                      (int'(blk_idx_q) == num_blocks-1) ? 1'b1 : 1'b0;
+    assign sha_last = kc_absorbing ? kc_final : (blks_left == 0);
 
-    // Input vector and block selection
+    // Input vector selection
     always_comb begin
-        blk_shift = int'(blk_idx_q) * 512;
+        num_blocks = 0;
+        sha_msg    = '0;
 
-        num_blocks =  0;
-        sha_block  = '0;
-
-        q_msg_discard = '0;
-        q_sub_discard = '0;
-        leaf_discard  = '0;
-        mrkl_discard  = '0;
-
-        // Append 512'b0 for the shifts on the right side so widths are equal
         unique case (seq_q)
             StQ: begin
                 if (is_msg_layer) begin
                     num_blocks = Q_MSG_BLOCKS;
-                    {sha_block, q_msg_discard} = {q_msg_padded, 512'b0} << blk_shift;
+                    sha_msg    = MAX_MSG_W'(q_msg_padded);
                 end else begin
                     num_blocks = Q_SUB_BLOCKS;
-                    {sha_block, q_sub_discard} = {q_sub_padded, 512'b0} << blk_shift;
+                    sha_msg    = MAX_MSG_W'(q_sub_padded);
                 end
             end
             StWots: begin
+                num_blocks = 1;
                 if (wots_q == StWotsAccum) begin
-                    sha_block = kc_absorb_block;
+                    sha_msg = MAX_MSG_W'(kc_absorb_block);
                 end else begin
-                    num_blocks = 1;
-                    sha_block  = wots_padded;
+                    sha_msg = MAX_MSG_W'(wots_padded);
                 end
             end
             StKcFinal: begin
-                sha_block = kc_final_block;
+                num_blocks = 1;
+                sha_msg    = MAX_MSG_W'(kc_final_block);
             end
             StLeaf: begin
                 num_blocks = LEAF_BLOCKS;
-                {sha_block, leaf_discard} = {leaf_padded, 512'b0} << blk_shift;
+                sha_msg    = MAX_MSG_W'(leaf_padded);
             end
             StMerkle: begin
                 num_blocks = MRKL_BLOCKS;
-                {sha_block, mrkl_discard} = {mrkl_padded, 512'b0} << blk_shift;
+                sha_msg    = MAX_MSG_W'(mrkl_padded);
             end
             default: ;
         endcase
+    end
+
+    // Block selection: AND-OR mux on the blocks left. A variable shift of
+    // the input would synthesise to a larger barrel shifter.
+    always_comb begin
+        sha_block = '0;
+        for (int unsigned i = 0; i < MAX_BLOCKS; i++) begin
+            sha_block |= {512{blks_left == i}} & sha_msg[i*512 +: 512];
+        end
     end
 
     // -------------------------------------------------------------------------
