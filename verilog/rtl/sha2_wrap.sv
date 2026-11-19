@@ -25,23 +25,24 @@
 
 module sha2_wrap
     import prim_sha2_pkg::*;
+    import sha2_wrap_pkg::*;
 (
-    input  logic           clk,
-    input  logic           rst_n,
+    input  logic                       clk,
+    input  logic                       rst_n,
 
     // Inputs
-    input  logic           valid,
-    input  logic [511:0]   block,
-    input  logic           last,
+    input  logic                       valid,
+    input  logic [SHA256_BLOCK_W-1:0]  block,
+    input  logic                       last,
 
     // Suspend / resume
-    input  logic           save,
-    input  logic           restore,
-    input  logic [255:0]   ctx,
+    input  logic                       save,
+    input  logic                       restore,
+    input  logic [SHA256_DIGEST_W-1:0] ctx,
 
     // Outputs
-    output logic           ready,
-    output logic [255:0]   digest
+    output logic                       ready,
+    output logic [SHA256_DIGEST_W-1:0] digest
 );
 
     // -------------------------------------------------------------------------
@@ -80,9 +81,9 @@ module sha2_wrap
     // The core consumes W0 from msg_block_data_i[31:0]; the off-switch block
     // convention is W0 in block[511:480], so the sixteen 32-bit words are
     // order-reversed (no byte swap within words).
-    logic [511:0] block_rev;
+    logic [SHA256_BLOCK_W-1:0] block_rev;
     for (genvar gi = 0; gi < 16; gi++) begin : gen_block_rev
-        assign block_rev[32*gi +: 32] = block[511 - 32*gi -: 32];
+        assign block_rev[32*gi +: 32] = block[SHA256_BLOCK_W-1 - 32*gi -: 32];
     end
 
     prim_sha2_compression #(
@@ -121,8 +122,8 @@ module sha2_wrap
     // H0..H7 sit in the low halves of digest_o[0..7]; repack big-endian.
     // ctx is packed the same way, so a saved digest is restored unchanged.
     for (genvar gi = 0; gi < 8; gi++) begin : gen_digest
-        assign digest[255 - 32*gi -: 32] = digest_words[gi][31:0];
-        assign ctx_words[gi] = {32'b0, ctx[255 - 32*gi -: 32]};
+        assign digest[SHA256_DIGEST_W-1 - 32*gi -: 32] = digest_words[gi][31:0];
+        assign ctx_words[gi] = {32'b0, ctx[SHA256_DIGEST_W-1 - 32*gi -: 32]};
     end
 
     // -------------------------------------------------------------------------
