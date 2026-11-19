@@ -14,7 +14,7 @@ jobs:
           submodules: recursive
 
       - name: Install Verilator
-        uses: veryl-lang/setup-verilator@v1
+        uses: veryl-lang/setup-verilator@v2
         with:
           version: 5.046
 
@@ -50,7 +50,7 @@ jobs:
           submodules: recursive
 
       - name: Install Verilator
-        uses: veryl-lang/setup-verilator@v1
+        uses: veryl-lang/setup-verilator@v2
         with:
           version: 5.046
 
