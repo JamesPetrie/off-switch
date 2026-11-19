@@ -17,7 +17,8 @@ package hbsv_ctrl_pkg;
         SCHEME_MAX      = 2    // number of schemes; loops over them end here
     } sch_e;
 
-    // Field widths; the verifier's counters are declared with the same ones
+    // Field widths, sized for the widest scheme. The verifier's registers may
+    // be narrower and are zero-extended into the fields.
     localparam int unsigned HT_LAYER_W   = 3;
     localparam int unsigned MSS_TREE_W   = 54;
     localparam int unsigned MSS_LEAF_W   = 32;
@@ -35,8 +36,8 @@ package hbsv_ctrl_pkg;
                                               // layer has one tree, 0)
         // MSS, the layer's tree
         logic [MSS_LEAF_W-1:0]   mss_leaf;    // leaf of the key pair
-        logic [MRKL_LEVEL_W-1:0] mrkl_level;  // level the Merkle walk has reached, in the
-                                              // layer's tree or in a FORS tree
+        logic [MRKL_LEVEL_W-1:0] mrkl_level;  // level of the node the Merkle walk is producing,
+                                              // in the layer's tree or in a FORS tree; leaf: 0
         // WOTS chain
         logic [CHAIN_IDX_W-1:0]  chain_idx;   // chain
         logic [CHAIN_STEP_W-1:0] chain_step;  // hash step within the chain

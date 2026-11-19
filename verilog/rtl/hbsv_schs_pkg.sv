@@ -206,40 +206,53 @@ package hbsv_schs_pkg;
 
     // SLH: the compressed address of a hash, by its type. The layer address
     // counts from the bottom of the hypertree while ht_layer counts from the
-    // top. The key pair address is the key pair's leaf, except in the hashes
-    // of its own tree. A tree hash is addressed as the node it produces.
+    // top. The three words after the type are, per type:
+    //
+    //                 key pair   chain / height   hash / index
+    //   WOTS_HASH     leaf       chain            step in the chain
+    //   WOTS_PK       leaf       0                0
+    //   TREE          0          node height      node index
+    //   FORS_TREE     leaf       node height      node index, all FORS trees
+    //   FORS_ROOTS    leaf       0                0
+    //
+    // The node is the one the hash produces, a leaf being at height 0.
     function automatic slh_pkg::slh_adrs_c_t ctrl2adrs(
-        input logic [slh_pkg::ADRS_TYPE_W-1:0] adrs_type,
-        input ctrl_t                           ctrl);
-        slh_pkg::slh_adrs_c_t adrs;
-        adrs = slh_pkg::slh_adrs_c_t'{
+        input slh_pkg::adrs_type_e adrs_type,
+        input ctrl_t               ctrl);
+        logic [slh_pkg::ADRS_WORD_W-1:0] keypair_addr;
+        logic [slh_pkg::ADRS_WORD_W-1:0] chain_or_height;
+        logic [slh_pkg::ADRS_WORD_W-1:0] hash_or_index;
+        unique case (adrs_type)
+            slh_pkg::ADRS_WOTS_HASH: begin
+                keypair_addr    = slh_pkg::ADRS_WORD_W'(ctrl.mss_leaf);
+                chain_or_height = slh_pkg::ADRS_WORD_W'(ctrl.chain_idx);
+                hash_or_index   = slh_pkg::ADRS_WORD_W'(ctrl.chain_step);
+            end
+            slh_pkg::ADRS_TREE: begin
+                keypair_addr    = '0;
+                chain_or_height = ctrl2height(ctrl);
+                hash_or_index   = ctrl2tree_index(ctrl);
+            end
+            slh_pkg::ADRS_FORS_TREE: begin
+                keypair_addr    = slh_pkg::ADRS_WORD_W'(ctrl.mss_leaf);
+                chain_or_height = ctrl2height(ctrl);
+                hash_or_index   = ctrl2fors_index(ctrl);
+            end
+            slh_pkg::ADRS_WOTS_PK,
+            slh_pkg::ADRS_FORS_ROOTS: begin
+                keypair_addr    = slh_pkg::ADRS_WORD_W'(ctrl.mss_leaf);
+                chain_or_height = '0;
+                hash_or_index   = '0;
+            end
+        endcase
+        return slh_pkg::slh_adrs_c_t'{
                     layer_addr:      slh_pkg::ADRS_LAYER_W'(slh_pkg::SLH_D - 1
                                                             - int'(ctrl.ht_layer)),
                     tree_addr:       slh_pkg::ADRS_TREE_W'(ctrl.mss_tree),
                     adrs_type:       adrs_type,
-                    keypair_addr:    slh_pkg::ADRS_WORD_W'(ctrl.mss_leaf),
-                    chain_or_height: '0,
-                    hash_or_index:   '0};
-        case (adrs_type)
-            slh_pkg::ADRS_WOTS_HASH: begin
-                adrs.chain_or_height = slh_pkg::ADRS_WORD_W'(ctrl.chain_idx);
-                adrs.hash_or_index   = slh_pkg::ADRS_WORD_W'(ctrl.chain_step);
-            end
-            slh_pkg::ADRS_TREE: begin
-                adrs.keypair_addr    = '0;
-                adrs.chain_or_height = ctrl2height(ctrl);
-                adrs.hash_or_index   = ctrl2tree_index(ctrl);
-            end
-            slh_pkg::ADRS_FORS_TREE: begin
-                adrs.chain_or_height = ctrl2height(ctrl);
-                adrs.hash_or_index   = ctrl2fors_index(ctrl);
-            end
-            // the key pair alone
-            slh_pkg::ADRS_WOTS_PK,
-            slh_pkg::ADRS_FORS_ROOTS: ;
-            default: adrs = '0;
-        endcase
-        return adrs;
+                    keypair_addr:    keypair_addr,
+                    chain_or_height: chain_or_height,
+                    hash_or_index:   hash_or_index};
     endfunction
 
     // SLH: PK.seed, zero-padded to a whole block
@@ -592,19 +605,12 @@ package hbsv_schs_pkg;
         input logic [MAX_KCTX_W-1:0] kctx,
         input ctrl_t                 ctrl,
         input logic [MAX_DATA_W-1:0] secret);
-        // A leaf has the address type of a FORS tree hash, which the type
-        // alone addresses as the parent node: the leaf is at height zero,
-        // under its own index
-        slh_pkg::slh_adrs_c_t leaf_adrs;
-        leaf_adrs = ctrl2adrs(.adrs_type (slh_pkg::ADRS_FORS_TREE),
-                              .ctrl      (ctrl));
-        leaf_adrs.chain_or_height = '0;
-        leaf_adrs.hash_or_index   = ctrl2fors_leaf(ctrl);
         case (sch)
             SCHEME_HSS:      return '0;
             SCHEME_SLH_128S: return slh_pkg::slh_f_msg_t'{
                     seed_block: slh_seed_block(kctx),
-                    adrs:       leaf_adrs,
+                    adrs:       ctrl2adrs(.adrs_type (slh_pkg::ADRS_FORS_TREE),
+                                          .ctrl      (ctrl)),
                     m1:         slh_pkg::SLH_NW'(secret)};
             default:         return '0;
         endcase

@@ -1,9 +1,11 @@
 // SLH-DSA-SHA2-128s (FIPS 205) parameter package.
 //
 // Security category 1: every hash function is SHA-256 (FIPS 205 11.2.1) and
-// node values are n = 16 bytes. The other SHA2 parameter sets are a lift of
-// this package; widths are written in terms of the Table 2 row where
-// practical.
+// node values are n = 16 bytes. This is the only SLH-DSA parameter set the
+// design supports. The engine handles a 128-bit digest only: the n = 24 and
+// n = 32 sets hash H_msg, H and T_l with SHA-512 (FIPS 205 11.2.2), which
+// the engine does not have. Widths are written in terms of the Table 2 row
+// where practical.
 
 package slh_pkg;
 
@@ -65,11 +67,14 @@ package slh_pkg;
 
     // ADRS types used in verification (PRF types 5 and 6 are signing-only)
     localparam int unsigned ADRS_TYPE_W = 8;
-    localparam logic [ADRS_TYPE_W-1:0] ADRS_WOTS_HASH  = 0;
-    localparam logic [ADRS_TYPE_W-1:0] ADRS_WOTS_PK    = 1;
-    localparam logic [ADRS_TYPE_W-1:0] ADRS_TREE       = 2;
-    localparam logic [ADRS_TYPE_W-1:0] ADRS_FORS_TREE  = 3;
-    localparam logic [ADRS_TYPE_W-1:0] ADRS_FORS_ROOTS = 4;
+
+    typedef enum logic [ADRS_TYPE_W-1:0] {
+        ADRS_WOTS_HASH  = 0,
+        ADRS_WOTS_PK    = 1,
+        ADRS_TREE       = 2,
+        ADRS_FORS_TREE  = 3,
+        ADRS_FORS_ROOTS = 4
+    } adrs_type_e;
 
     // Compressed address ADRSc (Fig 18): the layer and tree addresses
     // shortened to one and eight bytes, then the type and three words whose
@@ -81,7 +86,7 @@ package slh_pkg;
     typedef struct packed {
         logic [ADRS_LAYER_W-1:0] layer_addr;
         logic [ADRS_TREE_W-1:0]  tree_addr;
-        logic [ADRS_TYPE_W-1:0]  adrs_type;
+        adrs_type_e              adrs_type;
         logic [ADRS_WORD_W-1:0]  keypair_addr;
         logic [ADRS_WORD_W-1:0]  chain_or_height;  // chain address (WOTS_HASH), else tree height
         logic [ADRS_WORD_W-1:0]  hash_or_index;    // hash address (WOTS_HASH), else tree index

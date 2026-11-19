@@ -173,10 +173,9 @@ module security_block
         end else if (CRYPTO_TYPE == 2) begin : g_slh_dsa
 
             // Elaboration guard: each signer needs key material.
-            initial begin
-                if (NUM_SIGNERS > slh_pkg::SLH_NUM_KEYS)
-                    $fatal(1, "NUM_SIGNERS (%0d) exceeds slh_pkg::SLH_NUM_KEYS (%0d)",
-                           NUM_SIGNERS, slh_pkg::SLH_NUM_KEYS);
+            if (NUM_SIGNERS > slh_pkg::SLH_NUM_KEYS) begin : g_too_many_signers
+                $error("NUM_SIGNERS (%0d) exceeds slh_pkg::SLH_NUM_KEYS (%0d)",
+                       NUM_SIGNERS, slh_pkg::SLH_NUM_KEYS);
             end
 
             hss_verify #(
@@ -194,7 +193,7 @@ module security_block
                 .verif_passed (crypto_verif_passed)
             );
         end else begin : g_bad_crypto_type
-            initial $fatal(1, "unsupported CRYPTO_TYPE %0d", CRYPTO_TYPE);
+            $error("unsupported CRYPTO_TYPE %0d", CRYPTO_TYPE);
         end
     endgenerate;
 

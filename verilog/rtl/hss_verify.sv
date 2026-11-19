@@ -4,13 +4,13 @@
 // Single-module implementation of RFC 8554 HSS/LMS verification.
 // One SHA-256 core shared by all phases, sequenced by a main FSM:
 //
-//   Sequencer  — phases: Idle → Q → Wots → KcFinal → Mss → Done
-//   Q          — hash for message digest Q
-//   WOTS       — hash WOTS chains forward to their public keys (sub-FSM),
-//                folding each finished pk into the Kc hash as it appears
-//   KcFinal    — resume the Kc hash one final time for the padding block
-//   Mss        — hash for leaf node, then walk auth path from leaf to root
-//                (sub-FSM)
+//   Sequencer   — phases: Idle → Q → Wots → KcFinalWots → Mss → Done
+//   Q           — hash for message digest Q
+//   WOTS        — hash WOTS chains forward to their public keys (sub-FSM),
+//                 folding each finished pk into the Kc hash as it appears
+//   KcFinalWots — resume the Kc hash one final time for the padding block
+//   Mss         — hash for leaf node, then walk auth path from leaf to root
+//                 (sub-FSM)
 //
 // Kc accumulation is interleaved with the WOTS chains via the SHA wrapper's
 // save/restore feature: whenever two more chain endpoints complete a full
@@ -32,10 +32,10 @@
 // SLH-DSA (SCH = SCHEME_SLH_128S) runs the same sequencer on the FIPS 205
 // layouts from hbsv_schs_pkg, with three more phases between Q and Wots:
 //
-//   Mgf1       — second hash, extending the message digest
-//   Fors       — hash each FORS leaf and walk its auth path (Merkle
-//                sub-FSM), folding each root into the FORS public-key hash
-//   ForsFinal  — resume that hash one final time for the padding block
+//   Mgf1        — second hash, extending the message digest
+//   Fors        — hash each FORS leaf and walk its auth path (Merkle
+//                 sub-FSM), folding each root into the FORS public-key hash
+//   KcFinalFors — resume that hash one final time for the padding block
 //
 // The layers above the first sign the root below them directly, so Q runs
 // once and Mss leads straight back to Wots.
@@ -178,18 +178,13 @@ module hss_verify
     //
     // SLH: the leaf index comes off the message digest together with the
     // index of its tree; both move up a layer at a time.
-    // Both at the scheme's width: a leaf index is TREE_HT bits, the tree
-    // index the hypertree's remaining (LAYERS-1)*TREE_HT bits (HSS: unused);
-    // ctrl_t carries them zero-extended.
-    localparam int unsigned LEAF_W = TREE_HT;
-    localparam int unsigned TREE_W = (LAYERS - 1) * TREE_HT;
-    logic [LEAF_W-1:0]      leaf_idx_q,   leaf_idx_d;
-    logic [TREE_W-1:0]      tree_idx_q,   tree_idx_d;
-    // HSS: set when the header's q has bits above TREE_HT. It rides into
-    // the hashed q at bit TREE_HT, so Kc, and with it the root, can never
-    // match: RFC 8554 Alg. 6a step 2.i rejects such a q at parse time, here
-    // it fails the hash instead.
-    logic                   leaf_ovf_q,   leaf_ovf_d;
+    //
+    // HSS: the leaf index is the header's q, kept whole. RFC 8554 Alg. 6a
+    // step 2.i rejects a q >= 2^h at parse time; here it is hashed as it
+    // is, so Kc, and with it the root, cannot match. The tree index is
+    // unused.
+    logic [MSS_LEAF_W-1:0]  leaf_idx_q,   leaf_idx_d;
+    logic [MSS_TREE_W-1:0]  tree_idx_q,   tree_idx_d;
     logic [KCTX_W-1:0]      cur_I_q,      cur_I_d;
     logic [KCTX_W-1:0]      prev_I_q,     prev_I_d;
     logic [HDR_CNT_W-1:0]   hdr_cnt_q,    hdr_cnt_d;
@@ -288,14 +283,11 @@ module hss_verify
 
     // -------------------------------------------------------------------------
     // Control bundle — the counters in the form the hash messages read them
-    //
-    // The tree and leaf index registers are at this scheme's width and the
-    // fields at the widest scheme's, so the casts zero-extend them.
     // -------------------------------------------------------------------------
 
     wire ctrl_t ctrl = '{ht_layer:   layer_q,
-                         mss_tree:   MSS_TREE_W'(tree_idx_q),
-                         mss_leaf:   MSS_LEAF_W'({leaf_ovf_q, leaf_idx_q}),
+                         mss_tree:   tree_idx_q,
+                         mss_leaf:   leaf_idx_q,
                          mrkl_level: mrkl_level_q,
                          chain_idx:  wots_chain_q,
                          chain_step: wots_step_q,
@@ -604,9 +596,9 @@ module hss_verify
 
     // Nodes are indexed as 2n (left) and 2n+1 (right) from their parent.
     // The leaf is node 2^h + q and each level up halves the node number, so
-    // the node at the current level is a right child iff that bit of q is
-    // set; the node number itself is derived the same way in the package.
-    // The node joined sits a level below the one produced
+    // a node is a right child iff its level's bit of q is set; the node
+    // number itself is derived the same way in the package. The node joined
+    // sits a level below the one produced.
     wire is_right = mrkl_leaf[mrkl_level_q - 1'b1];
 
     // The sibling is the beat on the bus
@@ -798,14 +790,13 @@ module hss_verify
     wire data_rand_wants   = use_randomizer && ((seq_q == StMgf1) || !EXTEND_DIGEST);
     wire data_rand_ready   = data_rand_wants && hash_complete;
 
+    // Qualified by valid so ready is never asserted on its own.
     assign ready =  valid && (data_hdr_ready  ||
                               data_wots_ready ||
                               data_rand_ready ||
                               data_mss_ready);
 
     wire wots_loading = data_wots_wants && valid;
-
-    // Qualified by valid so ready is never asserted on its own.
 
     wire hash_reg_en  = wots_loading | hash_complete;
 
@@ -1068,7 +1059,6 @@ module hss_verify
         seq_d         = seq_q;
         layer_d       = layer_q;
         leaf_idx_d    = leaf_idx_q;
-        leaf_ovf_d    = leaf_ovf_q;
         fors_tree_d   = fors_tree_q;
         tree_idx_d    = tree_idx_q;
         cur_I_d       = cur_I_q;
@@ -1107,8 +1097,7 @@ module hss_verify
                             // above signs our public key and needs it.
                             prev_I_d     = cur_I_q;
                             cur_I_d      = hss_hdr.sub_i;
-                            leaf_idx_d   = LEAF_W'(hss_hdr.leaf_index);
-                            leaf_ovf_d   = |(hss_hdr.leaf_index >> LEAF_W);
+                            leaf_idx_d   = hss_hdr.leaf_index;
                         end
                         hdr_cnt_d = hdr_cnt_q + 1'b1;
                     end
@@ -1129,8 +1118,8 @@ module hss_verify
                 // block) and the tree and leaf that sign it.
                 sha_valid = use_randomizer ? valid : 1'b1;
                 if (hash_complete) begin
-                    tree_idx_d = TREE_W'(msg_digest.tree_idx);
-                    leaf_idx_d = LEAF_W'(msg_digest.leaf_idx);
+                    tree_idx_d = msg_digest.tree_idx;
+                    leaf_idx_d = msg_digest.leaf_idx;
                     seq_d = StFors;
                 end
             end
@@ -1179,9 +1168,11 @@ module hss_verify
                               SUB_PK_HASH ? StQ    : StWots;
                     layer_d = (~is_pk_layer) ? layer_q - 1'b1 : '0;
                     // and without that message there is no header to bring
-                    // its leaf index: the index moves up a layer instead
+                    // its leaf index: the index moves up a layer instead, the
+                    // low TREE_HT bits of the tree index being its leaf there
                     if (!SUB_PK_HASH) begin
-                        {tree_idx_d, leaf_idx_d} = (LAYERS * TREE_HT)'(tree_idx_q);
+                        leaf_idx_d = MSS_LEAF_W'(tree_idx_q[TREE_HT-1:0]);
+                        tree_idx_d = tree_idx_q >> TREE_HT;
                     end
                 end
             end
@@ -1203,7 +1194,6 @@ module hss_verify
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             leaf_idx_q <= '0;
-            leaf_ovf_q <= 1'b0;
             tree_idx_q   <= '0;
             cur_I_q      <= '0;
             prev_I_q     <= '0;
@@ -1220,7 +1210,6 @@ module hss_verify
             layer_q       <= '0;
         end else begin
             leaf_idx_q <= leaf_idx_d;
-            leaf_ovf_q <= leaf_ovf_d;
             tree_idx_q   <= tree_idx_d;
             cur_I_q      <= cur_I_d;
             prev_I_q     <= prev_I_d;
